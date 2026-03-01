@@ -52,6 +52,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       set({ connected: false });
     });
 
+    // 连接时接收当前所有在线用户列表
+    socket.on('users:online_list', (userIds: string[]) => {
+      set({ onlineUsers: new Set(userIds) });
+    });
+
     // 在线状态事件
     socket.on('user:online', (userId: string) => {
       set((state) => {

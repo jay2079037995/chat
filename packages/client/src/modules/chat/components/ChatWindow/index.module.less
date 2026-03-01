@@ -84,6 +84,12 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
+.bubbleMedia {
+  padding: 4px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.88);
+}
+
 .messageTime {
   font-size: 11px;
   color: rgba(0, 0, 0, 0.35);
@@ -99,18 +105,52 @@
 }
 
 .inputArea {
-  display: flex;
-  align-items: flex-end;
-  padding: 12px 20px;
+  padding: 8px 20px 12px;
   border-top: 1px solid #f0f0f0;
   background: #fff;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
   gap: 8px;
+  margin-top: 8px;
+}
+
+.inputContent {
+  flex: 1;
 }
 
 .textInput {
-  flex: 1;
+  width: 100%;
 }
 
 .sendButton {
   flex-shrink: 0;
+}
+
+.recordingArea {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.recordingDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  animation: pulse 1s infinite;
+}
+
+.recordingTime {
+  font-size: 14px;
+  color: #ff4d4f;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
 }

@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
+import multer from 'multer';
 import type { ServerModule, ModuleContext, ModuleRegistration, TypedIO, TypedSocket } from '../../core/types';
 import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
@@ -6,7 +7,22 @@ import type { ISessionRepository } from '../../repositories/interfaces/ISessionR
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import { ChatService } from './ChatService';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
-import { MESSAGES_PER_PAGE } from '@chat/shared';
+import { MESSAGES_PER_PAGE, ALLOWED_AUDIO_TYPES, MAX_AUDIO_SIZE } from '@chat/shared';
+import { imageUpload, fileUpload, getFileUrl } from './upload';
+
+/**
+ * 修复 multer originalname 的编码问题
+ *
+ * busboy 将 Content-Disposition 中的 filename 按 Latin-1 解析，
+ * 但浏览器发送的实际是 UTF-8 字节，需要重新解码。
+ */
+function decodeFileName(name: string): string {
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8');
+  } catch {
+    return name;
+  }
+}
 
 /**
  * 聊天模块
@@ -109,10 +125,83 @@ export class ChatModule implements ServerModule {
       }
     });
 
+    // POST /api/chat/upload/image — 上传图片
+    router.post('/upload/image', sessionMiddleware, (req: Request, res: Response, next: NextFunction) => {
+      imageUpload.single('file')(req, res, (err: any) => {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ error: '文件过大' });
+          return;
+        }
+        if (err?.message === 'UNSUPPORTED_IMAGE_TYPE') {
+          res.status(400).json({ error: '不支持的文件类型' });
+          return;
+        }
+        if (err) {
+          res.status(500).json({ error: '上传失败' });
+          return;
+        }
+
+        const file = req.file;
+        if (!file) {
+          res.status(400).json({ error: '请选择文件' });
+          return;
+        }
+
+        res.json({
+          url: getFileUrl(file.path),
+          fileName: decodeFileName(file.originalname),
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        });
+      });
+    });
+
+    // POST /api/chat/upload/file — 上传通用文件（含音频）
+    router.post('/upload/file', sessionMiddleware, (req: Request, res: Response, next: NextFunction) => {
+      fileUpload.single('file')(req, res, (err: any) => {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ error: '文件过大' });
+          return;
+        }
+        if (err) {
+          res.status(500).json({ error: '上传失败' });
+          return;
+        }
+
+        const file = req.file;
+        if (!file) {
+          res.status(400).json({ error: '请选择文件' });
+          return;
+        }
+
+        // 音频文件额外校验
+        if (file.mimetype.startsWith('audio/')) {
+          if (!ALLOWED_AUDIO_TYPES.includes(file.mimetype)) {
+            res.status(400).json({ error: '不支持的音频类型' });
+            return;
+          }
+          if (file.size > MAX_AUDIO_SIZE) {
+            res.status(413).json({ error: '音频文件过大' });
+            return;
+          }
+        }
+
+        res.json({
+          url: getFileUrl(file.path),
+          fileName: decodeFileName(file.originalname),
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        });
+      });
+    });
+
     // Socket.IO 事件处理器
     const socketHandler = (io: TypedIO, socket: TypedSocket) => {
       const userId = (socket.data as any).userId as string;
       if (!userId) return;
+
+      // 加入个人房间，方便按 userId 查找 socket
+      void socket.join(`user:${userId}`);
 
       // 连接时自动加入用户所有已有会话的房间
       void (async () => {
@@ -134,7 +223,24 @@ export class ChatModule implements ServerModule {
             data.conversationId,
             data.type,
             data.content,
+            {
+              fileName: data.fileName,
+              fileSize: data.fileSize,
+              mimeType: data.mimeType,
+              codeLanguage: data.codeLanguage,
+            },
           );
+
+          // 确保会话中所有在线参与者的 socket 都加入了该房间
+          const conv = await chatService.getConversation(data.conversationId);
+          if (conv) {
+            for (const participantId of conv.participants) {
+              const sockets = await io.in(`user:${participantId}`).fetchSockets();
+              for (const s of sockets) {
+                s.join(data.conversationId);
+              }
+            }
+          }
 
           // 广播给会话中的其他成员
           socket.to(data.conversationId).emit('message:receive', message);

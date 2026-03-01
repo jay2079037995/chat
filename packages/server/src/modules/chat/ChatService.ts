@@ -36,12 +36,23 @@ export class ChatService {
     return this.messageRepo.createConversation(conversation);
   }
 
-  /** 发送消息：验证内容 → 创建 Message → 持久化 */
+  /** 获取单个会话 */
+  async getConversation(conversationId: string): Promise<Conversation | null> {
+    return this.messageRepo.getConversation(conversationId);
+  }
+
+  /** 发送消息：验证内容 → 类型校验 → 创建 Message → 持久化 */
   async sendMessage(
     senderId: string,
     conversationId: string,
     type: Message['type'],
     content: string,
+    metadata?: {
+      fileName?: string;
+      fileSize?: number;
+      mimeType?: string;
+      codeLanguage?: string;
+    },
   ): Promise<Message> {
     if (!content || content.trim().length === 0) {
       throw new Error('EMPTY_MESSAGE');
@@ -51,6 +62,21 @@ export class ChatService {
       throw new Error('MESSAGE_TOO_LONG');
     }
 
+    // 类型特定校验
+    switch (type) {
+      case 'image':
+      case 'audio':
+        if (!content.startsWith('/uploads/')) throw new Error('INVALID_FILE_URL');
+        break;
+      case 'code':
+        if (!metadata?.codeLanguage) throw new Error('CODE_LANGUAGE_REQUIRED');
+        break;
+      case 'file':
+        if (!content.startsWith('/uploads/')) throw new Error('INVALID_FILE_URL');
+        if (!metadata?.fileName) throw new Error('FILE_NAME_REQUIRED');
+        break;
+    }
+
     const message: Message = {
       id: generateId(),
       conversationId,
@@ -58,6 +84,10 @@ export class ChatService {
       type,
       content: content.trim(),
       createdAt: Date.now(),
+      ...(metadata?.fileName && { fileName: metadata.fileName }),
+      ...(metadata?.fileSize !== undefined && { fileSize: metadata.fileSize }),
+      ...(metadata?.mimeType && { mimeType: metadata.mimeType }),
+      ...(metadata?.codeLanguage && { codeLanguage: metadata.codeLanguage }),
     };
 
     return this.messageRepo.saveMessage(message);

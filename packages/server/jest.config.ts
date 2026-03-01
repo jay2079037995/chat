@@ -8,6 +8,7 @@ const config: Config = {
   moduleNameMapper: {
     '^@chat/shared$': '<rootDir>/../shared/src',
     '^@chat/shared/(.*)$': '<rootDir>/../shared/src/$1',
+    '^uuid$': '<rootDir>/__tests__/__mocks__/uuid.ts',
   },
 };
 

@@ -1,0 +1,34 @@
+.toolbar {
+  display: flex;
+  gap: 4px;
+}
+
+.toolbarBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  color: rgba(0, 0, 0, 0.45);
+  transition: all 0.2s;
+
+  &:hover {
+    background: #f0f0f0;
+    color: rgba(0, 0, 0, 0.88);
+  }
+}
+
+.active {
+  background: #e6f4ff;
+  color: #1677ff;
+
+  &:hover {
+    background: #bae0ff;
+    color: #1677ff;
+  }
+}

@@ -21,6 +21,14 @@ interface CreateConversationResponse {
   participantNames: Record<string, string>;
 }
 
+/** 文件上传结果 */
+export interface UploadResult {
+  url: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}
+
 export const chatService = {
   /** 获取当前用户的会话列表（含参与者用户名映射） */
   async getConversations(): Promise<ConversationsResponse> {
@@ -48,5 +56,30 @@ export const chatService = {
   /** 标记会话已读 */
   async markAsRead(conversationId: string): Promise<void> {
     await api.post(`/chat/conversations/${conversationId}/read`);
+  },
+
+  /** 上传图片 */
+  async uploadImage(file: File): Promise<UploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post<UploadResult>('/chat/upload/image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  /** 上传文件（含音频） */
+  async uploadFile(file: File, onProgress?: (percent: number) => void): Promise<UploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post<UploadResult>('/chat/upload/file', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      },
+    });
+    return res.data;
   },
 };

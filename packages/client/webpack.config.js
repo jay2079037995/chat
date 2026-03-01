@@ -67,7 +67,7 @@ module.exports = {
     historyApiFallback: true,
     proxy: [
       {
-        context: ['/api', '/socket.io'],
+        context: ['/api', '/socket.io', '/uploads'],
         target: 'http://localhost:3001',
         ws: true,
       },

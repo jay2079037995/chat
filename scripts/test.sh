@@ -179,6 +179,21 @@ run_structure_checks() {
     [ -f "packages/client/src/modules/chat/services/chatService.ts" ] && pass "chatService" || fail "chatService 缺失"
   fi
 
+  # v0.4.0 结构
+  if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.4" ]; then
+    echo -e "  ${BOLD}-- v0.4.0 丰富消息类型结构 --${NC}"
+    # 后端
+    [ -f "packages/server/src/modules/chat/upload.ts" ] && pass "upload.ts 上传模块" || fail "upload.ts 缺失"
+    # 前端消息组件
+    [ -f "packages/client/src/modules/chat/components/MessageBubble/index.tsx" ] && pass "MessageBubble 组件" || fail "MessageBubble 缺失"
+    [ -f "packages/client/src/modules/chat/components/ImageMessage/index.tsx" ] && pass "ImageMessage 组件" || fail "ImageMessage 缺失"
+    [ -f "packages/client/src/modules/chat/components/AudioMessage/index.tsx" ] && pass "AudioMessage 组件" || fail "AudioMessage 缺失"
+    [ -f "packages/client/src/modules/chat/components/CodeMessage/index.tsx" ] && pass "CodeMessage 组件" || fail "CodeMessage 缺失"
+    [ -f "packages/client/src/modules/chat/components/MarkdownMessage/index.tsx" ] && pass "MarkdownMessage 组件" || fail "MarkdownMessage 缺失"
+    [ -f "packages/client/src/modules/chat/components/FileMessage/index.tsx" ] && pass "FileMessage 组件" || fail "FileMessage 缺失"
+    [ -f "packages/client/src/modules/chat/components/MessageToolbar/index.tsx" ] && pass "MessageToolbar 组件" || fail "MessageToolbar 缺失"
+  fi
+
   # v0.5.0 结构（预留）
   if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.5" ]; then
     echo -e "  ${BOLD}-- v0.5.0 群组聊天结构 --${NC}"

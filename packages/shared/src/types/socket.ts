@@ -13,6 +13,8 @@ export interface ServerToClientEvents {
   'user:online': (userId: string) => void;
   /** 某用户下线 */
   'user:offline': (userId: string) => void;
+  /** 当前所有在线用户列表（连接时一次性下发） */
+  'users:online_list': (userIds: string[]) => void;
   /** 消息已读回执 */
   'message:read': (data: { conversationId: string; userId: string }) => void;
 }

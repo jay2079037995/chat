@@ -64,6 +64,28 @@ test.describe('v0.3 - 聊天 API', () => {
     await ctx.dispose();
   });
 
+  test('3.3.1: 用户 A 创建会话后，用户 B 的会话列表也能看到', async () => {
+    const ctx = await request.newContext({ baseURL: BASE_URL });
+
+    // 用户 A 创建与用户 B 的私聊会话
+    await ctx.post('/api/chat/conversations/private', {
+      headers: { 'x-session-id': sessionId1 },
+      data: { targetUserId: userId2 },
+    });
+
+    // 用户 B 获取自己的会话列表 — 应该也能看到这个会话
+    const res = await ctx.get('/api/chat/conversations', {
+      headers: { 'x-session-id': sessionId2 },
+    });
+
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.conversations).toHaveLength(1);
+    expect(body.conversations[0].participants).toContain(userId1);
+    expect(body.conversations[0].participants).toContain(userId2);
+    await ctx.dispose();
+  });
+
   test('3.2.5: 空消息被拒绝', async () => {
     // 此测试通过 Socket.IO 验证消息非空（ChatService 级别的验证）
     // API 层面验证 session 认证

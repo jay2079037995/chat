@@ -1,4 +1,5 @@
 import express, { type Express } from 'express';
+import path from 'path';
 import cors from 'cors';
 import { config } from './config';
 import { Container } from './core/container';
@@ -19,6 +20,9 @@ const app: Express = express();
 app.use(cors({ origin: config.cors.origin, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// 静态文件服务 — 上传的文件通过 /uploads/* 路径访问
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });

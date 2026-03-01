@@ -46,6 +46,10 @@ io.on('connection', async (socket) => {
   await messageRepo.setUserOnline(userId, socket.id);
   socket.broadcast.emit('user:online', userId);
 
+  // 向新连接的客户端下发当前所有在线用户列表
+  const onlineUsers = await messageRepo.getOnlineUsers();
+  socket.emit('users:online_list', onlineUsers);
+
   // 注册各模块的 Socket 事件处理器
   for (const handler of socketHandlers) {
     handler(io, socket);

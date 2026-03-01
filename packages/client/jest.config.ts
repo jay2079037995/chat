@@ -10,6 +10,9 @@ const config: Config = {
     '^@chat/shared$': '<rootDir>/../shared/src',
     '^@chat/shared/(.*)$': '<rootDir>/../shared/src/$1',
     '\\.(less|css)$': '<rootDir>/__tests__/styleMock.ts',
+    '^react-markdown$': '<rootDir>/__tests__/__mocks__/react-markdown.tsx',
+    '^remark-gfm$': '<rootDir>/__tests__/__mocks__/remark-gfm.ts',
+    '^rehype-highlight$': '<rootDir>/__tests__/__mocks__/rehype-highlight.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
 };

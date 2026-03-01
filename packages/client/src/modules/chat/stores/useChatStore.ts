@@ -4,7 +4,7 @@
  * 管理会话列表、当前会话、消息缓存和未读计数。
  */
 import { create } from 'zustand';
-import type { Message } from '@chat/shared';
+import type { Message, MessageType } from '@chat/shared';
 import { chatService, type ConversationWithUnread } from '../services/chatService';
 import { useSocketStore } from './useSocketStore';
 
@@ -25,7 +25,9 @@ interface ChatState {
   /** 选择会话（加载消息 + 标记已读） */
   selectConversation: (conversationId: string) => Promise<void>;
   /** 发送消息 */
-  sendMessage: (content: string) => void;
+  sendMessage: (content: string, type?: MessageType, metadata?: {
+    fileName?: string; fileSize?: number; mimeType?: string; codeLanguage?: string;
+  }) => void;
   /** 接收消息（由 useSocketStore 调用） */
   receiveMessage: (message: Message) => void;
   /** 创建/进入私聊 */
@@ -84,7 +86,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: (content: string) => {
+  sendMessage: (content: string, type: MessageType = 'text', metadata?) => {
     const { currentConversationId } = get();
     if (!currentConversationId || !content.trim()) return;
 
@@ -95,8 +97,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       'message:send',
       {
         conversationId: currentConversationId,
-        type: 'text',
+        type,
         content: content.trim(),
+        ...metadata,
       },
       (message: Message) => {
         // callback：服务端确认后追加消息
@@ -120,6 +123,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   receiveMessage: (message: Message) => {
     const { currentConversationId } = get();
+
+    const conversationExists = get().conversations.some(
+      (c) => c.id === message.conversationId,
+    );
 
     set((state) => {
       const convMsgs = state.messages[message.conversationId] || [];
@@ -147,6 +154,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       return { messages: updatedMessages, conversations };
     });
+
+    // 新会话：从服务端拉取完整会话列表以获取新会话信息
+    if (!conversationExists) {
+      void get().loadConversations();
+    }
 
     // 当前会话自动标记已读
     if (message.conversationId === currentConversationId) {
