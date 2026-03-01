@@ -1,3 +1,9 @@
+/**
+ * 首页 —— 聊天主界面
+ *
+ * 布局：顶部导航栏 + 左侧用户搜索面板 + 右侧聊天内容区域。
+ * 由 AuthGuard 保护——未登录用户会被重定向到登录页。
+ */
 import React from 'react';
 import { Layout, Button, Typography } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
@@ -14,6 +20,7 @@ const Home: React.FC = () => {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
+  /** 登出并跳转到登录页 */
   const handleLogout = async () => {
     await logout();
     navigate('/login');

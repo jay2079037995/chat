@@ -1,8 +1,10 @@
 import Redis from 'ioredis';
 import { config } from '../../config';
 
+/** Redis 客户端单例（懒加载，首次调用时创建连接） */
 let redisClient: Redis | null = null;
 
+/** 获取 Redis 客户端（单例模式，自动重连） */
 export function getRedisClient(): Redis {
   if (!redisClient) {
     redisClient = new Redis({
@@ -27,6 +29,7 @@ export function getRedisClient(): Redis {
   return redisClient;
 }
 
+/** 关闭 Redis 连接（用于测试清理） */
 export async function closeRedisClient(): Promise<void> {
   if (redisClient) {
     await redisClient.quit();

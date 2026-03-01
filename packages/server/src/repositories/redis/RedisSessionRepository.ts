@@ -1,20 +1,28 @@
 import { getRedisClient } from './RedisClient';
 import type { ISessionRepository } from '../interfaces/ISessionRepository';
 
-const SESSION_KEY = (sessionId: string) => `session:${sessionId}`;
-const USER_SESSION_KEY = (userId: string) => `user_session:${userId}`;
-const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
+// Redis Key 规则
+const SESSION_KEY = (sessionId: string) => `session:${sessionId}`;      // Session → userId 映射
+const USER_SESSION_KEY = (userId: string) => `user_session:${userId}`;  // userId → Session 映射（一对一）
+const SESSION_TTL = 7 * 24 * 60 * 60; // Session 有效期：7 天
 
+/**
+ * Session Repository 的 Redis 实现
+ *
+ * 每个用户同时只允许一个有效 Session，新建 Session 时会自动销毁旧 Session。
+ */
 export class RedisSessionRepository implements ISessionRepository {
+  /** 生成唯一 Session ID */
   private generateSessionId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
   }
 
+  /** 创建新 Session，自动销毁用户旧 Session */
   async create(userId: string): Promise<string> {
     const redis = getRedisClient();
     const sessionId = this.generateSessionId();
 
-    // Destroy old session if exists
+    // 先销毁旧 Session（一个用户只保留一个活跃 Session）
     const oldSessionId = await redis.get(USER_SESSION_KEY(userId));
     if (oldSessionId) {
       await redis.del(SESSION_KEY(oldSessionId));

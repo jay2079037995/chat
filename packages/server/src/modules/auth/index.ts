@@ -6,21 +6,31 @@ import type { ISessionRepository } from '../../repositories/interfaces/ISessionR
 import { AuthService } from './AuthService';
 import { createSessionMiddleware, type AuthenticatedRequest } from './middleware';
 
+// 导出供其他模块使用（如 user 模块需要 sessionMiddleware）
 export { createSessionMiddleware, type AuthenticatedRequest } from './middleware';
 export { generateToken, verifyToken } from './utils';
 
+/**
+ * 认证模块
+ *
+ * 提供注册、登录、Token 自动登录、Session 验证、登出等 API。
+ * 路由挂载到 /api/auth/*
+ */
 export class AuthModule implements ServerModule {
   name = 'auth';
 
   register(ctx: ModuleContext): ModuleRegistration {
+    // 从 DI 容器获取 Repository
     const userRepo = ctx.resolve<IUserRepository>(TOKENS.UserRepository);
     const sessionRepo = ctx.resolve<ISessionRepository>(TOKENS.SessionRepository);
 
+    // 通过构造函数注入创建 Service 和中间件
     const authService = new AuthService(userRepo, sessionRepo);
     const sessionMiddleware = createSessionMiddleware(sessionRepo, userRepo);
 
     const router = Router();
 
+    // POST /api/auth/register — 用户注册
     router.post('/register', async (req, res) => {
       try {
         const { username, password } = req.body;
@@ -47,6 +57,7 @@ export class AuthModule implements ServerModule {
       }
     });
 
+    // POST /api/auth/login — 用户登录
     router.post('/login', async (req, res) => {
       try {
         const { username, password } = req.body;
@@ -68,6 +79,7 @@ export class AuthModule implements ServerModule {
       }
     });
 
+    // POST /api/auth/session — Token 自动登录（创建新 Session）
     router.post('/session', async (req, res) => {
       try {
         const { token } = req.body;
@@ -93,6 +105,7 @@ export class AuthModule implements ServerModule {
       }
     });
 
+    // GET /api/auth/me — 获取当前登录用户信息（需要有效 Session）
     router.get('/me', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const user = await authService.getMe(req.userId!);
@@ -102,6 +115,7 @@ export class AuthModule implements ServerModule {
       }
     });
 
+    // POST /api/auth/logout — 用户登出（销毁 Session）
     router.post('/logout', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         await authService.logout(req.sessionId!);

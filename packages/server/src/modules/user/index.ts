@@ -6,6 +6,11 @@ import type { ISessionRepository } from '../../repositories/interfaces/ISessionR
 import { UserService } from './UserService';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 
+/**
+ * 用户模块
+ *
+ * 提供用户搜索等 API。路由挂载到 /api/users/*
+ */
 export class UserModule implements ServerModule {
   name = 'users';
 
@@ -14,10 +19,12 @@ export class UserModule implements ServerModule {
     const sessionRepo = ctx.resolve<ISessionRepository>(TOKENS.SessionRepository);
 
     const userService = new UserService(userRepo);
+    // 复用 auth 模块的 Session 验证中间件
     const sessionMiddleware = createSessionMiddleware(sessionRepo, userRepo);
 
     const router = Router();
 
+    // GET /api/users/search?q=keyword — 搜索用户（需登录，结果排除自己）
     router.get('/search', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const q = req.query.q as string;

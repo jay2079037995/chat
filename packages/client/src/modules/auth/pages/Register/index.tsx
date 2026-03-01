@@ -1,3 +1,9 @@
+/**
+ * 注册页面
+ *
+ * 包含用户名/密码/确认密码表单，注册成功后自动登录并跳转首页。
+ * 由 GuestGuard 保护——已登录用户会被重定向到首页。
+ */
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
@@ -12,6 +18,7 @@ const Register: React.FC = () => {
   const navigate = useNavigate();
   const register = useAuthStore((s) => s.register);
 
+  /** 表单提交：校验密码一致性 → 调用注册 → 成功跳转首页 */
   const onFinish = async (values: { username: string; password: string; confirmPassword: string }) => {
     if (values.password !== values.confirmPassword) {
       message.error('两次输入的密码不一致');

@@ -1,3 +1,9 @@
+/**
+ * 登录页面
+ *
+ * 包含用户名/密码表单，登录成功后跳转首页。
+ * 由 GuestGuard 保护——已登录用户会被重定向到首页。
+ */
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
@@ -12,6 +18,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
 
+  /** 表单提交：调用登录 → 成功跳转首页 / 失败提示错误 */
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {

@@ -2,11 +2,21 @@ import type { User, CreateUserDTO } from '@chat/shared';
 import { getRedisClient } from './RedisClient';
 import type { IUserRepository } from '../interfaces/IUserRepository';
 
-const USER_KEY = (id: string) => `user:${id}`;
-const USERNAME_INDEX = 'index:username_to_id';
-const ALL_USERS_KEY = 'users:all';
+// Redis Key 规则
+const USER_KEY = (id: string) => `user:${id}`;       // 用户详情 Hash
+const USERNAME_INDEX = 'index:username_to_id';         // 用户名 → ID 映射 Hash
+const ALL_USERS_KEY = 'users:all';                     // 所有用户 ID 集合 Set
 
+/**
+ * 用户 Repository 的 Redis 实现
+ *
+ * 数据结构：
+ * - user:{id} — Hash，存储用户信息（id, username, password, createdAt, updatedAt）
+ * - index:username_to_id — Hash，用户名到 ID 的索引
+ * - users:all — Set，所有用户 ID（用于搜索遍历）
+ */
 export class RedisUserRepository implements IUserRepository {
+  /** 创建用户：使用事务同时写入用户 Hash、用户名索引、用户 ID 集合 */
   async create(data: CreateUserDTO & { id: string; hashedPassword: string }): Promise<User> {
     const redis = getRedisClient();
     const now = Date.now();
@@ -54,6 +64,7 @@ export class RedisUserRepository implements IUserRepository {
     return this.findById(id);
   }
 
+  /** 搜索用户：遍历所有用户，按用户名模糊匹配（大数据量时需优化为索引搜索） */
   async search(keyword: string): Promise<User[]> {
     const redis = getRedisClient();
     const allUserIds = await redis.smembers(ALL_USERS_KEY);
