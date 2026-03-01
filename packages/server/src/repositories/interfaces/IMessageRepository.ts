@@ -16,4 +16,14 @@ export interface IMessageRepository {
   createConversation(conversation: Conversation): Promise<Conversation>;
   /** 更新会话信息（如最后消息、时间戳） */
   updateConversation(id: string, data: Partial<Conversation>): Promise<void>;
+  /** 获取用户在某会话中的未读消息数 */
+  getUnreadCount(conversationId: string, userId: string): Promise<number>;
+  /** 清零用户在某会话中的未读计数 */
+  clearUnread(conversationId: string, userId: string): Promise<void>;
+  /** 将用户标记为在线 */
+  setUserOnline(userId: string, socketId: string): Promise<void>;
+  /** 将用户标记为离线 */
+  setUserOffline(userId: string): Promise<void>;
+  /** 获取所有在线用户 ID */
+  getOnlineUsers(): Promise<string[]>;
 }

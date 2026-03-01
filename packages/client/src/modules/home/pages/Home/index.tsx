@@ -1,15 +1,20 @@
 /**
  * 首页 —— 聊天主界面
  *
- * 布局：顶部导航栏 + 左侧用户搜索面板 + 右侧聊天内容区域。
+ * 布局：顶部导航栏 + 左侧（用户搜索 + 会话列表） + 右侧聊天窗口。
  * 由 AuthGuard 保护——未登录用户会被重定向到登录页。
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Layout, Button, Typography } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import UserSearch from '../../components/UserSearch';
+import ConversationList from '../../../chat/components/ConversationList';
+import ChatWindow from '../../../chat/components/ChatWindow';
+import { useSocketStore } from '../../../chat/stores/useSocketStore';
+import { useChatStore } from '../../../chat/stores/useChatStore';
+import type { User } from '@chat/shared';
 import styles from './index.module.less';
 
 const { Header, Content, Sider } = Layout;
@@ -17,13 +22,38 @@ const { Text } = Typography;
 
 const Home: React.FC = () => {
   const user = useAuthStore((s) => s.user);
+  const sessionId = useAuthStore((s) => s.sessionId);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
+  const connect = useSocketStore((s) => s.connect);
+  const disconnect = useSocketStore((s) => s.disconnect);
+  const loadConversations = useChatStore((s) => s.loadConversations);
+  const startPrivateChat = useChatStore((s) => s.startPrivateChat);
+  const currentConversationId = useChatStore((s) => s.currentConversationId);
+
+  // 挂载时建立 Socket 连接 + 加载会话列表
+  useEffect(() => {
+    if (sessionId) {
+      connect(sessionId);
+      void loadConversations();
+    }
+
+    return () => {
+      disconnect();
+    };
+  }, [sessionId, connect, disconnect, loadConversations]);
+
   /** 登出并跳转到登录页 */
   const handleLogout = async () => {
+    disconnect();
     await logout();
     navigate('/login');
+  };
+
+  /** 搜索结果中选择用户 → 创建/进入私聊 */
+  const handleSelectUser = (selectedUser: User) => {
+    void startPrivateChat(selectedUser.id);
   };
 
   return (
@@ -42,14 +72,21 @@ const Home: React.FC = () => {
       <Layout>
         <Sider width={300} className={styles.sider}>
           <div className={styles.searchArea}>
-            <UserSearch />
+            <UserSearch onSelectUser={handleSelectUser} />
+          </div>
+          <div className={styles.conversationArea}>
+            <ConversationList />
           </div>
         </Sider>
         <Content className={styles.content}>
-          <div className={styles.placeholder}>
-            <Typography.Title level={4}>欢迎使用 Chat</Typography.Title>
-            <Text type="secondary">选择一个用户开始聊天</Text>
-          </div>
+          {currentConversationId ? (
+            <ChatWindow />
+          ) : (
+            <div className={styles.placeholder}>
+              <Typography.Title level={4}>欢迎使用 Chat</Typography.Title>
+              <Text type="secondary">选择一个用户开始聊天</Text>
+            </div>
+          )}
         </Content>
       </Layout>
     </Layout>

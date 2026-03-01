@@ -8,6 +8,7 @@ import type { ServerModule, TypedIO, TypedSocket } from './core/types';
 // 功能模块
 import { AuthModule } from './modules/auth';
 import { UserModule } from './modules/user';
+import { ChatModule } from './modules/chat';
 
 // 初始化 DI 容器
 const container = new Container();
@@ -27,7 +28,7 @@ app.get('/api/health', (_req, res) => {
 const modules: ServerModule[] = [
   new AuthModule(),
   new UserModule(),
-  // new ChatModule(),   // v0.3.0
+  new ChatModule(),
   // new GroupModule(),   // v0.5.0
 ];
 

@@ -164,11 +164,19 @@ run_structure_checks() {
     [ -f "packages/client/src/modules/home/components/UserSearch/index.tsx" ] && pass "UserSearch 组件" || fail "UserSearch 组件缺失"
   fi
 
-  # v0.3.0 结构（预留）
+  # v0.3.0 结构
   if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.3" ]; then
     echo -e "  ${BOLD}-- v0.3.0 一对一聊天结构 --${NC}"
-    # 下个版本实现时填充
-    echo -e "  ${YELLOW}(待实现)${NC}"
+    # 后端
+    [ -f "packages/server/src/modules/chat/index.ts" ] && pass "后端 chat 模块" || fail "后端 chat 模块缺失"
+    [ -f "packages/server/src/modules/chat/ChatService.ts" ] && pass "ChatService" || fail "ChatService 缺失"
+    [ -f "packages/server/src/repositories/redis/RedisMessageRepository.ts" ] && pass "RedisMessageRepository" || fail "RedisMessageRepository 缺失"
+    # 前端
+    [ -f "packages/client/src/modules/chat/stores/useSocketStore.ts" ] && pass "Socket Store" || fail "Socket Store 缺失"
+    [ -f "packages/client/src/modules/chat/stores/useChatStore.ts" ] && pass "Chat Store" || fail "Chat Store 缺失"
+    [ -f "packages/client/src/modules/chat/components/ConversationList/index.tsx" ] && pass "ConversationList 组件" || fail "ConversationList 组件缺失"
+    [ -f "packages/client/src/modules/chat/components/ChatWindow/index.tsx" ] && pass "ChatWindow 组件" || fail "ChatWindow 组件缺失"
+    [ -f "packages/client/src/modules/chat/services/chatService.ts" ] && pass "chatService" || fail "chatService 缺失"
   fi
 
   # v0.5.0 结构（预留）
