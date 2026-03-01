@@ -20,7 +20,12 @@ module.exports = {
     rules: [
       {
         test: /\.tsx?$/,
-        use: 'ts-loader',
+        use: {
+          loader: 'ts-loader',
+          options: {
+            configFile: 'tsconfig.webpack.json',
+          },
+        },
         exclude: /node_modules/,
       },
       {
@@ -33,6 +38,7 @@ module.exports = {
               modules: {
                 auto: /\.module\.less$/,
                 localIdentName: '[name]__[local]--[hash:base64:5]',
+                namedExport: false,
               },
             },
           },

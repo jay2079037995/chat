@@ -4,9 +4,10 @@ import * as path from 'path';
 
 test.describe('v0.1 - 开发服务器与配置', () => {
   test('2.1/2.2: 前端开发服务器启动并能加载页面', async ({ page }) => {
-    const response = await page.goto('/');
+    const response = await page.goto('/', { waitUntil: 'networkidle' });
     expect(response?.status()).toBe(200);
-    await expect(page.locator('body')).not.toBeEmpty();
+    // webpack 首次编译可能较慢，给足等待时间
+    await expect(page.locator('body')).not.toBeEmpty({ timeout: 30000 });
   });
 
   test('2.3: Webpack HMR 已配置', () => {

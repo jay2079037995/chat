@@ -15,6 +15,9 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# 确保 PATH 包含常用工具路径（Homebrew、corepack 等）
+export PATH="/opt/homebrew/bin:/usr/local/lib/node_modules/corepack/shims:/usr/local/bin:/usr/bin:/bin:$PATH"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -140,21 +143,25 @@ run_structure_checks() {
     [ -d "doc" ] && pass "doc/ 目录" || fail "doc/ 目录缺失"
   fi
 
-  # v0.2.0 结构
+  # v0.2.0 结构（模块化架构）
   if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.2" ]; then
     echo -e "  ${BOLD}-- v0.2.0 用户系统结构 --${NC}"
-    [ -f "packages/server/src/routes/auth.ts" ] && pass "后端 auth 路由" || fail "后端 auth 路由缺失"
-    [ -f "packages/server/src/routes/users.ts" ] && pass "后端 users 路由" || fail "后端 users 路由缺失"
-    [ -f "packages/server/src/services/AuthService.ts" ] && pass "AuthService" || fail "AuthService 缺失"
-    [ -f "packages/server/src/services/UserService.ts" ] && pass "UserService" || fail "UserService 缺失"
-    [ -f "packages/server/src/middleware/auth.ts" ] && pass "auth 中间件" || fail "auth 中间件缺失"
+    # 后端模块
+    [ -f "packages/server/src/modules/auth/index.ts" ] && pass "后端 auth 模块" || fail "后端 auth 模块缺失"
+    [ -f "packages/server/src/modules/auth/AuthService.ts" ] && pass "AuthService" || fail "AuthService 缺失"
+    [ -f "packages/server/src/modules/auth/middleware.ts" ] && pass "auth 中间件" || fail "auth 中间件缺失"
+    [ -f "packages/server/src/modules/user/index.ts" ] && pass "后端 user 模块" || fail "后端 user 模块缺失"
+    [ -f "packages/server/src/modules/user/UserService.ts" ] && pass "UserService" || fail "UserService 缺失"
+    # 后端基础设施
+    [ -f "packages/server/src/core/container.ts" ] && pass "DI 容器" || fail "DI 容器缺失"
     [ -f "packages/server/src/repositories/redis/RedisUserRepository.ts" ] && pass "RedisUserRepository" || fail "RedisUserRepository 缺失"
     [ -f "packages/server/src/repositories/redis/RedisSessionRepository.ts" ] && pass "RedisSessionRepository" || fail "RedisSessionRepository 缺失"
-    [ -f "packages/client/src/pages/Login/index.tsx" ] && pass "登录页面" || fail "登录页面缺失"
-    [ -f "packages/client/src/pages/Register/index.tsx" ] && pass "注册页面" || fail "注册页面缺失"
-    [ -f "packages/client/src/stores/useAuthStore.ts" ] && pass "Auth Store" || fail "Auth Store 缺失"
+    # 前端模块
+    [ -f "packages/client/src/modules/auth/pages/Login/index.tsx" ] && pass "登录页面" || fail "登录页面缺失"
+    [ -f "packages/client/src/modules/auth/pages/Register/index.tsx" ] && pass "注册页面" || fail "注册页面缺失"
+    [ -f "packages/client/src/modules/auth/stores/useAuthStore.ts" ] && pass "Auth Store" || fail "Auth Store 缺失"
     [ -f "packages/client/src/components/AuthGuard/index.tsx" ] && pass "AuthGuard" || fail "AuthGuard 缺失"
-    [ -f "packages/client/src/components/UserSearch/index.tsx" ] && pass "UserSearch 组件" || fail "UserSearch 组件缺失"
+    [ -f "packages/client/src/modules/home/components/UserSearch/index.tsx" ] && pass "UserSearch 组件" || fail "UserSearch 组件缺失"
   fi
 
   # v0.3.0 结构（预留）
@@ -263,6 +270,8 @@ fi
 # ============================================
 if $RUN_UNIT || $RUN_ALL; then
   section "TypeScript 编译检查"
+  # 清理旧的增量编译缓存，避免 tsbuildinfo 过期导致 .d.ts 生成不完整
+  rm -f packages/shared/tsconfig.tsbuildinfo packages/server/tsconfig.tsbuildinfo
   echo -e "  ${BOLD}-- 共享包编译 --${NC}"
   if pnpm --filter @chat/shared build &>/dev/null; then
     pass "shared 编译通过"
@@ -284,6 +293,9 @@ fi
 run_e2e_tests() {
   section "E2E 测试 (Playwright)"
 
+  # 清理 webpack 缓存，防止 css-loader 等配置变更后缓存过期导致运行时错误
+  rm -rf packages/client/node_modules/.cache node_modules/.cache
+
   E2E_ARGS=""
   if [ -n "$TARGET_VERSION" ]; then
     E2E_ARGS="--grep v${TARGET_VERSION}"
@@ -295,9 +307,13 @@ run_e2e_tests() {
     esac
   fi
 
+  # 使用 pipefail 确保 pipe 中 Playwright 的退出码不被 sed 吞掉
+  set -o pipefail
   if pnpm exec playwright test $E2E_ARGS 2>&1 | sed 's/^/  /'; then
+    set +o pipefail
     return 0
   else
+    set +o pipefail
     return 1
   fi
 }

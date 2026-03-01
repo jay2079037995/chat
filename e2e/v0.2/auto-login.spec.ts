@@ -23,10 +23,10 @@ test.describe('v0.2 - 自动登录', () => {
     }, result.token);
 
     // Navigate to home (protected route)
-    await page.goto(URLS.home);
+    await page.goto(URLS.home, { waitUntil: 'networkidle' });
 
     // Should auto-login and stay on home
-    await expect(page.getByText('欢迎使用 Chat')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('欢迎使用 Chat')).toBeVisible({ timeout: 15000 });
     await expect(page).toHaveURL(URLS.home);
   });
 

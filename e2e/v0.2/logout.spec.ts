@@ -13,7 +13,7 @@ test.describe('v0.2 - 登出流程', () => {
 
   test('4.3: 点击登出 → 清除 Token/Session → 跳转登录页', async ({ page }) => {
     // First register and login
-    await page.goto(URLS.register);
+    await page.goto(URLS.register, { waitUntil: 'networkidle' });
     await page.getByPlaceholder('用户名').fill(TEST_USERS.primary.username);
     await page.locator('input[type="password"]').first().fill(TEST_USERS.primary.password);
     await page.locator('input[type="password"]').nth(1).fill(TEST_USERS.primary.password);

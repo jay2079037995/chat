@@ -225,6 +225,66 @@ mockUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
 );
 ```
 
+## 7. Webpack 与构建
+
+### 7.1 Monorepo 中 ts-loader 报 TS6059 rootDir 错误
+
+**问题**：Webpack 用 `ts-loader` 编译时报 `TS6059: File '...' is not under 'rootDir'`，因为 `@chat/shared` 的源码在 `packages/shared/src/`，不在客户端的 `rootDir: "src"` 范围内。
+
+**原因**：客户端 `tsconfig.json` 设置了 `rootDir: "src"` 用于控制 `outDir` 的输出结构，但 `ts-loader` 直接使用这个配置来编译所有引入的 `.ts` 文件（包括 shared 包的源码）。
+
+**解决方案**：创建专用的 `tsconfig.webpack.json`：
+
+```json
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src", "../shared/src"]
+}
+```
+
+在 `webpack.config.js` 中指定使用：
+
+```javascript
+{
+  test: /\.tsx?$/,
+  use: {
+    loader: 'ts-loader',
+    options: {
+      configFile: 'tsconfig.webpack.json',
+    },
+  },
+  exclude: /node_modules/,
+}
+```
+
+**关键点**：不继承客户端 tsconfig（避免继承 `rootDir`），直接继承根 tsconfig，然后 include 两个源码目录。
+
+### 7.2 Monorepo shared 包 ESM 目录导入报错
+
+**问题**：服务端启动时报 `Directory import '...shared/dist/types' is not supported resolving ES modules`。
+
+**原因**：shared 包的 `tsconfig.json` 继承了根配置的 `module: "ESNext"`，编译到 `dist/` 时输出了 ESM 语法（`export * from './types'`），但 `./types` 是目录导入，Node.js ESM 解析器不支持裸目录导入（需要显式 `./types/index.js`）。
+
+**解决方案**：开发阶段让 shared 包直接指向源码，不依赖编译产物：
+
+```json
+// packages/shared/package.json
+{
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
+```
+
+然后删除 `dist/` 目录避免混淆。`ts-node-dev`（服务端）和 `ts-loader`（客户端）都能直接编译 `.ts` 源码。
+
+**关键点**：Monorepo 内部包在开发阶段直接引用源码是最简单可靠的方式，避免了 ESM/CJS 模块格式不匹配和目录导入等问题。生产构建时再处理编译。
+
 ---
 
 ## 更新日志
@@ -232,3 +292,5 @@ mockUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
 | 日期 | 问题 | 分类 |
 |------|------|------|
 | 2026-03-01 | 初始版本，收录 chat 项目开发期间遇到的所有问题 | 全部 |
+| 2026-03-01 | Monorepo ts-loader TS6059 rootDir 错误 | Webpack 与构建 |
+| 2026-03-01 | Monorepo shared 包 ESM 目录导入报错 | Webpack 与构建 |

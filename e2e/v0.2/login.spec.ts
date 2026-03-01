@@ -14,7 +14,7 @@ test.describe('v0.2 - 登录流程', () => {
   });
 
   test('2.2.2: 登录成功 → Token 存入 localStorage → 跳转主页', async ({ page }) => {
-    await page.goto(URLS.login);
+    await page.goto(URLS.login, { waitUntil: 'networkidle' });
 
     await page.getByPlaceholder('用户名').fill(TEST_USERS.primary.username);
     await page.getByPlaceholder('密码').fill(TEST_USERS.primary.password);
