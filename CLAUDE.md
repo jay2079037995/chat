@@ -44,6 +44,9 @@ chat/
 │   ├── tech-stack.md    # 技术选型
 │   ├── version-plan.md  # 版本规划
 │   └── test/            # 各版本测试文档（v0.1.0-test.md ~ v0.8.0-test.md）
+├── knowledge/           # Claude Code Skill 知识库（版本控制副本）
+│   ├── create-project.md  # 创建项目流程和规范
+│   └── project-faq.md    # 疑难杂症与解决方案
 ├── pnpm-workspace.yaml
 ├── package.json
 ├── tsconfig.json
@@ -133,6 +136,20 @@ pnpm lint             # 代码检查
 - 当前: Redis 存储所有数据
 - 后期: 冷数据迁移 MongoDB，热数据 Redis 缓存
 - Repository 模式抽象数据访问，方便切换存储实现
+
+## Claude Code Skills
+
+本项目使用以下用户级 Skill（`~/.claude/skills/`），所有项目共享：
+
+- **`/create-project`** — 创建新项目的完整流程和规范（Monorepo 脚手架、模块化架构、测试体系、编码规范）
+- **`project-faq`** — 开发过程中遇到的疑难杂症与解决方案知识库（自动参考，遇到新问题解决后自动追加更新）
+
+项目内 `knowledge/` 目录保存了这两个 Skill 的版本控制副本，便于追踪变更和团队共享：
+
+- `knowledge/create-project.md` — 对应 `~/.claude/skills/create-project/SKILL.md`
+- `knowledge/project-faq.md` — 对应 `~/.claude/skills/project-faq/SKILL.md`
+
+> **同步规则**：更新 Skill 内容时，必须同时更新 `~/.claude/skills/` 和 `knowledge/` 两处文件，保持一致。
 
 ## 需求变更规范
 每次需求变更时，必须同步更新以下文件：
