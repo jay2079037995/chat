@@ -11,7 +11,7 @@ const config: Config = {
     '^@chat/shared/(.*)$': '<rootDir>/../shared/src/$1',
     '\\.(less|css)$': '<rootDir>/__tests__/styleMock.ts',
   },
-  setupFilesAfterEnv: ['@testing-library/jest-dom'],
+  setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
 };
 
 export default config;
