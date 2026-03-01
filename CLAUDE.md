@@ -44,6 +44,7 @@ chat/
 │   ├── tech-stack.md    # 技术选型
 │   ├── version-plan.md  # 版本规划
 │   └── test/            # 各版本测试文档（v0.1.0-test.md ~ v0.8.0-test.md）
+├── design/              # UI 设计文件（Pencil .pen 格式）
 ├── knowledge/           # Claude Code Skill 知识库（版本控制副本）
 │   ├── create-project.md  # 创建项目流程和规范
 │   └── project-faq.md    # 疑难杂症与解决方案
@@ -61,6 +62,7 @@ chat/
 - **桌面端**: Electron
 - **测试**: Jest + React Testing Library + Supertest + Playwright (E2E)
 - **代码规范**: ESLint + Prettier
+- **UI 设计**: Pencil（.pen 文件，通过 MCP 工具读写）
 
 ## 开发命令
 ```bash
@@ -86,6 +88,14 @@ pnpm lint             # 代码检查
   - 接口字段添加行内 `/** */` 注释，说明字段含义
   - 关键逻辑分支添加行内注释，说明判断原因
   - 注释语言统一使用中文
+
+## UI 设计规范
+
+- 设计文件统一存放在 `design/` 目录，使用 Pencil `.pen` 格式
+- `.pen` 文件通过 Pencil MCP 工具读写，**不得**使用 Read/Grep 等文本工具直接读取
+- 文件命名规则：`{模块名}-{页面/组件}.pen`（如 `auth-login.pen`、`home-chat.pen`）
+- 设计完成后使用 `get_screenshot` 工具截图验证视觉效果
+- 前端实现时参考设计文件中的布局、颜色、间距等样式参数
 
 ## 模块化架构
 
