@@ -1,16 +1,18 @@
 import bcrypt from 'bcryptjs';
 import type { User, AuthResponse } from '@chat/shared';
 import { generateId } from '@chat/shared';
-import { RedisUserRepository } from '../repositories/redis/RedisUserRepository';
-import { RedisSessionRepository } from '../repositories/redis/RedisSessionRepository';
-import { generateToken, verifyToken } from '../middleware/auth';
-
-const userRepo = new RedisUserRepository();
-const sessionRepo = new RedisSessionRepository();
+import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
+import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
+import { generateToken, verifyToken } from './utils';
 
 export class AuthService {
+  constructor(
+    private userRepo: IUserRepository,
+    private sessionRepo: ISessionRepository,
+  ) {}
+
   async register(username: string, password: string): Promise<AuthResponse & { sessionId: string }> {
-    const existing = await userRepo.findByUsername(username);
+    const existing = await this.userRepo.findByUsername(username);
     if (existing) {
       throw new Error('USERNAME_TAKEN');
     }
@@ -26,9 +28,9 @@ export class AuthService {
     const id = generateId();
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await userRepo.create({ id, username: username.trim(), password, hashedPassword });
+    const user = await this.userRepo.create({ id, username: username.trim(), password, hashedPassword });
     const token = generateToken(user.id);
-    const sessionId = await sessionRepo.create(user.id);
+    const sessionId = await this.sessionRepo.create(user.id);
 
     return { token, user, sessionId };
   }
@@ -38,12 +40,12 @@ export class AuthService {
       throw new Error('CREDENTIALS_REQUIRED');
     }
 
-    const user = await userRepo.findByUsername(username);
+    const user = await this.userRepo.findByUsername(username);
     if (!user) {
       throw new Error('INVALID_CREDENTIALS');
     }
 
-    const hash = await userRepo.getPasswordHash(user.id);
+    const hash = await this.userRepo.getPasswordHash(user.id);
     if (!hash) {
       throw new Error('INVALID_CREDENTIALS');
     }
@@ -54,7 +56,7 @@ export class AuthService {
     }
 
     const token = generateToken(user.id);
-    const sessionId = await sessionRepo.create(user.id);
+    const sessionId = await this.sessionRepo.create(user.id);
 
     return { token, user, sessionId };
   }
@@ -65,21 +67,21 @@ export class AuthService {
       throw new Error('INVALID_TOKEN');
     }
 
-    const user = await userRepo.findById(payload.userId);
+    const user = await this.userRepo.findById(payload.userId);
     if (!user) {
       throw new Error('USER_NOT_FOUND');
     }
 
-    const sessionId = await sessionRepo.create(user.id);
+    const sessionId = await this.sessionRepo.create(user.id);
     return { user, sessionId };
   }
 
   async logout(sessionId: string): Promise<void> {
-    await sessionRepo.destroy(sessionId);
+    await this.sessionRepo.destroy(sessionId);
   }
 
   async getMe(userId: string): Promise<User> {
-    const user = await userRepo.findById(userId);
+    const user = await this.userRepo.findById(userId);
     if (!user) {
       throw new Error('USER_NOT_FOUND');
     }

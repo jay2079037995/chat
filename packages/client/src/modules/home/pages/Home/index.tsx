@@ -1,7 +1,7 @@
 import React from 'react';
 import { Layout, Button, Typography } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
-import { useAuthStore } from '../../stores/useAuthStore';
+import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import UserSearch from '../../components/UserSearch';
 import styles from './index.module.less';

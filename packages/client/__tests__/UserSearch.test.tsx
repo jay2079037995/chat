@@ -2,11 +2,11 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import UserSearch from '../src/components/UserSearch';
+import UserSearch from '../src/modules/home/components/UserSearch';
 
 // Mock userService
 const mockSearch = jest.fn();
-jest.mock('../src/services/userService', () => ({
+jest.mock('../src/modules/home/services/userService', () => ({
   userService: {
     search: (...args: unknown[]) => mockSearch(...args),
   },

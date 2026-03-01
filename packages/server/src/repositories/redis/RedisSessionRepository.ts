@@ -1,15 +1,9 @@
 import { getRedisClient } from './RedisClient';
+import type { ISessionRepository } from '../interfaces/ISessionRepository';
 
 const SESSION_KEY = (sessionId: string) => `session:${sessionId}`;
 const USER_SESSION_KEY = (userId: string) => `user_session:${userId}`;
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
-
-export interface ISessionRepository {
-  create(userId: string): Promise<string>;
-  validate(sessionId: string): Promise<string | null>;
-  destroy(sessionId: string): Promise<void>;
-  destroyByUserId(userId: string): Promise<void>;
-}
 
 export class RedisSessionRepository implements ISessionRepository {
   private generateSessionId(): string {

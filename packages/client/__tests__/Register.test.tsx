@@ -3,11 +3,11 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import Register from '../src/pages/Register';
+import Register from '../src/modules/auth/pages/Register';
 
 // Mock useAuthStore
 const mockRegister = jest.fn();
-jest.mock('../src/stores/useAuthStore', () => ({
+jest.mock('../src/modules/auth/stores/useAuthStore', () => ({
   useAuthStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({ register: mockRegister, user: null, loading: false, initialized: true, initAuth: jest.fn() }),
 }));

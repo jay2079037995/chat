@@ -8,7 +8,28 @@
 chat/
 ├── packages/
 │   ├── client/          # 前端 - React + Webpack + Ant Design
+│   │   └── src/
+│   │       ├── core/              # 模块系统基础设施
+│   │       │   ├── types.ts       # ClientModule 接口
+│   │       │   └── moduleRegistry.ts  # 模块注册表
+│   │       ├── modules/           # 功能模块（按功能组织）
+│   │       │   ├── auth/          # 认证模块（登录/注册/store/service）
+│   │       │   └── home/          # 主页模块（首页/用户搜索/service）
+│   │       ├── components/        # 共享组件（AuthGuard, GuestGuard）
+│   │       ├── services/api.ts    # 共享 Axios 实例
+│   │       └── App.tsx            # 模块驱动路由渲染
 │   ├── server/          # 后端 - Express + Redis + Socket.io
+│   │   └── src/
+│   │       ├── core/              # 模块系统基础设施
+│   │       │   ├── types.ts       # ServerModule 接口
+│   │       │   ├── container.ts   # DI 容器
+│   │       │   ├── tokens.ts      # 依赖 token 常量
+│   │       │   └── registerRepositories.ts  # Repository 工厂注册
+│   │       ├── modules/           # 功能模块（按功能组织）
+│   │       │   ├── auth/          # 认证模块（路由/service/middleware）
+│   │       │   └── user/          # 用户模块（路由/service）
+│   │       ├── repositories/      # 数据访问层（接口 + Redis 实现）
+│   │       └── app.ts             # 模块加载器
 │   └── shared/          # 共享类型、常量、工具函数
 ├── e2e/                 # E2E 测试（Playwright）
 │   ├── fixtures/        # 测试数据常量
@@ -57,6 +78,28 @@ pnpm lint             # 代码检查
 - 每个功能写对应的测试用例
 - 组件文件使用 PascalCase，工具函数使用 camelCase
 
+## 模块化架构
+
+项目采用**功能模块化架构**，前后端各功能为自包含模块，便于独立开发、移除和定制。
+
+### 后端模块系统
+- 每个功能模块实现 `ServerModule` 接口（`core/types.ts`）
+- DI 容器（`core/container.ts`）通过 string token 管理依赖
+- `app.ts` 遍历模块数组，自动挂载路由到 `/api/{module.name}` 和 Socket 处理器
+- 添加新模块：在 `modules/` 创建目录 + 在 `app.ts` 的 modules 数组添加一行
+- Repository 注册集中在 `core/registerRepositories.ts`
+
+### 前端模块系统
+- 每个功能模块实现 `ClientModule` 接口（`core/types.ts`），提供路由和 Guard 类型
+- `core/moduleRegistry.ts` 列出所有模块
+- `App.tsx` 动态渲染各模块路由，自动包裹 AuthGuard/GuestGuard
+- 添加新模块：在 `modules/` 创建目录 + 在 `moduleRegistry.ts` 添加导入
+
+### 新增模块步骤
+1. **后端**: 创建 `server/src/modules/{name}/` 目录，包含 `index.ts`（模块定义）、`{Name}Service.ts`
+2. **前端**: 创建 `client/src/modules/{name}/` 目录，包含 `index.ts`（模块定义）、`pages/`、`services/`、`stores/`
+3. 分别在 `app.ts` 和 `moduleRegistry.ts` 中注册模块
+
 ## 架构设计原则
 本项目是大型长期迭代项目，所有设计和编码必须遵循以下原则：
 
@@ -66,18 +109,19 @@ pnpm lint             # 代码检查
 - 数据结构变更需提供迁移方案，不能让旧数据失效
 
 ### 扩展性
-- 采用分层架构：路由层 → 服务层 → 数据访问层，职责清晰
+- 采用模块化架构：每个功能为独立模块，通过统一接口注册
+- 后端分层：模块路由 → Service → Repository，通过 DI 容器解耦
 - 使用接口/抽象定义契约（如 Repository 接口），便于替换实现
 - 前端组件设计为可复用、可组合的粒度（如聊天窗口同时用于私聊和群聊）
 - 配置项集中管理，避免硬编码
 - 消息类型、事件类型等使用枚举或常量统一管理，新增类型只需扩展不需改动框架
 
 ### 避免大规模重构
-- 新增需求时优先通过扩展（新增文件/模块）而非修改已有代码来实现
+- 新增需求时优先通过新建模块而非修改已有模块来实现
 - 关键模块预留扩展点（如消息处理管道、中间件链、事件监听）
 - 数据模型设计预留可选字段，避免频繁改动核心数据结构
-- 前端状态管理按功能模块拆分 store，避免单一 store 膨胀
-- 后端路由按功能模块拆分文件，保持单文件职责单一
+- 前端状态管理按功能模块拆分 store，各模块独立管理
+- 后端各功能模块自包含路由、Service、Socket 处理器
 
 ## 数据层设计
 - 当前: Redis 存储所有数据

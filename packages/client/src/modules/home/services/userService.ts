@@ -1,5 +1,5 @@
 import type { User } from '@chat/shared';
-import { api } from './api';
+import { api } from '../../../services/api';
 
 export const userService = {
   async search(query: string): Promise<User[]> {

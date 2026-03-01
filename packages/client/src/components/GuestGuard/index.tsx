@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
-import { useAuthStore } from '../../stores/useAuthStore';
+import { useAuthStore } from '../../modules/auth/stores/useAuthStore';
 
 interface GuestGuardProps {
   children: React.ReactNode;
