@@ -10,6 +10,11 @@ chat/
 │   ├── client/          # 前端 - React + Webpack + Ant Design
 │   ├── server/          # 后端 - Express + Redis + Socket.io
 │   └── shared/          # 共享类型、常量、工具函数
+├── e2e/                 # E2E 测试（Playwright）
+│   ├── fixtures/        # 测试数据常量
+│   ├── helpers/         # Redis/API 工具函数
+│   ├── v0.1/            # v0.1.0 E2E 测试
+│   └── v0.2/            # v0.2.0 E2E 测试
 ├── scripts/             # 自动化脚本
 │   ├── test.sh          # 主测试脚本（支持版本筛选、回归测试）
 │   └── check-env.sh     # 环境检查脚本
@@ -30,7 +35,7 @@ chat/
 - **前端**: React 18 + Webpack 5 + Ant Design 5 + Zustand + CSS Modules/Less + React Router 6
 - **后端**: Express + Redis + Socket.io
 - **桌面端**: Electron
-- **测试**: Jest + React Testing Library + Supertest
+- **测试**: Jest + React Testing Library + Supertest + Playwright (E2E)
 - **代码规范**: ESLint + Prettier
 
 ## 开发命令
@@ -40,7 +45,8 @@ pnpm dev:client       # 启动前端开发服务器
 pnpm dev:server       # 启动后端服务
 pnpm dev              # 同时启动前后端
 pnpm build            # 构建项目
-pnpm test             # 运行测试
+pnpm test             # 运行单元/集成测试 (Jest)
+pnpm test:e2e         # 运行 E2E 测试 (Playwright)
 pnpm lint             # 代码检查
 ```
 
@@ -87,8 +93,8 @@ pnpm lint             # 代码检查
 
 ## 版本发布流程
 每个版本完成后：
-1. 自动化测试全部通过（`pnpm test`）
-2. 按 `doc/test/v0.x.0-test.md` 测试文档逐条验证，通过的标记 `[x]`
+1. 自动化测试全部通过（`pnpm test` + `pnpm test:e2e`）
+2. 运行 `bash scripts/test.sh` 全量回归，全部 AUTO 通过后标记 `[x]`
 3. **用户确认通过后**，自动执行 `git add` + `git commit` 提交代码，并打上对应的版本标签（`git tag v0.x.0`）
 4. 确认完成后再进入下一个版本开发
 

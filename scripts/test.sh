@@ -7,6 +7,7 @@
 #   ./scripts/test.sh --version 0.2  # 只运行 v0.2.0 相关测试
 #   ./scripts/test.sh --env          # 只检查环境
 #   ./scripts/test.sh --unit         # 只运行单元/集成测试（Jest）
+#   ./scripts/test.sh --e2e          # 只运行 E2E 测试（Playwright）
 #   ./scripts/test.sh --structure    # 只运行项目结构检查
 #   ./scripts/test.sh --help         # 显示帮助
 
@@ -34,6 +35,7 @@ section() { echo -e "\n${BLUE}${BOLD}[$1]${NC}"; }
 # ============================================
 RUN_ENV=false
 RUN_UNIT=false
+RUN_E2E=false
 RUN_STRUCTURE=false
 TARGET_VERSION=""
 RUN_ALL=true
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
       RUN_ALL=false
       RUN_ENV=true
       RUN_UNIT=true
+      RUN_E2E=true
       RUN_STRUCTURE=true
       shift 2
       ;;
@@ -63,6 +66,11 @@ while [[ $# -gt 0 ]]; do
       RUN_ALL=false
       shift
       ;;
+    --e2e)
+      RUN_E2E=true
+      RUN_ALL=false
+      shift
+      ;;
     --help|-h)
       echo "Chat 项目自动化测试脚本"
       echo ""
@@ -71,6 +79,7 @@ while [[ $# -gt 0 ]]; do
       echo "  ./scripts/test.sh -v 0.2       指定版本测试"
       echo "  ./scripts/test.sh --env        环境检查"
       echo "  ./scripts/test.sh --unit       单元/集成测试"
+      echo "  ./scripts/test.sh --e2e        E2E 测试 (Playwright)"
       echo "  ./scripts/test.sh --structure  项目结构检查"
       echo ""
       echo "支持的版本: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8"
@@ -86,6 +95,7 @@ done
 if $RUN_ALL; then
   RUN_ENV=true
   RUN_UNIT=true
+  RUN_E2E=true
   RUN_STRUCTURE=true
 fi
 
@@ -183,7 +193,7 @@ run_unit_tests() {
       ;;
     "0.2")
       SERVER_PATTERN="(auth|users)"
-      CLIENT_PATTERN="(Login|Register|App)"
+      CLIENT_PATTERN="(Login|Register|App|UserSearch)"
       ;;
     "0.3")
       SERVER_PATTERN="(chat|message|conversation)"
@@ -269,6 +279,40 @@ if $RUN_UNIT || $RUN_ALL; then
 fi
 
 # ============================================
+# E2E 测试（Playwright）
+# ============================================
+run_e2e_tests() {
+  section "E2E 测试 (Playwright)"
+
+  E2E_ARGS=""
+  if [ -n "$TARGET_VERSION" ]; then
+    E2E_ARGS="--grep v${TARGET_VERSION}"
+    # 也可以按目录过滤
+    case "$TARGET_VERSION" in
+      "0.1") E2E_ARGS="e2e/v0.1/" ;;
+      "0.2") E2E_ARGS="e2e/v0.2/" ;;
+      *) E2E_ARGS="e2e/v${TARGET_VERSION}/" ;;
+    esac
+  fi
+
+  if pnpm exec playwright test $E2E_ARGS 2>&1 | sed 's/^/  /'; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+if $RUN_E2E; then
+  run_e2e_tests
+  E2E_EXIT=$?
+  if [ $E2E_EXIT -eq 0 ]; then
+    pass "Playwright E2E 全部通过"
+  else
+    fail "Playwright E2E 存在测试失败"
+  fi
+fi
+
+# ============================================
 # 最终结果
 # ============================================
 echo ""
@@ -281,18 +325,12 @@ fi
 echo "============================================"
 echo ""
 
-# 生成手动测试提示
-if [ -n "$TARGET_VERSION" ]; then
-  TEST_DOC="doc/test/v${TARGET_VERSION}.0-test.md"
-  if [ -f "$TEST_DOC" ]; then
-    echo -e "${YELLOW}请按照以下测试文档完成手动测试:${NC}"
-    echo "  $TEST_DOC"
-    echo ""
-    MANUAL_COUNT=$(grep -c '\[MANUAL\]' "$TEST_DOC" 2>/dev/null || echo "0")
-    if [ "$MANUAL_COUNT" -gt 0 ]; then
-      echo -e "  共 ${BOLD}${MANUAL_COUNT}${NC} 项需要手动验证"
-    fi
-  fi
+# 自动化覆盖统计
+AUTO_COUNT=$(grep -rc '\[AUTO\]' doc/test/ 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+MANUAL_COUNT=$(grep -rc '\[MANUAL\]' doc/test/ 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+if [ "$AUTO_COUNT" -gt 0 ] || [ "$MANUAL_COUNT" -gt 0 ]; then
+  echo -e "${BOLD}自动化覆盖:${NC} ${GREEN}${AUTO_COUNT} AUTO${NC}, ${YELLOW}${MANUAL_COUNT} MANUAL${NC}"
+  echo ""
 fi
 
 if [ "$TOTAL_FAIL" -gt 0 ]; then
