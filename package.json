@@ -1,0 +1,18 @@
+{
+  "name": "chat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "即时通讯应用 - Monorepo",
+  "scripts": {
+    "dev:client": "pnpm --filter @chat/client dev",
+    "dev:server": "pnpm --filter @chat/server dev",
+    "dev": "pnpm run dev:client & pnpm run dev:server",
+    "build": "pnpm --filter @chat/shared build && pnpm --filter @chat/client build && pnpm --filter @chat/server build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
