@@ -9,6 +9,9 @@
     "dev": "pnpm run dev:client & pnpm run dev:server",
     "build": "pnpm --filter @chat/shared build && pnpm --filter @chat/client build && pnpm --filter @chat/server build",
     "test": "pnpm -r test",
+    "test:ci": "bash scripts/test.sh",
+    "test:env": "bash scripts/check-env.sh",
+    "test:version": "bash scripts/test.sh --version",
     "lint": "pnpm -r lint"
   },
   "engines": {

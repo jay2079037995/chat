@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { UserService } from '../services/UserService';
 import { sessionMiddleware, type AuthenticatedRequest } from '../middleware/auth';
 
-const router = Router();
+const router: RouterType = Router();
 const userService = new UserService();
 
 router.get('/search', sessionMiddleware, async (req: AuthenticatedRequest, res) => {

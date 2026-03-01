@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { AuthService } from '../services/AuthService';
 import { sessionMiddleware, type AuthenticatedRequest } from '../middleware/auth';
 
-const router = Router();
+const router: RouterType = Router();
 const authService = new AuthService();
 
 router.post('/register', async (req, res) => {

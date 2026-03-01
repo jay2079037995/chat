@@ -1,10 +1,10 @@
-import express from 'express';
+import express, { type Express } from 'express';
 import cors from 'cors';
 import { config } from './config';
 import { authRouter } from './routes/auth';
 import { usersRouter } from './routes/users';
 
-const app = express();
+const app: Express = express();
 
 app.use(cors({ origin: config.cors.origin, credentials: true }));
 app.use(express.json());
