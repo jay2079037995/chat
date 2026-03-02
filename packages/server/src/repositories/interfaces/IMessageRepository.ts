@@ -4,6 +4,10 @@ import type { Message, Conversation } from '@chat/shared';
 export interface IMessageRepository {
   /** 保存消息 */
   saveMessage(message: Message): Promise<Message>;
+  /** 获取单条消息 */
+  getMessage(id: string): Promise<Message | null>;
+  /** 更新消息字段 */
+  updateMessage(id: string, updates: Partial<Message>): Promise<void>;
   /** 分页查询会话消息（offset + limit） */
   getMessages(conversationId: string, offset: number, limit: number): Promise<Message[]>;
   /** 在会话中搜索包含关键词的消息 */

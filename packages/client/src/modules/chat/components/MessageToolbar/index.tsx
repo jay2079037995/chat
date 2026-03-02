@@ -1,3 +1,8 @@
+/**
+ * 消息工具栏组件
+ *
+ * 提供消息类型切换按钮（文字/图片/录音/代码/Markdown/文件）和 Emoji 选择器。
+ */
 import React from 'react';
 import { Tooltip } from 'antd';
 import {
@@ -9,11 +14,14 @@ import {
   PaperClipOutlined,
 } from '@ant-design/icons';
 import type { MessageType } from '@chat/shared';
+import EmojiPicker from '../EmojiPicker';
 import styles from './index.module.less';
 
 interface MessageToolbarProps {
   activeType: MessageType;
   onTypeChange: (type: MessageType) => void;
+  /** 选择 emoji 后插入输入框的回调 */
+  onEmojiSelect?: (emoji: string) => void;
 }
 
 const TOOLBAR_ITEMS: { type: MessageType; icon: React.ReactNode; label: string }[] = [
@@ -25,7 +33,7 @@ const TOOLBAR_ITEMS: { type: MessageType; icon: React.ReactNode; label: string }
   { type: 'file', icon: <PaperClipOutlined />, label: '文件' },
 ];
 
-const MessageToolbar: React.FC<MessageToolbarProps> = ({ activeType, onTypeChange }) => {
+const MessageToolbar: React.FC<MessageToolbarProps> = ({ activeType, onTypeChange, onEmojiSelect }) => {
   return (
     <div className={styles.toolbar}>
       {TOOLBAR_ITEMS.map((item) => (
@@ -39,6 +47,8 @@ const MessageToolbar: React.FC<MessageToolbarProps> = ({ activeType, onTypeChang
           </button>
         </Tooltip>
       ))}
+      {/* Emoji 选择器 */}
+      {onEmojiSelect && <EmojiPicker onSelect={onEmojiSelect} />}
     </div>
   );
 };

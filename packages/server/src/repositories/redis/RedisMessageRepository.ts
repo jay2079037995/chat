@@ -40,6 +40,12 @@ export class RedisMessageRepository implements IMessageRepository {
     if (msg.mimeType) data.mimeType = msg.mimeType;
     if (msg.codeLanguage) data.codeLanguage = msg.codeLanguage;
     if (msg.mentions && msg.mentions.length > 0) data.mentions = JSON.stringify(msg.mentions);
+    if (msg.recalled) data.recalled = '1';
+    if (msg.edited) data.edited = '1';
+    if (msg.editedAt) data.editedAt = String(msg.editedAt);
+    if (msg.replyTo) data.replyTo = msg.replyTo;
+    if (msg.replySnapshot) data.replySnapshot = JSON.stringify(msg.replySnapshot);
+    if (msg.reactions) data.reactions = JSON.stringify(msg.reactions);
     return data;
   }
 
@@ -58,7 +64,35 @@ export class RedisMessageRepository implements IMessageRepository {
     if (data.mimeType) msg.mimeType = data.mimeType;
     if (data.codeLanguage) msg.codeLanguage = data.codeLanguage;
     if (data.mentions) msg.mentions = JSON.parse(data.mentions);
+    if (data.recalled === '1') msg.recalled = true;
+    if (data.edited === '1') msg.edited = true;
+    if (data.editedAt) msg.editedAt = parseInt(data.editedAt, 10);
+    if (data.replyTo) msg.replyTo = data.replyTo;
+    if (data.replySnapshot) msg.replySnapshot = JSON.parse(data.replySnapshot);
+    if (data.reactions) msg.reactions = JSON.parse(data.reactions);
     return msg;
+  }
+
+  /** 获取单条消息 */
+  async getMessage(id: string): Promise<Message | null> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(MSG_KEY(id));
+    if (!data || !data.id) return null;
+    return this.deserializeMessage(data);
+  }
+
+  /** 更新消息字段（直接修改 Redis Hash） */
+  async updateMessage(id: string, updates: Partial<Message>): Promise<void> {
+    const redis = getRedisClient();
+    const fields: Record<string, string> = {};
+    if (updates.content !== undefined) fields.content = updates.content;
+    if (updates.recalled !== undefined) fields.recalled = updates.recalled ? '1' : '0';
+    if (updates.edited !== undefined) fields.edited = updates.edited ? '1' : '0';
+    if (updates.editedAt !== undefined) fields.editedAt = String(updates.editedAt);
+    if (updates.reactions !== undefined) fields.reactions = JSON.stringify(updates.reactions);
+    if (Object.keys(fields).length > 0) {
+      await redis.hset(MSG_KEY(id), fields);
+    }
   }
 
   /** 保存消息：写入消息 Hash + 更新会话消息列表 + 更新会话元数据 + 更新用户会话排序 + 增加未读计数 */

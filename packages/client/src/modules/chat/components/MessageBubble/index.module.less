@@ -14,3 +14,103 @@
   padding: 0 3px;
   font-weight: 500;
 }
+
+/* 撤回消息提示 */
+.recalled {
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* 编辑标记 */
+.editedTag {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  margin-left: 6px;
+  font-style: italic;
+}
+
+.editedTagSelf {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: 6px;
+  font-style: italic;
+}
+
+/* 引用快照块 */
+.replySnapshot {
+  background: rgba(0, 0, 0, 0.04);
+  border-left: 3px solid var(--primary-start, #667eea);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.replySnapshotSelf {
+  background: rgba(255, 255, 255, 0.15);
+  border-left: 3px solid rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.replySnapshotSender {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.replySnapshotContent {
+  font-size: 12px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reactions 条 */
+.reactionsBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.reactionPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border-light, #e8e8e8);
+  background: var(--bg-primary, #f8f9fa);
+  border-radius: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+  }
+}
+
+.reactionActive {
+  border-color: var(--primary-start, #667eea);
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.reactionEmoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.reactionCount {
+  font-size: 11px;
+  color: var(--text-secondary, #666);
+  font-weight: 500;
+}

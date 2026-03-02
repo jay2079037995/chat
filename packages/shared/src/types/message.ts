@@ -1,6 +1,13 @@
 /** 消息类型枚举 */
 export type MessageType = 'text' | 'image' | 'audio' | 'code' | 'markdown' | 'file';
 
+/** 引用消息快照（防止原消息被删除后引用丢失） */
+export interface ReplySnapshot {
+  senderId: string;
+  content: string;
+  type: MessageType;
+}
+
 /** 聊天消息实体 */
 export interface Message {
   /** 消息唯一标识 */
@@ -23,6 +30,18 @@ export interface Message {
   codeLanguage?: string;
   /** 被 @提及 的用户 ID 列表 */
   mentions?: string[];
+  /** 是否已撤回 */
+  recalled?: boolean;
+  /** 是否已编辑 */
+  edited?: boolean;
+  /** 编辑时间戳 */
+  editedAt?: number;
+  /** 引用的消息 ID */
+  replyTo?: string;
+  /** 被引用消息的快照 */
+  replySnapshot?: ReplySnapshot;
+  /** 表情回应：emoji → userId[] */
+  reactions?: Record<string, string[]>;
   /** 发送时间戳 */
   createdAt: number;
 }

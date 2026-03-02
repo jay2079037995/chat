@@ -3,11 +3,12 @@
  *
  * 显示与某用户的聊天历史，提供消息输入和发送功能。
  * 支持文字、图片、音频、代码、Markdown、文件等消息类型。
+ * v1.3.0 新增：右键菜单（撤回/编辑/回复/reactions）、引用回复、编辑弹窗。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Upload, Progress, Spin, message as antMessage } from 'antd';
+import { Button, Input, Select, Upload, Progress, Spin, Modal, message as antMessage } from 'antd';
 import { SendOutlined, TeamOutlined } from '@ant-design/icons';
-import type { MessageType } from '@chat/shared';
+import type { Message, MessageType } from '@chat/shared';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
@@ -16,6 +17,8 @@ import MessageBubble from '../MessageBubble';
 import MessageToolbar from '../MessageToolbar';
 import GroupMemberPanel from '../GroupMemberPanel';
 import MentionInput from '../MentionInput';
+import MessageContextMenu from '../MessageContextMenu';
+import ReplyPreview from '../ReplyPreview';
 import styles from './index.module.less';
 
 const { TextArea } = Input;
@@ -42,6 +45,13 @@ const CODE_LANGUAGES = [
   { value: 'sql', label: 'SQL' },
 ];
 
+/** 右键菜单状态 */
+interface ContextMenuState {
+  visible: boolean;
+  message: Message | null;
+  position: { x: number; y: number };
+}
+
 const ChatWindow: React.FC = () => {
   const currentConversationId = useChatStore((s) => s.currentConversationId);
   const messages = useChatStore((s) => s.messages);
@@ -53,6 +63,8 @@ const ChatWindow: React.FC = () => {
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadMoreMessages = useChatStore((s) => s.loadMoreMessages);
   const botUserIds = useChatStore((s) => s.botUserIds);
+  const replyingTo = useChatStore((s) => s.replyingTo);
+  const setReplyingTo = useChatStore((s) => s.setReplyingTo);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -63,6 +75,17 @@ const ChatWindow: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showMemberPanel, setShowMemberPanel] = useState(false);
+
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    message: null,
+    position: { x: 0, y: 0 },
+  });
+
+  // 编辑弹窗状态
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editContent, setEditContent] = useState('');
 
   const messageEndRef = useRef<HTMLDivElement>(null);
   const messageAreaRef = useRef<HTMLDivElement>(null);
@@ -87,6 +110,11 @@ const ChatWindow: React.FC = () => {
       messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [currentMessages.length]);
+
+  // 切换会话时清除引用状态
+  useEffect(() => {
+    setReplyingTo(null);
+  }, [currentConversationId, setReplyingTo]);
 
   /** 上滑加载更多历史消息 */
   const handleScroll = useCallback(() => {
@@ -237,6 +265,59 @@ const ChatWindow: React.FC = () => {
     setIsRecording(false);
     setRecordingDuration(0);
     setMessageType('text');
+  };
+
+  /** 消息气泡右键菜单 */
+  const handleContextMenu = (e: React.MouseEvent, msg: Message) => {
+    e.preventDefault();
+    // 已撤回消息不显示菜单
+    if (msg.recalled) return;
+    setContextMenu({
+      visible: true,
+      message: msg,
+      position: { x: e.clientX, y: e.clientY },
+    });
+  };
+
+  /** 关闭右键菜单 */
+  const closeContextMenu = () => {
+    setContextMenu({ visible: false, message: null, position: { x: 0, y: 0 } });
+  };
+
+  /** 回复消息 */
+  const handleReply = (msg: Message) => {
+    setReplyingTo(msg);
+  };
+
+  /** 打开编辑弹窗 */
+  const handleEdit = (msg: Message) => {
+    setEditingMessage(msg);
+    setEditContent(msg.content);
+  };
+
+  /** 确认编辑消息 */
+  const handleEditConfirm = () => {
+    if (!editingMessage || !editContent.trim()) return;
+    const { socket } = useSocketStore.getState();
+    socket?.emit('message:edit', {
+      messageId: editingMessage.id,
+      conversationId: editingMessage.conversationId,
+      newContent: editContent.trim(),
+    }, (result) => {
+      if (!result.success) {
+        const errorMap: Record<string, string> = {
+          EDIT_TIMEOUT: '已超过 5 分钟，无法编辑',
+          FORBIDDEN: '只能编辑自己的消息',
+          EDIT_NOT_SUPPORTED: '该类型消息不支持编辑',
+          MESSAGE_RECALLED: '消息已撤回，无法编辑',
+          EMPTY_MESSAGE: '内容不能为空',
+          MESSAGE_TOO_LONG: '内容超过长度限制',
+        };
+        void antMessage.error(errorMap[result.error || ''] || '编辑失败');
+      }
+    });
+    setEditingMessage(null);
+    setEditContent('');
   };
 
   // 群聊可 @ 的成员列表
@@ -392,8 +473,7 @@ const ChatWindow: React.FC = () => {
         )}
         {currentMessages.map((msg) => {
           const isSelf = msg.senderId === currentUser?.id;
-          const isMediaType = msg.type === 'image' || msg.type === 'code' || msg.type === 'file';
-          const showSenderName = true;
+          const isMediaType = !msg.recalled && (msg.type === 'image' || msg.type === 'code' || msg.type === 'file');
           const senderName = isSelf ? (currentUser?.username || '') : (participantNames[msg.senderId] || msg.senderId);
           return (
             <div key={msg.id}>
@@ -402,9 +482,7 @@ const ChatWindow: React.FC = () => {
                   isSelf ? styles.messageMetaSelf : styles.messageMetaOther
                 }`}
               >
-                {showSenderName && (
-                  <span className={styles.senderName}>{senderName}</span>
-                )}
+                <span className={styles.senderName}>{senderName}</span>
                 <span className={styles.messageTime}>
                   {formatMessageTime(msg.createdAt)}
                 </span>
@@ -417,7 +495,8 @@ const ChatWindow: React.FC = () => {
                 <div
                   className={`${styles.bubble} ${
                     isSelf ? styles.bubbleSelf : styles.bubbleOther
-                  } ${isMediaType ? styles.bubbleMedia : ''}`}
+                  } ${isMediaType ? styles.bubbleMedia : ''} ${msg.recalled ? styles.bubbleRecalled : ''}`}
+                  onContextMenu={(e) => handleContextMenu(e, msg)}
                 >
                   <MessageBubble message={msg} isSelf={isSelf} participantNames={participantNames} />
                 </div>
@@ -430,7 +509,21 @@ const ChatWindow: React.FC = () => {
 
       {/* 输入区域 */}
       <div className={styles.inputArea}>
-        <MessageToolbar activeType={messageType} onTypeChange={setMessageType} />
+        <MessageToolbar
+          activeType={messageType}
+          onTypeChange={setMessageType}
+          onEmojiSelect={(emoji) => setInputValue((v) => v + emoji)}
+        />
+
+        {/* 引用回复预览条 */}
+        {replyingTo && (
+          <ReplyPreview
+            message={replyingTo}
+            senderName={participantNames[replyingTo.senderId] || replyingTo.senderId}
+            onClose={() => setReplyingTo(null)}
+          />
+        )}
+
         <div className={styles.inputRow}>
           <div className={styles.inputContent}>
             {renderInputArea()}
@@ -456,6 +549,36 @@ const ChatWindow: React.FC = () => {
           onClose={() => setShowMemberPanel(false)}
         />
       )}
+
+      {/* 右键上下文菜单 */}
+      {contextMenu.visible && contextMenu.message && (
+        <MessageContextMenu
+          message={contextMenu.message}
+          isSelf={contextMenu.message.senderId === currentUser?.id}
+          position={contextMenu.position}
+          onClose={closeContextMenu}
+          onReply={handleReply}
+          onEdit={handleEdit}
+        />
+      )}
+
+      {/* 编辑消息弹窗 */}
+      <Modal
+        title="编辑消息"
+        open={!!editingMessage}
+        onOk={handleEditConfirm}
+        onCancel={() => { setEditingMessage(null); setEditContent(''); }}
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: !editContent.trim() }}
+      >
+        <TextArea
+          value={editContent}
+          onChange={(e) => setEditContent(e.target.value)}
+          autoSize={{ minRows: 2, maxRows: 8 }}
+          placeholder="编辑消息内容..."
+        />
+      </Modal>
     </div>
   );
 };

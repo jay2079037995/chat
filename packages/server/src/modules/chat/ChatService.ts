@@ -1,4 +1,4 @@
-import type { Message, Conversation } from '@chat/shared';
+import type { Message, Conversation, ReplySnapshot } from '@chat/shared';
 import { generateId, MAX_MESSAGE_LENGTH } from '@chat/shared';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
@@ -56,6 +56,7 @@ export class ChatService {
       fileSize?: number;
       mimeType?: string;
       codeLanguage?: string;
+      replyTo?: string;
     },
   ): Promise<Message> {
     if (!content || content.trim().length === 0) {
@@ -99,6 +100,21 @@ export class ChatService {
       }
     }
 
+    // 处理引用回复
+    let replyTo: string | undefined;
+    let replySnapshot: ReplySnapshot | undefined;
+    if (metadata?.replyTo) {
+      const originalMsg = await this.messageRepo.getMessage(metadata.replyTo);
+      if (originalMsg) {
+        replyTo = metadata.replyTo;
+        replySnapshot = {
+          senderId: originalMsg.senderId,
+          content: originalMsg.content.substring(0, 200),
+          type: originalMsg.type,
+        };
+      }
+    }
+
     const message: Message = {
       id: generateId(),
       conversationId,
@@ -111,6 +127,8 @@ export class ChatService {
       ...(metadata?.mimeType && { mimeType: metadata.mimeType }),
       ...(metadata?.codeLanguage && { codeLanguage: metadata.codeLanguage }),
       ...(mentions && { mentions }),
+      ...(replyTo && { replyTo }),
+      ...(replySnapshot && { replySnapshot }),
     };
 
     return this.messageRepo.saveMessage(message);
@@ -156,5 +174,62 @@ export class ChatService {
 
     allResults.sort((a, b) => b.createdAt - a.createdAt);
     return allResults;
+  }
+
+  /** 撤回消息（2 分钟内，仅发送者） */
+  async recallMessage(messageId: string, userId: string): Promise<void> {
+    const msg = await this.messageRepo.getMessage(messageId);
+    if (!msg) throw new Error('MESSAGE_NOT_FOUND');
+    if (msg.senderId !== userId) throw new Error('FORBIDDEN');
+    if (msg.recalled) throw new Error('ALREADY_RECALLED');
+
+    const elapsed = Date.now() - msg.createdAt;
+    if (elapsed > 2 * 60 * 1000) throw new Error('RECALL_TIMEOUT');
+
+    await this.messageRepo.updateMessage(messageId, { recalled: true });
+  }
+
+  /** 编辑消息（5 分钟内，仅文本类消息，仅发送者） */
+  async editMessage(messageId: string, userId: string, newContent: string): Promise<number> {
+    const msg = await this.messageRepo.getMessage(messageId);
+    if (!msg) throw new Error('MESSAGE_NOT_FOUND');
+    if (msg.senderId !== userId) throw new Error('FORBIDDEN');
+    if (msg.recalled) throw new Error('MESSAGE_RECALLED');
+    if (msg.type !== 'text' && msg.type !== 'markdown') throw new Error('EDIT_NOT_SUPPORTED');
+
+    const elapsed = Date.now() - msg.createdAt;
+    if (elapsed > 5 * 60 * 1000) throw new Error('EDIT_TIMEOUT');
+
+    if (!newContent || newContent.trim().length === 0) throw new Error('EMPTY_MESSAGE');
+    if (newContent.length > MAX_MESSAGE_LENGTH) throw new Error('MESSAGE_TOO_LONG');
+
+    const editedAt = Date.now();
+    await this.messageRepo.updateMessage(messageId, {
+      content: newContent.trim(),
+      edited: true,
+      editedAt,
+    });
+    return editedAt;
+  }
+
+  /** Toggle 消息表情回应 */
+  async toggleReaction(messageId: string, userId: string, emoji: string): Promise<Record<string, string[]>> {
+    const msg = await this.messageRepo.getMessage(messageId);
+    if (!msg) throw new Error('MESSAGE_NOT_FOUND');
+    if (msg.recalled) throw new Error('MESSAGE_RECALLED');
+
+    const reactions = msg.reactions ? { ...msg.reactions } : {};
+
+    if (!reactions[emoji]) {
+      reactions[emoji] = [userId];
+    } else if (reactions[emoji].includes(userId)) {
+      reactions[emoji] = reactions[emoji].filter((id) => id !== userId);
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+    } else {
+      reactions[emoji] = [...reactions[emoji], userId];
+    }
+
+    await this.messageRepo.updateMessage(messageId, { reactions });
+    return reactions;
   }
 }

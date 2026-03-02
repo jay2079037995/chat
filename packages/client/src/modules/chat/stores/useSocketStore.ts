@@ -109,6 +109,27 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
+    // 消息撤回事件
+    socket.on('message:recalled', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().handleRecalled(data.messageId, data.conversationId);
+      });
+    });
+
+    // 消息编辑事件
+    socket.on('message:edited', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().handleEdited(data.messageId, data.conversationId, data.newContent, data.editedAt);
+      });
+    });
+
+    // 消息表情回应变更事件
+    socket.on('message:reacted', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().handleReacted(data.messageId, data.conversationId, data.reactions);
+      });
+    });
+
     // @提及 通知
     socket.on('mention:notify', (data) => {
       import('antd').then(({ notification }) => {

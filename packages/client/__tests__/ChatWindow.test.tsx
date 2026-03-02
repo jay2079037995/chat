@@ -31,6 +31,8 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       hasMore: {},
       loadingMore: false,
       loadMoreMessages: jest.fn(),
+      replyingTo: null,
+      setReplyingTo: jest.fn(),
     }),
 }));
 

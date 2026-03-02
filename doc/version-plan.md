@@ -297,3 +297,158 @@
 ### 测试
 - [ ] 服务端：机器人 CRUD、getUpdates、sendMessage 完整测试
 - [ ] 前端：BotManager 组件测试
+
+---
+
+## v1.2.0 - AI 智能体桌面应用（Agent App）
+
+**目标**：独立 Electron 桌面应用，管理 AI Agent 连接 chat 机器人，实现 LLM 驱动的多轮对话。
+
+### 新建包 `packages/agent-app`
+- [ ] Electron + React + Webpack 脚手架
+- [ ] `AgentManager`：Agent 轮询循环（getUpdates → LLM → sendMessage）
+- [ ] `BotClient`：HTTP 调用 chat Bot API
+- [ ] `LLMClient`：统一 OpenAI 兼容格式调用（DeepSeek / MiniMax）
+- [ ] `ConversationHistory`：内存对话历史管理
+- [ ] `electron-store` 持久化 Agent 配置
+- [ ] React UI：Agent 列表、创建/编辑表单、运行日志
+- [ ] Zustand store + IPC 桥接
+
+### 根项目
+- [ ] 根 `package.json` 添加 `dev:agent-app` 和 `dist:agent-app` scripts
+
+### 测试
+- [ ] LLM Client provider 映射测试
+- [ ] Bot Client URL 构建测试
+- [ ] ConversationHistory 多会话隔离测试
+- [ ] AgentManager 启动/停止/轮询逻辑测试
+
+---
+
+## v1.3.0 - 消息增强
+
+**目标**：消息撤回/编辑、引用回复、Emoji 选择器、消息表情回应。
+
+### 共享类型
+- [ ] `Message` 添加 `recalled?: boolean`、`edited?: boolean`、`editedAt?: number`
+- [ ] `Message` 添加 `replyTo?: string`、`replySnapshot?: ReplySnapshot`
+- [ ] `Message` 添加 `reactions?: Record<string, string[]>`
+- [ ] 新增 `ReplySnapshot` 类型（senderId + content + type）
+- [ ] `ClientToServerEvents` 新增 `message:recall`、`message:edit`、`message:react`
+- [ ] `ServerToClientEvents` 新增 `message:recalled`、`message:edited`、`message:reacted`
+- [ ] `message:send` 事件 data 新增可选 `replyTo` 字段
+
+### 后端
+- [ ] `IMessageRepository` 新增 `getMessage(id)` 和 `updateMessage(id, updates)` 方法
+- [ ] `RedisMessageRepository` 实现上述方法 + 序列化/反序列化新字段
+- [ ] `ChatService` 新增 `recallMessage()`（2 分钟内、仅发送者）
+- [ ] `ChatService` 新增 `editMessage()`（5 分钟内、仅文本/markdown、仅发送者）
+- [ ] `ChatService` 新增 `toggleReaction()`（toggle emoji → userId[]）
+- [ ] `ChatService.sendMessage()` 支持 `replyTo` 参数，自动生成 `replySnapshot`
+- [ ] `ChatModule` 新增 `message:recall`、`message:edit`、`message:react` Socket handler
+- [ ] Socket handler 校验权限后广播 `message:recalled`/`message:edited`/`message:reacted`
+
+### 前端
+- [ ] `MessageContextMenu` 组件：右键菜单（撤回/编辑/回复/表情/转发）
+- [ ] `ReplyPreview` 组件：输入区域上方的引用条（可关闭）
+- [ ] `EmojiPicker` 组件：基于 `@emoji-mart/react` 的 Emoji 选择器浮层
+- [ ] `MessageBubble` 支持撤回消息显示（"xxx 撤回了一条消息"）
+- [ ] `MessageBubble` 支持编辑标记显示（"(已编辑)"）
+- [ ] `MessageBubble` 支持引用气泡显示（replySnapshot）
+- [ ] `MessageBubble` 支持 reactions 显示（emoji pills + 计数）
+- [ ] `ChatWindow` 集成引用条 + Emoji Picker + 右键菜单
+- [ ] `useChatStore` 新增 `replyingTo` 状态、`sendMessage` 支持 replyTo
+- [ ] `useSocketStore` 监听 `message:recalled`/`message:edited`/`message:reacted` 事件
+
+### 测试
+- [ ] 服务端：撤回（时限/权限/重复撤回）、编辑（时限/类型/权限）、引用回复（快照生成）、reaction（toggle/多用户）
+- [ ] 前端：MessageContextMenu、ReplyPreview、EmojiPicker 组件测试
+
+---
+
+## v1.4.0 - 用户体验与通知
+
+**目标**：用户头像/资料、已读回执 UI、输入状态指示、系统通知、暗色模式。
+
+### 共享类型
+- [ ] `User` 添加 `nickname?: string`、`avatar?: string`、`bio?: string`
+- [ ] `ClientToServerEvents` 新增 `typing:start`、`typing:stop`
+- [ ] `ServerToClientEvents` 新增 `typing:start`、`typing:stop`
+
+### 后端
+- [ ] `PUT /api/auth/profile` — 更新 nickname/bio
+- [ ] `POST /api/auth/avatar` — 上传头像（multer）
+- [ ] `GET /api/auth/user/:id` — 获取用户公开资料
+- [ ] `IUserRepository` + `RedisUserRepository` 新增 `updateProfile` 方法
+- [ ] `ChatModule` 新增 `typing:start`/`typing:stop` Socket 转发
+
+### 前端
+- [ ] `ProfileDrawer` 组件：编辑 nickname/bio + 上传头像
+- [ ] 所有 Avatar 组件显示真实头像（有则显示图片，无则首字母）
+- [ ] `MessageBubble` 显示已读状态（✓ 已发送 / ✓✓ 已读）
+- [ ] `ChatWindow` 显示 "正在输入…" 指示
+- [ ] 系统通知：Browser Notification API + 未读总数显示在标题
+- [ ] 暗色模式：CSS 变量切换 + Ant Design `darkAlgorithm` + 主题 store + 持久化
+- [ ] `useThemeStore` — 管理 light/dark/system 主题切换
+- [ ] `global.less` 新增 `[data-theme="dark"]` 变量覆盖
+
+### 测试
+- [ ] 服务端：用户资料 CRUD、头像上传测试
+- [ ] 前端：ProfileDrawer、暗色模式切换测试
+
+---
+
+## v1.5.0 - 会话管理
+
+**目标**：置顶会话、免打扰、群消息置顶、消息转发、会话归档/删除、会话标签。
+
+### 共享类型
+- [ ] `Message` 添加 `forwardedFrom?: { conversationId, senderId, senderName }`
+
+### 后端
+- [ ] `POST /api/chat/conversations/:id/pin` — toggle 置顶
+- [ ] `POST /api/chat/conversations/:id/mute` — toggle 免打扰
+- [ ] `POST /api/chat/conversations/:id/archive` — 归档会话
+- [ ] `DELETE /api/chat/conversations/:id` — 删除会话
+- [ ] `POST /api/chat/conversations/:id/tag` — 设置标签
+- [ ] `GET /api/chat/conversations/:id/pinned` — 获取置顶消息
+- [ ] `message:pin` Socket 事件 — 群消息置顶
+- [ ] Redis 新键：`pinned_convs:{userId}`、`muted_convs:{userId}`、`archived_convs:{userId}`、`conv_tags:{userId}`、`pinned_msg:{convId}`
+- [ ] GET /api/chat/conversations 返回附带 pinnedIds/mutedIds/tags
+
+### 前端
+- [ ] `PinnedMessage` 组件：ChatWindow 顶部置顶消息条
+- [ ] `ForwardModal` 组件：会话选择器弹窗
+- [ ] ConversationList 右键菜单（置顶/免打扰/标签/归档/删除）
+- [ ] ConversationList 置顶排序 + 标签筛选 + 归档入口
+- [ ] MessageBubble 显示转发标记
+- [ ] MessageContextMenu 添加"转发"/"置顶"选项
+
+### 测试
+- [ ] 服务端：置顶/免打扰/归档/标签 API 测试
+- [ ] 前端：PinnedMessage、ForwardModal 组件测试
+
+---
+
+## v1.6.0 - Bot 增强
+
+**目标**：Bot 获取聊天历史（让 bot 知道完整聊天内容）、更多 LLM 提供商、Bot 富文本回复、Slash 命令。
+
+### 后端
+- [ ] `GET /api/bot/getHistory?token=xxx&conversationId=yyy&limit=50&offset=0` — Bot 获取会话历史消息
+- [ ] `BotService` 新增 `getHistory()` 方法（校验 bot 为会话参与者）
+
+### Agent App
+- [ ] `BotClient` 新增 `getHistory(conversationId, limit, offset)` 方法
+- [ ] `AgentManager` 首次收到新 conversationId 时自动加载历史
+- [ ] `ConversationHistory` 新增 `prefillHistory()` 方法
+- [ ] `PROVIDERS` 扩展：OpenAI、Claude、通义千问、自定义端点
+- [ ] `LLMClient` 支持 Claude API 格式（非 OpenAI 兼容）
+- [ ] `LLMClient` 支持 custom provider（用户填写任意 baseUrl）
+- [ ] Markdown 检测：LLM 回复含 markdown 特征时自动设置 type=markdown
+- [ ] Slash 命令处理（/help、/model、/reset、/system）
+- [ ] `AgentForm` UI 更新：新 provider 选项 + custom URL 输入
+
+### 测试
+- [ ] 服务端：getHistory API 权限/分页测试
+- [ ] Agent App：getHistory、prefillHistory、slash 命令、markdown 检测测试

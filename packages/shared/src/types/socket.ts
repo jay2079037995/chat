@@ -18,6 +18,12 @@ export interface ServerToClientEvents {
   'users:online_list': (userIds: string[]) => void;
   /** 消息已读回执 */
   'message:read': (data: { conversationId: string; userId: string }) => void;
+  /** 消息已撤回 */
+  'message:recalled': (data: { messageId: string; conversationId: string; senderId: string }) => void;
+  /** 消息已编辑 */
+  'message:edited': (data: { messageId: string; conversationId: string; newContent: string; editedAt: number }) => void;
+  /** 消息表情回应变更 */
+  'message:reacted': (data: { messageId: string; conversationId: string; reactions: Record<string, string[]> }) => void;
   /** 群组成员加入通知 */
   'group:member_added': (data: { groupId: string; userId: string; username: string }) => void;
   /** 群组成员移除通知 */
@@ -37,7 +43,13 @@ export interface ServerToClientEvents {
 /** 客户端 → 服务端 事件 */
 export interface ClientToServerEvents {
   /** 发送消息（callback 返回持久化后的消息） */
-  'message:send': (data: { conversationId: string; type: Message['type']; content: string; fileName?: string; fileSize?: number; mimeType?: string; codeLanguage?: string }, callback: (message: Message) => void) => void;
+  'message:send': (data: { conversationId: string; type: Message['type']; content: string; fileName?: string; fileSize?: number; mimeType?: string; codeLanguage?: string; replyTo?: string }, callback: (message: Message) => void) => void;
+  /** 撤回消息 */
+  'message:recall': (data: { messageId: string; conversationId: string }, callback: (result: { success: boolean; error?: string }) => void) => void;
+  /** 编辑消息 */
+  'message:edit': (data: { messageId: string; conversationId: string; newContent: string }, callback: (result: { success: boolean; error?: string }) => void) => void;
+  /** 消息表情回应（toggle） */
+  'message:react': (data: { messageId: string; conversationId: string; emoji: string }) => void;
   /** 标记会话消息已读 */
   'message:read': (data: { conversationId: string }) => void;
   /** 加入会话房间（订阅该会话的实时消息） */

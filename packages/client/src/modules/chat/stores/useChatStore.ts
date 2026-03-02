@@ -30,6 +30,8 @@ interface ChatState {
   hasMore: Record<string, boolean>;
   /** 是否正在加载历史消息 */
   loadingMore: boolean;
+  /** 当前正在回复的消息（引用回复） */
+  replyingTo: Message | null;
 
   /** 加载用户的会话列表 */
   loadConversations: () => Promise<void>;
@@ -51,6 +53,14 @@ interface ChatState {
   handleReadReceipt: (conversationId: string, userId: string) => void;
   /** 从本地缓存加载数据（启动时调用） */
   loadFromCache: () => void;
+  /** 设置正在回复的消息 */
+  setReplyingTo: (message: Message | null) => void;
+  /** 处理消息撤回事件 */
+  handleRecalled: (messageId: string, conversationId: string) => void;
+  /** 处理消息编辑事件 */
+  handleEdited: (messageId: string, conversationId: string, newContent: string, editedAt: number) => void;
+  /** 处理消息表情回应事件 */
+  handleReacted: (messageId: string, conversationId: string, reactions: Record<string, string[]>) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -63,6 +73,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loading: false,
   hasMore: {},
   loadingMore: false,
+  replyingTo: null,
 
   loadConversations: async () => {
     try {
@@ -125,7 +136,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: (content: string, type: MessageType = 'text', metadata?) => {
-    const { currentConversationId } = get();
+    const { currentConversationId, replyingTo } = get();
     if (!currentConversationId || !content.trim()) return;
 
     const { socket } = useSocketStore.getState();
@@ -138,6 +149,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         type,
         content: content.trim(),
         ...metadata,
+        // 引用回复：附带被回复消息的 ID
+        ...(replyingTo && { replyTo: replyingTo.id }),
       },
       (message: Message) => {
         // callback：服务端确认后追加消息
@@ -159,6 +172,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         cacheService.saveMessages(currentConversationId, get().messages[currentConversationId] || []);
       },
     );
+
+    // 发送后清除引用状态
+    if (replyingTo) {
+      set({ replyingTo: null });
+    }
   },
 
   receiveMessage: (message: Message) => {
@@ -292,5 +310,54 @@ export const useChatStore = create<ChatState>((set, get) => ({
         groupNames: { ...state.groupNames, ...cached.groupNames },
       }));
     }
+  },
+
+  setReplyingTo: (message: Message | null) => {
+    set({ replyingTo: message });
+  },
+
+  handleRecalled: (messageId: string, conversationId: string) => {
+    set((state) => {
+      const convMsgs = state.messages[conversationId];
+      if (!convMsgs) return state;
+      return {
+        messages: {
+          ...state.messages,
+          [conversationId]: convMsgs.map((m) =>
+            m.id === messageId ? { ...m, recalled: true } : m,
+          ),
+        },
+      };
+    });
+  },
+
+  handleEdited: (messageId: string, conversationId: string, newContent: string, editedAt: number) => {
+    set((state) => {
+      const convMsgs = state.messages[conversationId];
+      if (!convMsgs) return state;
+      return {
+        messages: {
+          ...state.messages,
+          [conversationId]: convMsgs.map((m) =>
+            m.id === messageId ? { ...m, content: newContent, edited: true, editedAt } : m,
+          ),
+        },
+      };
+    });
+  },
+
+  handleReacted: (messageId: string, conversationId: string, reactions: Record<string, string[]>) => {
+    set((state) => {
+      const convMsgs = state.messages[conversationId];
+      if (!convMsgs) return state;
+      return {
+        messages: {
+          ...state.messages,
+          [conversationId]: convMsgs.map((m) =>
+            m.id === messageId ? { ...m, reactions } : m,
+          ),
+        },
+      };
+    });
   },
 }));

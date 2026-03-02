@@ -295,6 +295,7 @@ export class ChatModule implements ServerModule {
               fileSize: data.fileSize,
               mimeType: data.mimeType,
               codeLanguage: data.codeLanguage,
+              replyTo: data.replyTo,
             },
           );
 
@@ -358,6 +359,51 @@ export class ChatModule implements ServerModule {
           callback(message);
         } catch (err) {
           console.error('发送消息失败:', err);
+        }
+      });
+
+      // message:recall — 撤回消息
+      socket.on('message:recall', async (data, callback) => {
+        try {
+          await chatService.recallMessage(data.messageId, userId);
+          socket.to(data.conversationId).emit('message:recalled', {
+            messageId: data.messageId,
+            conversationId: data.conversationId,
+            senderId: userId,
+          });
+          callback({ success: true });
+        } catch (err: any) {
+          callback({ success: false, error: err.message });
+        }
+      });
+
+      // message:edit — 编辑消息
+      socket.on('message:edit', async (data, callback) => {
+        try {
+          const editedAt = await chatService.editMessage(data.messageId, userId, data.newContent);
+          socket.to(data.conversationId).emit('message:edited', {
+            messageId: data.messageId,
+            conversationId: data.conversationId,
+            newContent: data.newContent,
+            editedAt,
+          });
+          callback({ success: true });
+        } catch (err: any) {
+          callback({ success: false, error: err.message });
+        }
+      });
+
+      // message:react — 表情回应
+      socket.on('message:react', async (data) => {
+        try {
+          const reactions = await chatService.toggleReaction(data.messageId, userId, data.emoji);
+          io.to(data.conversationId).emit('message:reacted', {
+            messageId: data.messageId,
+            conversationId: data.conversationId,
+            reactions,
+          });
+        } catch (err) {
+          console.error('表情回应失败:', err);
         }
       });
 
