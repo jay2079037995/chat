@@ -5,7 +5,7 @@
  * 开发模式下加载 webpack dev server (localhost:3000)，
  * 生产模式下加载后端服务 (localhost:3001，需先启动服务端)。
  */
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { createMainWindow, getMainWindow } from './windowManager';
 import { buildMenu } from './menuBuilder';
 import { createTray, destroyTray } from './trayManager';
@@ -31,6 +31,12 @@ if (!gotSingleInstanceLock) {
   ipcMain.handle('debug:get-status', () => isDebugEnabled());
 
   app.whenReady().then(() => {
+    // 允许麦克风、摄像头等媒体权限请求（否则 Electron 默认静默拒绝）
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowedPermissions = ['media', 'mediaKeySystem', 'clipboard-read', 'clipboard-sanitized-write'];
+      callback(allowedPermissions.includes(permission));
+    });
+
     // 构建菜单
     buildMenu();
 

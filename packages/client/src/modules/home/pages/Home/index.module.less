@@ -1,3 +1,5 @@
+@import '../../../../styles/responsive.less';
+
 .layout {
   min-height: 100vh;
   background: var(--bg-primary);
@@ -132,4 +134,41 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* === Mobile Layout === */
+@media (max-width: @mobile) {
+  .header {
+    height: 56px;
+    line-height: 56px;
+    padding: 0 12px;
+  }
+
+  .brand {
+    font-size: 16px;
+  }
+
+  .userInfo {
+    gap: 2px;
+  }
+}
+
+/* 移动端返回按钮 */
+.backButton {
+  color: #fff !important;
+  font-size: 16px;
+}
+
+/* 移动端会话列表全屏 */
+.mobileList {
+  height: calc(100vh - 56px);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 移动端聊天窗口全屏 */
+.mobileChat {
+  height: calc(100vh - 56px);
+  background: var(--bg-primary);
 }

@@ -284,13 +284,31 @@ const ChatWindow: React.FC = () => {
     return false;
   };
 
+  /** 检测浏览器支持的音频 MIME 类型（iOS Safari 不支持 webm） */
+  const getSupportedAudioMimeType = (): { mimeType: string; ext: string } => {
+    const types = [
+      { mimeType: 'audio/webm', ext: '.webm' },
+      { mimeType: 'audio/mp4', ext: '.m4a' },
+      { mimeType: 'audio/ogg', ext: '.ogg' },
+      { mimeType: 'audio/wav', ext: '.wav' },
+    ];
+    for (const t of types) {
+      if (MediaRecorder.isTypeSupported(t.mimeType)) return t;
+    }
+    return { mimeType: '', ext: '.webm' }; // 回退：让浏览器自行选择
+  };
+
   /** 开始录音 */
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const { mimeType, ext } = getSupportedAudioMimeType();
+      const options: MediaRecorderOptions = mimeType ? { mimeType } : {};
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+
+      const actualMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -300,8 +318,8 @@ const ChatWindow: React.FC = () => {
         stream.getTracks().forEach((t) => t.stop());
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
 
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const file = new File([blob], `recording-${Date.now()}.webm`, { type: 'audio/webm' });
+        const blob = new Blob(audioChunksRef.current, { type: actualMimeType });
+        const file = new File([blob], `recording-${Date.now()}${ext}`, { type: actualMimeType });
 
         try {
           const result = await chatService.uploadFile(file);
@@ -425,7 +443,7 @@ const ChatWindow: React.FC = () => {
       case 'image':
         return (
           <Upload
-            accept="image/jpeg,image/png,image/gif,image/webp"
+            accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
             showUploadList={false}
             beforeUpload={handleImageUpload}
           >

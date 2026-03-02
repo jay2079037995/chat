@@ -78,3 +78,23 @@
   text-align: center;
   color: var(--text-secondary);
 }
+
+/* === Mobile Responsive === */
+@import '../../../../styles/responsive.less';
+
+@media (max-width: @mobile) {
+  .card {
+    width: calc(100vw - 32px);
+    max-width: 420px;
+    border-radius: 16px !important;
+  }
+
+  .logo {
+    font-size: 40px;
+  }
+
+  .container::before,
+  .container::after {
+    display: none;
+  }
+}

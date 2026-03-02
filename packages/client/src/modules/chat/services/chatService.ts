@@ -43,6 +43,67 @@ export interface UploadResult {
   mimeType: string;
 }
 
+/** 图片最大体积阈值（超过此值自动压缩） */
+const IMAGE_COMPRESS_THRESHOLD = 2 * 1024 * 1024; // 2MB
+/** 压缩后的最大宽/高 */
+const IMAGE_MAX_DIMENSION = 1920;
+
+/** 使用 Canvas 压缩图片（处理手机相机拍摄的超大图） */
+function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    // 小于阈值的图片不压缩
+    if (file.size <= IMAGE_COMPRESS_THRESHOLD) {
+      resolve(file);
+      return;
+    }
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      let { width, height } = img;
+      // 按比例缩小到最大尺寸
+      if (width > IMAGE_MAX_DIMENSION || height > IMAGE_MAX_DIMENSION) {
+        const ratio = Math.min(IMAGE_MAX_DIMENSION / width, IMAGE_MAX_DIMENSION / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size >= file.size) {
+            resolve(file); // 压缩后反而更大则用原图
+            return;
+          }
+          const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+            type: 'image/jpeg',
+          });
+          resolve(compressed);
+        },
+        'image/jpeg',
+        0.85,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file); // 加载失败则用原图
+    };
+
+    img.src = url;
+  });
+}
+
 export const chatService = {
   /** 获取当前用户的会话列表（含参与者用户名映射） */
   async getConversations(): Promise<ConversationsResponse> {
@@ -80,10 +141,11 @@ export const chatService = {
     return res.data.messages;
   },
 
-  /** 上传图片 */
+  /** 上传图片（自动压缩超大图片） */
   async uploadImage(file: File): Promise<UploadResult> {
+    const compressed = await compressImage(file);
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', compressed);
     const res = await api.post<UploadResult>('/chat/upload/image', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });

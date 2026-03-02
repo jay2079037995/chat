@@ -11,9 +11,9 @@ export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 /** 音频最大体积（10MB） */
 export const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
 /** 允许上传的图片 MIME 类型 */
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
 /** 允许上传的音频 MIME 类型 */
-export const ALLOWED_AUDIO_TYPES = ['audio/webm', 'audio/mp3', 'audio/wav', 'audio/ogg'];
+export const ALLOWED_AUDIO_TYPES = ['audio/webm', 'audio/mp4', 'audio/mp3', 'audio/wav', 'audio/ogg'];
 /** 每页加载的消息数量 */
 export const MESSAGES_PER_PAGE = 50;
 /** 群组名称最小长度 */

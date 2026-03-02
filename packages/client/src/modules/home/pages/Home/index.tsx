@@ -2,11 +2,12 @@
  * 首页 —— 聊天主界面
  *
  * 布局：顶部导航栏 + 左侧（用户搜索 + 会话列表） + 右侧聊天窗口。
+ * 移动端：单视图切换 —— 一次只显示会话列表或聊天窗口。
  * 由 AuthGuard 保护——未登录用户会被重定向到登录页。
  */
 import React, { useEffect, useState } from 'react';
 import { Layout, Button, Typography } from 'antd';
-import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined, MessageOutlined, RobotOutlined, UserOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined, MessageOutlined, RobotOutlined, UserOutlined, SunOutlined, MoonOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import UserSearch from '../../components/UserSearch';
@@ -20,6 +21,7 @@ import { useSocketStore } from '../../../chat/stores/useSocketStore';
 import { useChatStore } from '../../../chat/stores/useChatStore';
 import { useThemeStore } from '../../../chat/stores/useThemeStore';
 import { requestNotificationPermission } from '../../../chat/utils/notification';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
 import type { User } from '@chat/shared';
 import styles from './index.module.less';
 
@@ -42,6 +44,9 @@ const Home: React.FC = () => {
   const isDark = useThemeStore((s) => s.isDark);
   const setMode = useThemeStore((s) => s.setMode);
 
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showMessageSearch, setShowMessageSearch] = useState(false);
   const [showBotManager, setShowBotManager] = useState(false);
@@ -61,6 +66,13 @@ const Home: React.FC = () => {
     };
   }, [sessionId, connect, disconnect, loadConversations, loadFromCache]);
 
+  // 移动端选中会话时自动切换到聊天视图
+  useEffect(() => {
+    if (isMobile && currentConversationId) {
+      setMobileView('chat');
+    }
+  }, [currentConversationId, isMobile]);
+
   /** 登出并跳转到登录页 */
   const handleLogout = async () => {
     disconnect();
@@ -73,35 +85,56 @@ const Home: React.FC = () => {
     void startPrivateChat(selectedUser.id);
   };
 
-  return (
-    <Layout className={styles.layout}>
-      <Header className={styles.header}>
+  /** 移动端返回按钮 */
+  const handleMobileBack = () => {
+    setMobileView('list');
+  };
+
+  /** 渲染 Header */
+  const renderHeader = () => (
+    <Header className={styles.header}>
+      {isMobile && mobileView === 'chat' ? (
+        <Button
+          type="text"
+          icon={<ArrowLeftOutlined />}
+          className={styles.backButton}
+          onClick={handleMobileBack}
+        >
+          {!isMobile && '返回'}
+        </Button>
+      ) : (
         <Text strong className={styles.brand}>
-          Chat <Text className={styles.version}>v1.6.0</Text>
+          Chat <Text className={styles.version}>v1.7.0</Text>
         </Text>
-        <div className={styles.userInfo}>
-          <Text className={styles.username}>{user?.username}</Text>
-          <Button type="text" icon={<UserOutlined />} onClick={() => setShowProfile(true)}>
-            资料
-          </Button>
-          <Button type="text" icon={<SearchOutlined />} onClick={() => setShowMessageSearch(true)}>
-            搜索
-          </Button>
-          <Button type="text" icon={<RobotOutlined />} onClick={() => setShowBotManager(true)}>
-            机器人
-          </Button>
-          <Button
-            type="text"
-            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
-            onClick={() => setMode(isDark ? 'light' : 'dark')}
-          />
-          <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
-            登出
-          </Button>
-        </div>
-      </Header>
-      <Layout>
-        <Sider width={300} className={styles.sider}>
+      )}
+      <div className={styles.userInfo}>
+        {!isMobile && <Text className={styles.username}>{user?.username}</Text>}
+        <Button type="text" icon={<UserOutlined />} onClick={() => setShowProfile(true)}>
+          {!isMobile && '资料'}
+        </Button>
+        <Button type="text" icon={<SearchOutlined />} onClick={() => setShowMessageSearch(true)}>
+          {!isMobile && '搜索'}
+        </Button>
+        <Button type="text" icon={<RobotOutlined />} onClick={() => setShowBotManager(true)}>
+          {!isMobile && '机器人'}
+        </Button>
+        <Button
+          type="text"
+          icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+          onClick={() => setMode(isDark ? 'light' : 'dark')}
+        />
+        <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
+          {!isMobile && '登出'}
+        </Button>
+      </div>
+    </Header>
+  );
+
+  /** 渲染移动端布局 */
+  const renderMobileLayout = () => (
+    <>
+      {mobileView === 'list' ? (
+        <div className={styles.mobileList}>
           <div className={styles.searchArea}>
             <UserSearch onSelectUser={handleSelectUser} />
             <Button
@@ -117,8 +150,9 @@ const Home: React.FC = () => {
           <div className={styles.conversationArea}>
             <ConversationList />
           </div>
-        </Sider>
-        <Content className={styles.content}>
+        </div>
+      ) : (
+        <div className={styles.mobileChat}>
           {currentConversationId ? (
             <ChatWindow />
           ) : (
@@ -128,8 +162,49 @@ const Home: React.FC = () => {
               <Text type="secondary">选择一个会话开始聊天</Text>
             </div>
           )}
-        </Content>
-      </Layout>
+        </div>
+      )}
+    </>
+  );
+
+  /** 渲染桌面端布局 */
+  const renderDesktopLayout = () => (
+    <Layout>
+      <Sider width={300} className={styles.sider}>
+        <div className={styles.searchArea}>
+          <UserSearch onSelectUser={handleSelectUser} />
+          <Button
+            type="dashed"
+            icon={<UsergroupAddOutlined />}
+            block
+            className={styles.createGroupBtn}
+            onClick={() => setShowCreateGroup(true)}
+          >
+            创建群组
+          </Button>
+        </div>
+        <div className={styles.conversationArea}>
+          <ConversationList />
+        </div>
+      </Sider>
+      <Content className={styles.content}>
+        {currentConversationId ? (
+          <ChatWindow />
+        ) : (
+          <div className={styles.placeholder}>
+            <div className={styles.placeholderIcon}><MessageOutlined /></div>
+            <Typography.Title level={4}>欢迎使用 Chat</Typography.Title>
+            <Text type="secondary">选择一个会话开始聊天</Text>
+          </div>
+        )}
+      </Content>
+    </Layout>
+  );
+
+  return (
+    <Layout className={styles.layout}>
+      {renderHeader()}
+      {isMobile ? renderMobileLayout() : renderDesktopLayout()}
 
       <CreateGroupDialog
         visible={showCreateGroup}

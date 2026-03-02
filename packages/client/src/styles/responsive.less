@@ -1,0 +1,14 @@
+// 断点变量
+@mobile: 768px;
+@tablet: 1024px;
+
+// 响应式 mixin
+.mobile(@rules) {
+  @media (max-width: @mobile) { @rules(); }
+}
+.tablet(@rules) {
+  @media (max-width: @tablet) { @rules(); }
+}
+.desktop(@rules) {
+  @media (min-width: (@mobile + 1px)) { @rules(); }
+}
