@@ -37,6 +37,9 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       loadMoreMessages: jest.fn(),
       replyingTo: mockReplyingTo,
       setReplyingTo: mockSetReplyingTo,
+      lastReadMap: {},
+      typingUsers: {},
+      participantAvatars: {},
     }),
 }));
 
@@ -45,6 +48,7 @@ jest.mock('../src/modules/chat/stores/useSocketStore', () => ({
     (selector: (s: any) => any) =>
       selector({
         onlineUsers: new Set(['user2']),
+        socket: null,
       }),
     {
       getState: () => ({

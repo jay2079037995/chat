@@ -23,4 +23,9 @@ export interface IUserRepository {
   getBotsByOwner(ownerId: string): Promise<User[]>;
   /** 删除机器人 */
   deleteBot(botId: string): Promise<void>;
+
+  // --- 用户资料 ---
+
+  /** 更新用户资料（nickname/bio/avatar） */
+  updateProfile(userId: string, updates: { nickname?: string; bio?: string; avatar?: string }): Promise<User | null>;
 }

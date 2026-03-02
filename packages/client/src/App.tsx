@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import AuthGuard from './components/AuthGuard';
 import GuestGuard from './components/GuestGuard';
 import { modules } from './core/moduleRegistry';
+import { useThemeStore } from './modules/chat/stores/useThemeStore';
 
 /** Guard 类型到组件的映射 */
 const guardMap = {
@@ -19,10 +20,18 @@ const guardMap = {
  * 根据模块的 guard 类型自动包裹对应的路由守卫。
  */
 const App: React.FC = () => {
+  const isDark = useThemeStore((s) => s.isDark);
+  const initTheme = useThemeStore((s) => s.initTheme);
+
+  useEffect(() => {
+    initTheme();
+  }, [initTheme]);
+
   return (
     <ConfigProvider
       locale={zhCN}
       theme={{
+        algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
         token: {
           colorPrimary: '#667eea',
           colorLink: '#667eea',

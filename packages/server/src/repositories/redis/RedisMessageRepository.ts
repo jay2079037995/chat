@@ -8,6 +8,7 @@ const CONV_MSGS_KEY = (convId: string) => `conv_msgs:${convId}`;     // 会话�
 const CONV_KEY = (convId: string) => `conv:${convId}`;               // 会话元数据 Hash
 const USER_CONVS_KEY = (userId: string) => `user_convs:${userId}`;   // 用户会话列表 Sorted Set (score=updatedAt)
 const UNREAD_KEY = (convId: string) => `unread:${convId}`;           // 未读计数 Hash (field=userId)
+const LAST_READ_KEY = (convId: string, userId: string) => `lastread:${convId}:${userId}`;  // 用户最后已读时间戳
 
 /**
  * 消息 Repository 的 Redis 实现
@@ -271,5 +272,18 @@ export class RedisMessageRepository implements IMessageRepository {
   async getOnlineUsers(): Promise<string[]> {
     const redis = getRedisClient();
     return redis.smembers('online_users');
+  }
+
+  /** 获取用户在某会话的最后已读时间戳 */
+  async getLastReadAt(conversationId: string, userId: string): Promise<number> {
+    const redis = getRedisClient();
+    const val = await redis.get(LAST_READ_KEY(conversationId, userId));
+    return val ? parseInt(val, 10) : 0;
+  }
+
+  /** 设置用户在某会话的最后已读时间戳 */
+  async setLastReadAt(conversationId: string, userId: string, timestamp: number): Promise<void> {
+    const redis = getRedisClient();
+    await redis.set(LAST_READ_KEY(conversationId, userId), String(timestamp));
   }
 }

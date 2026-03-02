@@ -27,6 +27,10 @@ interface AuthState {
   logout: () => Promise<void>;
   /** 初始化认证状态：先尝试 session 恢复，再尝试 token 自动登录 */
   initAuth: () => Promise<void>;
+  /** 更新用户资料（nickname/bio） */
+  updateProfile: (data: { nickname?: string; bio?: string }) => Promise<void>;
+  /** 上传头像 */
+  updateAvatar: (file: File) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -112,5 +116,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     // 无有效凭证，标记初始化完成
     set({ loading: false, initialized: true });
+  },
+
+  /** 更新用户资料（nickname/bio） */
+  updateProfile: async (data: { nickname?: string; bio?: string }) => {
+    const result = await authService.updateProfile(data);
+    cacheService.saveUserInfo(result.user);
+    set({ user: result.user });
+  },
+
+  /** 上传头像 */
+  updateAvatar: async (file: File) => {
+    const result = await authService.uploadAvatar(file);
+    cacheService.saveUserInfo(result.user);
+    set({ user: result.user });
   },
 }));

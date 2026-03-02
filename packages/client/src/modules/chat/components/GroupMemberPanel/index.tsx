@@ -4,8 +4,9 @@
  * Drawer 形式展示群成员列表，群主可邀请/移除成员。
  */
 import React, { useEffect, useState } from 'react';
-import { Drawer, List, Avatar, Button, Tag, Input, Modal, message as antMessage } from 'antd';
-import { UserOutlined, CrownOutlined, SearchOutlined, DeleteOutlined, UserAddOutlined, LogoutOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { Drawer, List, Button, Tag, Input, Modal, message as antMessage } from 'antd';
+import { CrownOutlined, SearchOutlined, DeleteOutlined, UserAddOutlined, LogoutOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import UserAvatar from '../UserAvatar';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
@@ -158,7 +159,7 @@ const GroupMemberPanel: React.FC<GroupMemberPanelProps> = ({ groupId, visible, o
               <List.Item.Meta
                 avatar={
                   <div className={styles.avatarWrapper}>
-                    <Avatar icon={<UserOutlined />} />
+                    <UserAvatar userId={memberId} size={32} />
                     {isOnline && <span className={styles.onlineIndicator} />}
                   </div>
                 }
@@ -209,7 +210,7 @@ const GroupMemberPanel: React.FC<GroupMemberPanelProps> = ({ groupId, visible, o
                   ]}
                 >
                   <List.Item.Meta
-                    avatar={<Avatar icon={<UserOutlined />} size="small" />}
+                    avatar={<UserAvatar userId={user.id} size={24} username={user.username} />}
                     title={user.username}
                   />
                 </List.Item>

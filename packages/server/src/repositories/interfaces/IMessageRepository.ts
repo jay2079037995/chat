@@ -30,4 +30,8 @@ export interface IMessageRepository {
   setUserOffline(userId: string): Promise<void>;
   /** 获取所有在线用户 ID */
   getOnlineUsers(): Promise<string[]>;
+  /** 获取用户在某会话的最后已读时间戳 */
+  getLastReadAt(conversationId: string, userId: string): Promise<number>;
+  /** 设置用户在某会话的最后已读时间戳 */
+  setLastReadAt(conversationId: string, userId: string, timestamp: number): Promise<void>;
 }

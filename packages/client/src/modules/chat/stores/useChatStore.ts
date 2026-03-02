@@ -32,6 +32,12 @@ interface ChatState {
   loadingMore: boolean;
   /** 当前正在回复的消息（引用回复） */
   replyingTo: Message | null;
+  /** 各参与者的最后已读时间戳：convId → { userId → timestamp } */
+  lastReadMap: Record<string, Record<string, number>>;
+  /** 正在输入的用户：convId → Set<userId> */
+  typingUsers: Record<string, Set<string>>;
+  /** 参与者头像映射：userId → avatarUrl */
+  participantAvatars: Record<string, string>;
 
   /** 加载用户的会话列表 */
   loadConversations: () => Promise<void>;
@@ -50,7 +56,11 @@ interface ChatState {
   /** 加载更多历史消息（上滑分页） */
   loadMoreMessages: (conversationId: string) => Promise<void>;
   /** 处理已读回执 */
-  handleReadReceipt: (conversationId: string, userId: string) => void;
+  handleReadReceipt: (conversationId: string, userId: string, lastReadAt?: number) => void;
+  /** 更新已读时间戳 */
+  updateLastRead: (conversationId: string, userId: string, timestamp: number) => void;
+  /** 设置用户输入状态 */
+  setTypingUser: (conversationId: string, userId: string, isTyping: boolean) => void;
   /** 从本地缓存加载数据（启动时调用） */
   loadFromCache: () => void;
   /** 设置正在回复的消息 */
@@ -74,15 +84,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   hasMore: {},
   loadingMore: false,
   replyingTo: null,
+  lastReadMap: {},
+  typingUsers: {},
+  participantAvatars: {},
 
   loadConversations: async () => {
     try {
-      const { conversations, participantNames, groupNames, botUserIds } = await chatService.getConversations();
+      const { conversations, participantNames, groupNames, botUserIds, lastReadMap, participantAvatars } = await chatService.getConversations();
       set((state) => ({
         conversations,
         participantNames: { ...state.participantNames, ...participantNames },
         groupNames: { ...state.groupNames, ...groupNames },
         botUserIds: botUserIds ? new Set([...state.botUserIds, ...botUserIds]) : state.botUserIds,
+        lastReadMap: lastReadMap ? { ...state.lastReadMap, ...lastReadMap } : state.lastReadMap,
+        participantAvatars: participantAvatars ? { ...state.participantAvatars, ...participantAvatars } : state.participantAvatars,
       }));
       // 缓存会话列表到 localStorage
       cacheService.saveConversations({ conversations, participantNames, groupNames });
@@ -297,8 +312,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  handleReadReceipt: (_conversationId: string, _userId: string) => {
-    // v0.3.0 基础实现：暂不做 UI 更新
+  handleReadReceipt: (conversationId: string, userId: string, lastReadAt?: number) => {
+    if (lastReadAt) {
+      set((state) => ({
+        lastReadMap: {
+          ...state.lastReadMap,
+          [conversationId]: {
+            ...state.lastReadMap[conversationId],
+            [userId]: lastReadAt,
+          },
+        },
+      }));
+    }
+  },
+
+  updateLastRead: (conversationId: string, userId: string, timestamp: number) => {
+    set((state) => ({
+      lastReadMap: {
+        ...state.lastReadMap,
+        [conversationId]: {
+          ...state.lastReadMap[conversationId],
+          [userId]: timestamp,
+        },
+      },
+    }));
+  },
+
+  setTypingUser: (conversationId: string, userId: string, isTyping: boolean) => {
+    set((state) => {
+      const current = state.typingUsers[conversationId] || new Set<string>();
+      const next = new Set(current);
+      if (isTyping) {
+        next.add(userId);
+      } else {
+        next.delete(userId);
+      }
+      return {
+        typingUsers: { ...state.typingUsers, [conversationId]: next },
+      };
+    });
   },
 
   loadFromCache: () => {

@@ -54,6 +54,9 @@ export class RedisUserRepository implements IUserRepository {
     return {
       id: data.id,
       username: data.username,
+      ...(data.nickname && { nickname: data.nickname }),
+      ...(data.avatar && { avatar: data.avatar }),
+      ...(data.bio && { bio: data.bio }),
       ...(data.isBot === 'true' && { isBot: true }),
       ...(data.botOwnerId && { botOwnerId: data.botOwnerId }),
       createdAt: parseInt(data.createdAt, 10),
@@ -80,6 +83,9 @@ export class RedisUserRepository implements IUserRepository {
         users.push({
           id: data.id,
           username: data.username,
+          ...(data.nickname && { nickname: data.nickname }),
+          ...(data.avatar && { avatar: data.avatar }),
+          ...(data.bio && { bio: data.bio }),
           ...(data.isBot === 'true' && { isBot: true }),
           ...(data.botOwnerId && { botOwnerId: data.botOwnerId }),
           createdAt: parseInt(data.createdAt, 10),
@@ -146,6 +152,23 @@ export class RedisUserRepository implements IUserRepository {
       if (user && user.isBot) bots.push(user);
     }
     return bots;
+  }
+
+  // --- 用户资料 ---
+
+  /** 更新用户资料（nickname/bio/avatar） */
+  async updateProfile(userId: string, updates: { nickname?: string; bio?: string; avatar?: string }): Promise<User | null> {
+    const redis = getRedisClient();
+    const exists = await redis.exists(USER_KEY(userId));
+    if (!exists) return null;
+
+    const fields: Record<string, string> = { updatedAt: String(Date.now()) };
+    if (updates.nickname !== undefined) fields.nickname = updates.nickname;
+    if (updates.bio !== undefined) fields.bio = updates.bio;
+    if (updates.avatar !== undefined) fields.avatar = updates.avatar;
+
+    await redis.hset(USER_KEY(userId), fields);
+    return this.findById(userId);
   }
 
   async deleteBot(botId: string): Promise<void> {

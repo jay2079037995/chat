@@ -78,3 +78,39 @@ html, body, #root {
 ::selection {
   background: rgba(102, 126, 234, 0.2);
 }
+
+/* === Dark Mode === */
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg-primary: #1a1b23;
+  --bg-secondary: #22232e;
+  --bg-sidebar: #16171f;
+  --bg-sidebar-hover: #2a2b38;
+
+  /* Surfaces */
+  --surface-card: #22232e;
+
+  /* Text */
+  --text-primary: #e4e6f0;
+  --text-secondary: #9ca0b0;
+  --text-tertiary: #6c6f80;
+  --text-on-dark: #e4e6f0;
+  --text-on-dark-secondary: rgba(255, 255, 255, 0.4);
+
+  /* Borders */
+  --border-light: #2e303d;
+  --border-focus: #667eea;
+
+  /* Shadows — deeper in dark mode */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Dark mode scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}

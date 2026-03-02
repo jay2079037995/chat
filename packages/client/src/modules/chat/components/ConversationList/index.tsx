@@ -5,11 +5,11 @@
  * 在线状态指示器和未读消息数 badge。
  */
 import React from 'react';
-import { Avatar, Badge } from 'antd';
-import { UserOutlined, TeamOutlined } from '@ant-design/icons';
+import { Badge } from 'antd';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
+import UserAvatar from '../UserAvatar';
 import styles from './index.module.less';
 
 /** 格式化时间戳为可读文本 */
@@ -80,9 +80,9 @@ const ConversationList: React.FC = () => {
             onClick={() => selectConversation(conv.id)}
           >
             <div className={styles.avatarWrapper}>
-              <Avatar
-                icon={isGroup ? <TeamOutlined /> : <UserOutlined />}
-                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}
+              <UserAvatar
+                userId={isGroup ? conv.id : (conv.participants.find((p) => p !== currentUser?.id) || '')}
+                isGroup={isGroup}
               />
               {!isGroup && isOnline && <span className={styles.onlineIndicator} />}
             </div>

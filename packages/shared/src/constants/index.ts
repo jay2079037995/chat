@@ -22,3 +22,11 @@ export const MIN_GROUP_NAME_LENGTH = 2;
 export const MAX_GROUP_NAME_LENGTH = 50;
 /** 群组最大成员数 */
 export const MAX_GROUP_MEMBERS = 100;
+/** 头像最大体积（2MB） */
+export const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+/** 昵称最大长度 */
+export const MAX_NICKNAME_LENGTH = 30;
+/** 个人简介最大长度 */
+export const MAX_BIO_LENGTH = 200;
+/** 输入指示器自动超时（毫秒） */
+export const TYPING_TIMEOUT = 3000;

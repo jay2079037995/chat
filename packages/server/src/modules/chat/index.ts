@@ -80,7 +80,22 @@ export class ChatModule implements ServerModule {
           }
         }
 
-        res.json({ conversations, participantNames, groupNames, botUserIds });
+        // 构建 lastReadMap（各参与者的最后已读时间戳）和 participantAvatars
+        const lastReadMap: Record<string, Record<string, number>> = {};
+        const participantAvatars: Record<string, string> = {};
+        for (const conv of conversations) {
+          lastReadMap[conv.id] = {};
+          for (const pid of conv.participants) {
+            const lastRead = await messageRepo.getLastReadAt(conv.id, pid);
+            if (lastRead > 0) lastReadMap[conv.id][pid] = lastRead;
+          }
+        }
+        for (const pid of allParticipantIds) {
+          const user = await userRepo.findById(pid);
+          if (user?.avatar) participantAvatars[pid] = user.avatar;
+        }
+
+        res.json({ conversations, participantNames, groupNames, botUserIds, lastReadMap, participantAvatars });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -411,15 +426,33 @@ export class ChatModule implements ServerModule {
       socket.on('message:read', async (data) => {
         try {
           await chatService.markAsRead(data.conversationId, userId);
+          const lastReadAt = Date.now();
 
-          // 通知会话中的其他成员
+          // 通知会话中的其他成员（含最后已读时间戳）
           socket.to(data.conversationId).emit('message:read', {
             conversationId: data.conversationId,
             userId,
+            lastReadAt,
           });
         } catch (err) {
           console.error('标记已读失败:', err);
         }
+      });
+
+      // typing:start — 转发输入开始状态给会话其他成员
+      socket.on('typing:start', (data) => {
+        socket.to(data.conversationId).emit('typing:start', {
+          conversationId: data.conversationId,
+          userId,
+        });
+      });
+
+      // typing:stop — 转发输入停止状态给会话其他成员
+      socket.on('typing:stop', (data) => {
+        socket.to(data.conversationId).emit('typing:stop', {
+          conversationId: data.conversationId,
+          userId,
+        });
       });
 
       // conversation:join — 加入会话房间

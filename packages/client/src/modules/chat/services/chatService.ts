@@ -15,6 +15,10 @@ interface ConversationsResponse {
   participantNames: Record<string, string>;
   groupNames: Record<string, string>;
   botUserIds?: string[];
+  /** 各参与者的最后已读时间戳：convId → { userId → timestamp } */
+  lastReadMap?: Record<string, Record<string, number>>;
+  /** 参与者头像映射：userId → avatarUrl */
+  participantAvatars?: Record<string, string>;
 }
 
 /** 创建私聊 API 返回值 */

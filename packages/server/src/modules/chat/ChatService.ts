@@ -152,9 +152,10 @@ export class ChatService {
     return results;
   }
 
-  /** 标记会话为已读（清零未读计数） */
+  /** 标记会话为已读（清零未读计数 + 记录最后已读时间戳） */
   async markAsRead(conversationId: string, userId: string): Promise<void> {
     await this.messageRepo.clearUnread(conversationId, userId);
+    await this.messageRepo.setLastReadAt(conversationId, userId, Date.now());
   }
 
   /**

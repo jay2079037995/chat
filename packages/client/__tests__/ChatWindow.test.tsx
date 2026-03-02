@@ -33,14 +33,25 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       loadMoreMessages: jest.fn(),
       replyingTo: null,
       setReplyingTo: jest.fn(),
+      lastReadMap: {},
+      typingUsers: {},
+      participantAvatars: {},
     }),
 }));
 
 jest.mock('../src/modules/chat/stores/useSocketStore', () => ({
-  useSocketStore: (selector: (s: any) => any) =>
-    selector({
-      onlineUsers: new Set(['user2']),
-    }),
+  useSocketStore: Object.assign(
+    (selector: (s: any) => any) =>
+      selector({
+        onlineUsers: new Set(['user2']),
+        socket: null,
+      }),
+    {
+      getState: () => ({
+        socket: { connected: true, emit: jest.fn() },
+      }),
+    },
+  ),
 }));
 
 jest.mock('../src/modules/auth/stores/useAuthStore', () => ({

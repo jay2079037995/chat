@@ -17,7 +17,11 @@ export interface ServerToClientEvents {
   /** 当前所有在线用户列表（连接时一次性下发） */
   'users:online_list': (userIds: string[]) => void;
   /** 消息已读回执 */
-  'message:read': (data: { conversationId: string; userId: string }) => void;
+  'message:read': (data: { conversationId: string; userId: string; lastReadAt?: number }) => void;
+  /** 有用户正在输入 */
+  'typing:start': (data: { conversationId: string; userId: string }) => void;
+  /** 有用户停止输入 */
+  'typing:stop': (data: { conversationId: string; userId: string }) => void;
   /** 消息已撤回 */
   'message:recalled': (data: { messageId: string; conversationId: string; senderId: string }) => void;
   /** 消息已编辑 */
@@ -52,6 +56,10 @@ export interface ClientToServerEvents {
   'message:react': (data: { messageId: string; conversationId: string; emoji: string }) => void;
   /** 标记会话消息已读 */
   'message:read': (data: { conversationId: string }) => void;
+  /** 用户开始输入 */
+  'typing:start': (data: { conversationId: string }) => void;
+  /** 用户停止输入 */
+  'typing:stop': (data: { conversationId: string }) => void;
   /** 加入会话房间（订阅该会话的实时消息） */
   'conversation:join': (conversationId: string) => void;
 }

@@ -87,14 +87,42 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     // 接收消息 → 转发给 useChatStore（延迟导入避免循环依赖）
     socket.on('message:receive', (message) => {
       import('./useChatStore').then(({ useChatStore }) => {
-        useChatStore.getState().receiveMessage(message);
+        const store = useChatStore.getState();
+        store.receiveMessage(message);
+
+        // 浏览器通知：非当前会话 + 页面非聚焦时弹出
+        if (message.conversationId !== store.currentConversationId || document.hidden) {
+          import('../utils/notification').then(({ showBrowserNotification }) => {
+            const senderName = store.participantNames[message.senderId] || message.senderId;
+            const body = message.type === 'text'
+              ? message.content
+              : message.type === 'image' ? '[图片]'
+              : message.type === 'audio' ? '[语音]'
+              : message.type === 'file' ? '[文件]'
+              : message.content;
+            showBrowserNotification(senderName, body, message.conversationId);
+          });
+        }
       });
     });
 
     // 已读回执
     socket.on('message:read', (data) => {
       import('./useChatStore').then(({ useChatStore }) => {
-        useChatStore.getState().handleReadReceipt(data.conversationId, data.userId);
+        useChatStore.getState().handleReadReceipt(data.conversationId, data.userId, data.lastReadAt);
+      });
+    });
+
+    // 输入状态
+    socket.on('typing:start', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().setTypingUser(data.conversationId, data.userId, true);
+      });
+    });
+
+    socket.on('typing:stop', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().setTypingUser(data.conversationId, data.userId, false);
       });
     });
 

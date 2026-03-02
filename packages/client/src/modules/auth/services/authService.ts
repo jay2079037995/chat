@@ -46,4 +46,20 @@ export const authService = {
   async logout(): Promise<void> {
     await api.post('/auth/logout');
   },
+
+  /** 更新用户资料（nickname/bio） */
+  async updateProfile(data: { nickname?: string; bio?: string }): Promise<{ user: User }> {
+    const res = await api.put<{ user: User }>('/auth/profile', data);
+    return res.data;
+  },
+
+  /** 上传头像 */
+  async uploadAvatar(file: File): Promise<{ user: User; avatarUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post<{ user: User; avatarUrl: string }>('/auth/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
 };

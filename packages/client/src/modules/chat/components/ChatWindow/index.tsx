@@ -7,8 +7,9 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Select, Upload, Progress, Spin, Modal, message as antMessage } from 'antd';
-import { SendOutlined, TeamOutlined } from '@ant-design/icons';
+import { SendOutlined, TeamOutlined, CheckOutlined } from '@ant-design/icons';
 import type { Message, MessageType } from '@chat/shared';
+import { TYPING_TIMEOUT } from '@chat/shared';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
@@ -65,6 +66,8 @@ const ChatWindow: React.FC = () => {
   const botUserIds = useChatStore((s) => s.botUserIds);
   const replyingTo = useChatStore((s) => s.replyingTo);
   const setReplyingTo = useChatStore((s) => s.setReplyingTo);
+  const lastReadMap = useChatStore((s) => s.lastReadMap);
+  const typingUsers = useChatStore((s) => s.typingUsers);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -92,6 +95,8 @@ const ChatWindow: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
 
   const currentMessages = currentConversationId ? messages[currentConversationId] || [] : [];
 
@@ -134,14 +139,80 @@ const ChatWindow: React.FC = () => {
     }
   }, [currentConversationId, hasMore, loadingMore, loadMoreMessages]);
 
+  // 切换会话时清除输入状态
+  useEffect(() => {
+    return () => {
+      if (isTypingRef.current && currentConversationId) {
+        const { socket } = useSocketStore.getState();
+        socket?.emit('typing:stop', { conversationId: currentConversationId });
+        isTypingRef.current = false;
+      }
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    };
+  }, [currentConversationId]);
+
+  /** 处理输入变化时的 typing 状态 */
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+
+    if (!currentConversationId) return;
+    const { socket } = useSocketStore.getState();
+    if (!socket?.connected) return;
+
+    // 发送 typing:start
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      socket.emit('typing:start', { conversationId: currentConversationId });
+    }
+
+    // 重置计时器
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        socket.emit('typing:stop', { conversationId: currentConversationId });
+      }
+    }, TYPING_TIMEOUT);
+  };
+
+  /** 停止输入状态（发送时调用） */
+  const stopTyping = () => {
+    if (isTypingRef.current && currentConversationId) {
+      const { socket } = useSocketStore.getState();
+      socket?.emit('typing:stop', { conversationId: currentConversationId });
+      isTypingRef.current = false;
+    }
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  };
+
   // 切换消息类型时重置输入
   useEffect(() => {
     setInputValue('');
   }, [messageType]);
 
+  /** 判断自己发送的消息是否已被对方读取（仅私聊） */
+  const isMessageRead = (msg: Message): boolean => {
+    if (!currentConversationId || isGroup) return false;
+    if (msg.senderId !== currentUser?.id) return false;
+    const convReadMap = lastReadMap[currentConversationId];
+    if (!convReadMap) return false;
+    // 检查对方的 lastReadAt 是否 >= 消息发送时间
+    return Object.entries(convReadMap).some(
+      ([userId, ts]) => userId !== currentUser?.id && ts >= msg.createdAt,
+    );
+  };
+
   /** 发送文字 / 代码 / Markdown 消息 */
   const handleSend = () => {
     if (!inputValue.trim()) return;
+
+    stopTyping();
 
     if (messageType === 'code') {
       sendMessage(inputValue, 'code', { codeLanguage });
@@ -374,7 +445,7 @@ const ChatWindow: React.FC = () => {
             <TextArea
               className={styles.textInput}
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="输入代码..."
               autoSize={{ minRows: 3, maxRows: 10 }}
@@ -388,7 +459,7 @@ const ChatWindow: React.FC = () => {
           <TextArea
             className={styles.textInput}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入 Markdown..."
             autoSize={{ minRows: 2, maxRows: 8 }}
@@ -416,7 +487,7 @@ const ChatWindow: React.FC = () => {
         return isGroup ? (
           <MentionInput
             value={inputValue}
-            onChange={setInputValue}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             members={mentionMembers}
             placeholder="输入消息，@ 提及成员..."
@@ -425,7 +496,7 @@ const ChatWindow: React.FC = () => {
           <TextArea
             className={styles.textInput}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入消息..."
             autoSize={{ minRows: 1, maxRows: 4 }}
@@ -461,6 +532,23 @@ const ChatWindow: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* 输入状态指示器 */}
+      {currentConversationId && (() => {
+        const convTyping = typingUsers[currentConversationId];
+        if (!convTyping || convTyping.size === 0) return null;
+        const names = Array.from(convTyping)
+          .filter((uid) => uid !== currentUser?.id)
+          .map((uid) => participantNames[uid] || uid);
+        if (names.length === 0) return null;
+        return (
+          <div className={styles.typingIndicator}>
+            {names.length === 1
+              ? `${names[0]} 正在输入...`
+              : `${names.join('、')} 正在输入...`}
+          </div>
+        );
+      })()}
 
       {/* 消息区域 */}
       <div className={styles.messageArea} ref={messageAreaRef} onScroll={handleScroll}>
@@ -500,6 +588,16 @@ const ChatWindow: React.FC = () => {
                 >
                   <MessageBubble message={msg} isSelf={isSelf} participantNames={participantNames} />
                 </div>
+                {/* 已读回执标记（仅私聊 + 自己发的消息） */}
+                {isSelf && !isGroup && !msg.recalled && (
+                  <span className={`${styles.readReceipt} ${isMessageRead(msg) ? styles.readReceiptRead : ''}`}>
+                    {isMessageRead(msg) ? (
+                      <><CheckOutlined /><CheckOutlined className={styles.readReceiptSecond} /></>
+                    ) : (
+                      <CheckOutlined />
+                    )}
+                  </span>
+                )}
               </div>
             </div>
           );

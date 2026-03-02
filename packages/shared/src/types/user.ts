@@ -4,6 +4,12 @@ export interface User {
   id: string;
   /** 用户名 */
   username: string;
+  /** 昵称（可选，未设置时展示 username） */
+  nickname?: string;
+  /** 头像 URL（相对路径，如 /uploads/avatars/xxx.jpg） */
+  avatar?: string;
+  /** 个人简介 */
+  bio?: string;
   /** 是否为机器人 */
   isBot?: boolean;
   /** 机器人所有者用户 ID */

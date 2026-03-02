@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   MAX_IMAGE_SIZE,
   MAX_FILE_SIZE,
+  MAX_AVATAR_SIZE,
   ALLOWED_IMAGE_TYPES,
 } from '@chat/shared';
 import type { Request } from 'express';
@@ -17,6 +18,7 @@ const UPLOAD_DIRS = {
   images: path.join(UPLOAD_ROOT, 'images'),
   audio: path.join(UPLOAD_ROOT, 'audio'),
   files: path.join(UPLOAD_ROOT, 'files'),
+  avatars: path.join(UPLOAD_ROOT, 'avatars'),
 };
 
 // 启动时确保目录存在
@@ -70,6 +72,24 @@ export const imageUpload = multer({
 export const fileUpload = multer({
   storage: fileStorage,
   limits: { fileSize: MAX_FILE_SIZE },
+});
+
+/** 头像存储配置 */
+const avatarStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOAD_DIRS.avatars);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${uuidv4()}${ext}`);
+  },
+});
+
+/** 头像上传中间件 */
+export const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: MAX_AVATAR_SIZE },
+  fileFilter: imageFilter,
 });
 
 /** 根据文件路径生成 URL */

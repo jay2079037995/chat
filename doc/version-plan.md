@@ -398,28 +398,6 @@
 
 ---
 
-## v1.4.1 - 移动端基础（响应式布局 + 触摸优化）
-
-**目标**：建立响应式基础设施，主布局和认证页面移动端适配，触摸基础优化。
-
-### 前端
-- [ ] `responsive.less` — 断点变量（@mobile: 768px, @tablet: 1024px）+ 响应式 mixin
-- [ ] `useIsMobile` hook — 监听 viewport 宽度判断移动端
-- [ ] `global.less` — 移动端变量覆盖 + touch-action + 安全区域适配
-- [ ] `webpack.config.js` — viewport meta 标签（viewport-fit=cover）
-- [ ] `Home.tsx` — 移动端视图切换（一次只显示会话列表 OR 聊天窗口）
-- [ ] `Home/index.module.less` — 移动端全屏布局 + header 缩小(56px)
-- [ ] `Login/index.module.less` — 登录卡片响应式（max-width: 420px）
-- [ ] `Register/index.module.less` — 注册页面响应式
-- [ ] Header 移动端精简（隐藏文字标签，仅图标）
-
-### 测试
-- [ ] useIsMobile hook 测试
-- [ ] 移动端布局切换测试（视图切换、返回按钮）
-- [ ] 桌面端回归（布局不变）
-
----
-
 ## v1.5.0 - 会话管理
 
 **目标**：置顶会话、免打扰、群消息置顶、消息转发、会话归档/删除、会话标签。
@@ -452,32 +430,6 @@
 
 ---
 
-## v1.5.1 - 移动端组件（全组件适配 + 交互优化）
-
-**目标**：对所有聊天组件做移动端适配，添加触摸交互支持。
-
-### 前端
-- [ ] `useLongPress` hook — 长按手势（500ms 触发）
-- [ ] `ChatWindow` — 移动端返回按钮 + onBack prop + 精简工具栏
-- [ ] `ChatWindow/index.module.less` — 移动端间距调整
-- [ ] `MessageBubble/index.module.less` — 气泡 max-width: 60% → 85%（移动端）
-- [ ] `ConversationList/index.module.less` — 触摸友好间距 + 长按替代右键
-- [ ] `MessageContextMenu` — 移动端底部弹出 Sheet + 长按触发
-- [ ] `EmojiPicker` — 移动端全屏/底部弹出
-- [ ] `MessageToolbar` — 移动端精简按钮
-- [ ] `ReplyPreview` — 缩小预览区高度
-- [ ] `ImageMessage` — 移动端全宽 + 点击全屏预览
-- [ ] `GroupMemberPanel` — 移动端 Drawer 滑出
-- [ ] `CreateGroupDialog` / `MessageSearch` / `BotManager` — 移动端全屏
-- [ ] `MentionInput` — 触摸键盘适配
-
-### 测试
-- [ ] useLongPress hook 测试
-- [ ] ChatWindow 移动端返回按钮测试
-- [ ] 桌面端全量回归
-
----
-
 ## v1.6.0 - Bot 增强
 
 **目标**：Bot 获取聊天历史（让 bot 知道完整聊天内容）、更多 LLM 提供商、Bot 富文本回复、Slash 命令。
@@ -503,7 +455,57 @@
 
 ---
 
-## v1.6.1 - PWA 支持（Service Worker + 离线 + 安装）
+---
+
+## v1.7.0 - 移动端基础（响应式布局 + 触摸优化）
+
+**目标**：建立响应式基础设施，主布局和认证页面移动端适配，触摸基础优化。
+
+### 前端
+- [ ] `responsive.less` — 断点变量（@mobile: 768px, @tablet: 1024px）+ 响应式 mixin
+- [ ] `useIsMobile` hook — 监听 viewport 宽度判断移动端
+- [ ] `global.less` — 移动端变量覆盖 + touch-action + 安全区域适配
+- [ ] `webpack.config.js` — viewport meta 标签（viewport-fit=cover）
+- [ ] `Home.tsx` — 移动端视图切换（一次只显示会话列表 OR 聊天窗口）
+- [ ] `Home/index.module.less` — 移动端全屏布局 + header 缩小(56px)
+- [ ] `Login/index.module.less` — 登录卡片响应式（max-width: 420px）
+- [ ] `Register/index.module.less` — 注册页面响应式
+- [ ] Header 移动端精简（隐藏文字标签，仅图标）
+
+### 测试
+- [ ] useIsMobile hook 测试
+- [ ] 移动端布局切换测试（视图切换、返回按钮）
+- [ ] 桌面端回归（布局不变）
+
+---
+
+## v1.8.0 - 移动端组件（全组件适配 + 交互优化）
+
+**目标**：对所有聊天组件做移动端适配，添加触摸交互支持。
+
+### 前端
+- [ ] `useLongPress` hook — 长按手势（500ms 触发）
+- [ ] `ChatWindow` — 移动端返回按钮 + onBack prop + 精简工具栏
+- [ ] `ChatWindow/index.module.less` — 移动端间距调整
+- [ ] `MessageBubble/index.module.less` — 气泡 max-width: 60% → 85%（移动端）
+- [ ] `ConversationList/index.module.less` — 触摸友好间距 + 长按替代右键
+- [ ] `MessageContextMenu` — 移动端底部弹出 Sheet + 长按触发
+- [ ] `EmojiPicker` — 移动端全屏/底部弹出
+- [ ] `MessageToolbar` — 移动端精简按钮
+- [ ] `ReplyPreview` — 缩小预览区高度
+- [ ] `ImageMessage` — 移动端全宽 + 点击全屏预览
+- [ ] `GroupMemberPanel` — 移动端 Drawer 滑出
+- [ ] `CreateGroupDialog` / `MessageSearch` / `BotManager` — 移动端全屏
+- [ ] `MentionInput` — 触摸键盘适配
+
+### 测试
+- [ ] useLongPress hook 测试
+- [ ] ChatWindow 移动端返回按钮测试
+- [ ] 桌面端全量回归
+
+---
+
+## v1.9.0 - PWA 支持（Service Worker + 离线 + 安装）
 
 **目标**：将应用升级为 PWA，支持离线访问、安装到主屏幕。
 

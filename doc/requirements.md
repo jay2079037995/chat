@@ -258,16 +258,16 @@ chat/
 - Bot 支持 /help、/model、/reset、/system 等命令
 - Slash 命令由 Agent 本地处理，不发送给 LLM
 
-### 4.6 移动端适配（v1.4.1 / v1.5.1 / v1.6.1）
+### 4.6 移动端适配（v1.7.0 / v1.8.0 / v1.9.0）
 
-#### 4.6.1 响应式布局（v1.4.1）
+#### 4.6.1 响应式布局（v1.7.0）
 - 建立响应式基础设施（断点变量、mixin、useIsMobile hook）
 - 主布局移动端视图切换（会话列表 ↔ 聊天窗口全屏互斥）
 - Header 移动端精简（隐藏文字标签，仅图标，高度 56px）
 - 认证页面响应式（登录/注册卡片适配小屏幕）
 - 触摸基础优化（touch-action、最小点击区域 44px、安全区域适配）
 
-#### 4.6.2 组件移动端适配（v1.5.1）
+#### 4.6.2 组件移动端适配（v1.8.0）
 - ChatWindow 移动端返回按钮 + 精简工具栏
 - MessageBubble 气泡宽度移动端 85%
 - MessageContextMenu 移动端底部弹出 Sheet + 长按触发
@@ -275,7 +275,7 @@ chat/
 - ConversationList 触摸友好间距
 - 所有弹窗组件移动端全屏化
 
-#### 4.6.3 PWA 支持（v1.6.1）
+#### 4.6.3 PWA 支持（v1.9.0）
 - PWA Manifest（应用名称、图标、standalone 模式）
 - Service Worker（Workbox：静态资源 CacheFirst、API NetworkFirst）
 - 离线消息队列（断网时暂存消息，恢复后自动发送）
