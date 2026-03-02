@@ -9,6 +9,7 @@ import { ChatService } from './ChatService';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 import { MESSAGES_PER_PAGE, ALLOWED_AUDIO_TYPES, MAX_AUDIO_SIZE } from '@chat/shared';
 import { imageUpload, fileUpload, getFileUrl } from './upload';
+import { getRedisClient } from '../../repositories/redis/RedisClient';
 
 /**
  * 修复 multer originalname 的编码问题
@@ -58,7 +59,19 @@ export class ChatModule implements ServerModule {
           }
         }
 
-        res.json({ conversations, participantNames });
+        // 解析群组名称
+        const groupNames: Record<string, string> = {};
+        const redis = getRedisClient();
+        for (const conv of conversations) {
+          if (conv.type === 'group') {
+            const groupData = await redis.hgetall(conv.id);
+            if (groupData?.name) {
+              groupNames[conv.id] = groupData.name;
+            }
+          }
+        }
+
+        res.json({ conversations, participantNames, groupNames });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }

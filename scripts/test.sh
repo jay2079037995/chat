@@ -194,10 +194,16 @@ run_structure_checks() {
     [ -f "packages/client/src/modules/chat/components/MessageToolbar/index.tsx" ] && pass "MessageToolbar 组件" || fail "MessageToolbar 缺失"
   fi
 
-  # v0.5.0 结构（预留）
+  # v0.5.0 结构
   if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.5" ]; then
     echo -e "  ${BOLD}-- v0.5.0 群组聊天结构 --${NC}"
-    echo -e "  ${YELLOW}(待实现)${NC}"
+    # 后端
+    [ -f "packages/server/src/modules/group/GroupService.ts" ] && pass "GroupService" || fail "GroupService 缺失"
+    [ -f "packages/server/src/modules/group/index.ts" ] && pass "后端 group 模块" || fail "后端 group 模块缺失"
+    # 前端
+    [ -f "packages/client/src/modules/chat/services/groupService.ts" ] && pass "groupService" || fail "groupService 缺失"
+    [ -f "packages/client/src/modules/chat/components/CreateGroupDialog/index.tsx" ] && pass "CreateGroupDialog 组件" || fail "CreateGroupDialog 缺失"
+    [ -f "packages/client/src/modules/chat/components/GroupMemberPanel/index.tsx" ] && pass "GroupMemberPanel 组件" || fail "GroupMemberPanel 缺失"
   fi
 }
 

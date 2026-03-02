@@ -10,6 +10,7 @@ import type { ServerModule, TypedIO, TypedSocket } from './core/types';
 import { AuthModule } from './modules/auth';
 import { UserModule } from './modules/user';
 import { ChatModule } from './modules/chat';
+import { GroupModule } from './modules/group';
 
 // 初始化 DI 容器
 const container = new Container();
@@ -33,7 +34,7 @@ const modules: ServerModule[] = [
   new AuthModule(),
   new UserModule(),
   new ChatModule(),
-  // new GroupModule(),   // v0.5.0
+  new GroupModule(),
 ];
 
 const socketHandlers: Array<(io: TypedIO, socket: TypedSocket) => void> = [];

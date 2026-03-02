@@ -13,6 +13,7 @@ export interface ConversationWithUnread extends Conversation {
 interface ConversationsResponse {
   conversations: ConversationWithUnread[];
   participantNames: Record<string, string>;
+  groupNames: Record<string, string>;
 }
 
 /** 创建私聊 API 返回值 */

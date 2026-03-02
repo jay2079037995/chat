@@ -3,7 +3,8 @@
  *
  * 前后端共享，确保 WebSocket 事件的类型安全。
  */
-import type { Message } from './message';
+import type { Message, Conversation } from './message';
+import type { Group } from './group';
 
 /** 服务端 → 客户端 事件 */
 export interface ServerToClientEvents {
@@ -17,6 +18,16 @@ export interface ServerToClientEvents {
   'users:online_list': (userIds: string[]) => void;
   /** 消息已读回执 */
   'message:read': (data: { conversationId: string; userId: string }) => void;
+  /** 群组成员加入通知 */
+  'group:member_added': (data: { groupId: string; userId: string; username: string }) => void;
+  /** 群组成员移除通知 */
+  'group:member_removed': (data: { groupId: string; userId: string }) => void;
+  /** 被邀请加入群组 */
+  'group:invited': (data: { group: Group; conversation: Conversation }) => void;
+  /** 被移出群组 */
+  'group:kicked': (data: { groupId: string; conversationId: string }) => void;
+  /** 群组已解散 */
+  'group:dissolved': (data: { groupId: string; conversationId: string }) => void;
 }
 
 /** 客户端 → 服务端 事件 */

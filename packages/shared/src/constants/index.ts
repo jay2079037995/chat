@@ -16,3 +16,9 @@ export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'ima
 export const ALLOWED_AUDIO_TYPES = ['audio/webm', 'audio/mp3', 'audio/wav', 'audio/ogg'];
 /** 每页加载的消息数量 */
 export const MESSAGES_PER_PAGE = 50;
+/** 群组名称最小长度 */
+export const MIN_GROUP_NAME_LENGTH = 2;
+/** 群组名称最大长度 */
+export const MAX_GROUP_NAME_LENGTH = 50;
+/** 群组最大成员数 */
+export const MAX_GROUP_MEMBERS = 100;

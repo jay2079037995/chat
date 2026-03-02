@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { Avatar, Badge } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { UserOutlined, TeamOutlined } from '@ant-design/icons';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
@@ -36,6 +36,7 @@ const ConversationList: React.FC = () => {
   const currentConversationId = useChatStore((s) => s.currentConversationId);
   const selectConversation = useChatStore((s) => s.selectConversation);
   const participantNames = useChatStore((s) => s.participantNames);
+  const groupNames = useChatStore((s) => s.groupNames);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -47,10 +48,28 @@ const ConversationList: React.FC = () => {
     <div className={styles.container}>
       {conversations.map((conv) => {
         const isActive = conv.id === currentConversationId;
-        // 私聊：显示对方的用户名
-        const otherParticipantId = conv.participants.find((p) => p !== currentUser?.id) || '';
-        const otherName = participantNames[otherParticipantId] || otherParticipantId;
-        const isOnline = onlineUsers.has(otherParticipantId);
+        const isGroup = conv.type === 'group';
+
+        // 群聊：显示群名；私聊：显示对方用户名
+        let displayName: string;
+        let isOnline = false;
+
+        if (isGroup) {
+          displayName = groupNames[conv.id] || '群聊';
+        } else {
+          const otherParticipantId = conv.participants.find((p) => p !== currentUser?.id) || '';
+          displayName = participantNames[otherParticipantId] || otherParticipantId;
+          isOnline = onlineUsers.has(otherParticipantId);
+        }
+
+        // 群聊 lastMessage 预览加上发送者名称
+        let lastMessagePreview = conv.lastMessage?.content || '暂无消息';
+        if (isGroup && conv.lastMessage) {
+          const senderName = participantNames[conv.lastMessage.senderId] || '';
+          if (senderName) {
+            lastMessagePreview = `${senderName}: ${conv.lastMessage.content}`;
+          }
+        }
 
         return (
           <div
@@ -59,18 +78,18 @@ const ConversationList: React.FC = () => {
             onClick={() => selectConversation(conv.id)}
           >
             <div className={styles.avatarWrapper}>
-              <Avatar icon={<UserOutlined />} />
-              {isOnline && <span className={styles.onlineIndicator} />}
+              <Avatar icon={isGroup ? <TeamOutlined /> : <UserOutlined />} />
+              {!isGroup && isOnline && <span className={styles.onlineIndicator} />}
             </div>
             <div className={styles.info}>
               <div className={styles.nameRow}>
-                <span className={styles.name}>{otherName}</span>
+                <span className={styles.name}>{displayName}</span>
                 {conv.lastMessage && (
                   <span className={styles.time}>{formatTime(conv.lastMessage.createdAt)}</span>
                 )}
               </div>
               <div className={styles.lastMessage}>
-                {conv.lastMessage?.content || '暂无消息'}
+                {lastMessagePreview}
               </div>
             </div>
             {conv.unreadCount > 0 && (

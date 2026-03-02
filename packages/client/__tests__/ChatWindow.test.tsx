@@ -25,6 +25,7 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
         { id: 'conv1', type: 'private', participants: ['user1', 'user2'], updatedAt: Date.now(), unreadCount: 0 },
       ],
       participantNames: { user2: 'alice' },
+      groupNames: {},
       sendMessage: mockSendMessage,
     }),
 }));

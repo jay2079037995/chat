@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input, Select, Upload, Progress, message as antMessage } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
+import { SendOutlined, TeamOutlined } from '@ant-design/icons';
 import type { MessageType } from '@chat/shared';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
@@ -14,6 +14,7 @@ import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { chatService } from '../../services/chatService';
 import MessageBubble from '../MessageBubble';
 import MessageToolbar from '../MessageToolbar';
+import GroupMemberPanel from '../GroupMemberPanel';
 import styles from './index.module.less';
 
 const { TextArea } = Input;
@@ -45,6 +46,7 @@ const ChatWindow: React.FC = () => {
   const messages = useChatStore((s) => s.messages);
   const conversations = useChatStore((s) => s.conversations);
   const participantNames = useChatStore((s) => s.participantNames);
+  const groupNames = useChatStore((s) => s.groupNames);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
@@ -55,6 +57,7 @@ const ChatWindow: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showMemberPanel, setShowMemberPanel] = useState(false);
 
   const messageEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -64,9 +67,14 @@ const ChatWindow: React.FC = () => {
   const currentMessages = currentConversationId ? messages[currentConversationId] || [] : [];
 
   const currentConv = conversations.find((c) => c.id === currentConversationId);
+  const isGroup = currentConv?.type === 'group';
   const otherParticipantId = currentConv?.participants.find((p) => p !== currentUser?.id) || '';
   const otherName = participantNames[otherParticipantId] || otherParticipantId;
   const isOnline = onlineUsers.has(otherParticipantId);
+
+  // 群聊信息
+  const groupName = isGroup && currentConversationId ? groupNames[currentConversationId] || '群聊' : '';
+  const memberCount = currentConv?.participants.length || 0;
 
   useEffect(() => {
     if (typeof messageEndRef.current?.scrollIntoView === 'function') {
@@ -312,9 +320,26 @@ const ChatWindow: React.FC = () => {
     <div className={styles.container}>
       {/* 顶部 */}
       <div className={styles.header}>
-        <span className={styles.headerName}>{otherName}</span>
-        <span className={isOnline ? styles.onlineDot : styles.offlineDot} />
-        <span className={styles.statusText}>{isOnline ? '在线' : '离线'}</span>
+        {isGroup ? (
+          <>
+            <span className={styles.headerName}>{groupName}</span>
+            <span className={styles.memberCount}>({memberCount}人)</span>
+            <div style={{ flex: 1 }} />
+            <Button
+              type="text"
+              icon={<TeamOutlined />}
+              onClick={() => setShowMemberPanel(true)}
+            >
+              成员
+            </Button>
+          </>
+        ) : (
+          <>
+            <span className={styles.headerName}>{otherName}</span>
+            <span className={isOnline ? styles.onlineDot : styles.offlineDot} />
+            <span className={styles.statusText}>{isOnline ? '在线' : '离线'}</span>
+          </>
+        )}
       </div>
 
       {/* 消息区域 */}
@@ -322,8 +347,13 @@ const ChatWindow: React.FC = () => {
         {currentMessages.map((msg) => {
           const isSelf = msg.senderId === currentUser?.id;
           const isMediaType = msg.type === 'image' || msg.type === 'code' || msg.type === 'file';
+          const showSenderName = isGroup && !isSelf;
+          const senderName = participantNames[msg.senderId] || msg.senderId;
           return (
             <div key={msg.id}>
+              {showSenderName && (
+                <div className={styles.senderName}>{senderName}</div>
+              )}
               <div
                 className={`${styles.messageItem} ${
                   isSelf ? styles.messageItemSelf : styles.messageItemOther
@@ -370,6 +400,14 @@ const ChatWindow: React.FC = () => {
           )}
         </div>
       </div>
+
+      {isGroup && currentConversationId && (
+        <GroupMemberPanel
+          groupId={currentConversationId}
+          visible={showMemberPanel}
+          onClose={() => setShowMemberPanel(false)}
+        />
+      )}
     </div>
   );
 };

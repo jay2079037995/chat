@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import type { Message, MessageType } from '@chat/shared';
 import { chatService, type ConversationWithUnread } from '../services/chatService';
+import { groupService } from '../services/groupService';
 import { useSocketStore } from './useSocketStore';
 
 interface ChatState {
@@ -17,6 +18,8 @@ interface ChatState {
   messages: Record<string, Message[]>;
   /** 参与者用户名映射：userId → username */
   participantNames: Record<string, string>;
+  /** 群组名称映射：groupId → groupName */
+  groupNames: Record<string, string>;
   /** 是否正在加载 */
   loading: boolean;
 
@@ -32,6 +35,8 @@ interface ChatState {
   receiveMessage: (message: Message) => void;
   /** 创建/进入私聊 */
   startPrivateChat: (targetUserId: string) => Promise<void>;
+  /** 创建群组 */
+  createGroup: (name: string, memberIds: string[]) => Promise<void>;
   /** 处理已读回执 */
   handleReadReceipt: (conversationId: string, userId: string) => void;
 }
@@ -41,14 +46,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentConversationId: null,
   messages: {},
   participantNames: {},
+  groupNames: {},
   loading: false,
 
   loadConversations: async () => {
     try {
-      const { conversations, participantNames } = await chatService.getConversations();
+      const { conversations, participantNames, groupNames } = await chatService.getConversations();
       set((state) => ({
         conversations,
         participantNames: { ...state.participantNames, ...participantNames },
+        groupNames: { ...state.groupNames, ...groupNames },
       }));
     } catch (err) {
       console.error('加载会话列表失败:', err);
@@ -186,6 +193,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await get().selectConversation(conversation.id);
     } catch (err) {
       console.error('创建私聊失败:', err);
+    }
+  },
+
+  createGroup: async (name: string, memberIds: string[]) => {
+    try {
+      const { group, conversation, participantNames } = await groupService.createGroup(name, memberIds);
+
+      set((state) => ({
+        participantNames: { ...state.participantNames, ...participantNames },
+        groupNames: { ...state.groupNames, [group.id]: group.name },
+        conversations: [{ ...conversation, unreadCount: 0 }, ...state.conversations],
+      }));
+
+      await get().selectConversation(conversation.id);
+    } catch (err) {
+      console.error('创建群组失败:', err);
+      throw err;
     }
   },
 

@@ -88,6 +88,62 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
+    // 群组事件：被邀请入群 → 刷新会话列表
+    socket.on('group:invited', () => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().loadConversations();
+      });
+    });
+
+    // 群组事件：被踢出群 → 移除会话
+    socket.on('group:kicked', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        const store = useChatStore.getState();
+        useChatStore.setState((state) => ({
+          conversations: state.conversations.filter((c) => c.id !== data.conversationId),
+          currentConversationId:
+            state.currentConversationId === data.conversationId
+              ? null
+              : state.currentConversationId,
+        }));
+        // 如果当前正在看被踢的群，重新加载
+        if (store.currentConversationId === data.conversationId) {
+          void store.loadConversations();
+        }
+      });
+    });
+
+    // 群组事件：新成员加入
+    socket.on('group:member_added', () => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().loadConversations();
+      });
+    });
+
+    // 群组事件：成员被移除
+    socket.on('group:member_removed', () => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().loadConversations();
+      });
+    });
+
+    // 群组事件：群组已解散 → 移除会话（逻辑同 group:kicked）
+    socket.on('group:dissolved', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        const store = useChatStore.getState();
+        useChatStore.setState((state) => ({
+          conversations: state.conversations.filter((c) => c.id !== data.conversationId),
+          currentConversationId:
+            state.currentConversationId === data.conversationId
+              ? null
+              : state.currentConversationId,
+        }));
+        if (store.currentConversationId === data.conversationId) {
+          void store.loadConversations();
+        }
+      });
+    });
+
     set({ socket, connected: false });
   },
 
