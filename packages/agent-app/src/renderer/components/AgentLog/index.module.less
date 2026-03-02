@@ -1,0 +1,80 @@
+.container {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.statItem {
+  padding: 8px 16px;
+  background: #fafafa;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #595959;
+}
+
+.statValue {
+  font-weight: 600;
+  color: #262626;
+  margin-left: 4px;
+}
+
+.logPanel {
+  flex: 1;
+  background: #1e1e1e;
+  border-radius: 8px;
+  padding: 12px;
+  overflow-y: auto;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.logEntry {
+  padding: 2px 0;
+}
+
+.logTime {
+  color: #6a9955;
+  margin-right: 8px;
+}
+
+.logInfo {
+  color: #d4d4d4;
+}
+
+.logWarn {
+  color: #dcdcaa;
+}
+
+.logError {
+  color: #f44747;
+}
+
+.emptyLog {
+  color: #6a6a6a;
+  text-align: center;
+  padding: 40px;
+}
+
+.errorBanner {
+  margin-bottom: 16px;
+}
