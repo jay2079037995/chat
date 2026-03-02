@@ -15,6 +15,8 @@ export const config = {
     host: process.env.REDIS_HOST || '127.0.0.1',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     password: process.env.REDIS_PASSWORD || undefined,
+    /** 数据库编号：开发用 db 0，测试用 db 1（避免 flushdb 清除开发数据） */
+    db: parseInt(process.env.REDIS_DB || '0', 10),
   },
   /** JWT 配置 */
   jwt: {

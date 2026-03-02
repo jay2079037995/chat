@@ -1,5 +1,8 @@
 import type { Config } from 'jest';
 
+// 测试使用 Redis db 1，避免 flushdb 清除开发数据（db 0）
+process.env.REDIS_DB = '1';
+
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
