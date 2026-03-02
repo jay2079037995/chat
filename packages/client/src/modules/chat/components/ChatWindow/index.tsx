@@ -52,6 +52,7 @@ const ChatWindow: React.FC = () => {
   const hasMore = useChatStore((s) => s.hasMore);
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadMoreMessages = useChatStore((s) => s.loadMoreMessages);
+  const botUserIds = useChatStore((s) => s.botUserIds);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -75,7 +76,7 @@ const ChatWindow: React.FC = () => {
   const isGroup = currentConv?.type === 'group';
   const otherParticipantId = currentConv?.participants.find((p) => p !== currentUser?.id) || '';
   const otherName = participantNames[otherParticipantId] || otherParticipantId;
-  const isOnline = onlineUsers.has(otherParticipantId);
+  const isOnline = botUserIds.has(otherParticipantId) || onlineUsers.has(otherParticipantId);
 
   // 群聊信息
   const groupName = isGroup && currentConversationId ? groupNames[currentConversationId] || '群聊' : '';

@@ -6,6 +6,7 @@ import { TOKENS } from './core/tokens';
 import type { ServerToClientEvents, ClientToServerEvents } from '@chat/shared';
 import type { ISessionRepository } from './repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from './repositories/interfaces/IMessageRepository';
+import { getRedisClient } from './repositories/redis/RedisClient';
 
 const server = http.createServer(app);
 
@@ -40,6 +41,14 @@ io.use(async (socket, next) => {
 
 // 将 Socket.IO 引用传给 BotModule，用于机器人发消息后广播
 botModule.setIO(io);
+
+// 服务器启动时清除上一次残留的在线状态（防止重启后 Redis 中有脏数据）
+void (async () => {
+  const redis = getRedisClient();
+  await redis.del('online_users');
+  await redis.del('user_sockets');
+  console.log('Cleared stale online presence data');
+})();
 
 io.on('connection', async (socket) => {
   const userId = (socket.data as any).userId as string;

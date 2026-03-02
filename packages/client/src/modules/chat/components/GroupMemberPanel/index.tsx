@@ -24,6 +24,7 @@ const GroupMemberPanel: React.FC<GroupMemberPanelProps> = ({ groupId, visible, o
   const participantNames = useChatStore((s) => s.participantNames);
   const conversations = useChatStore((s) => s.conversations);
   const loadConversations = useChatStore((s) => s.loadConversations);
+  const botUserIds = useChatStore((s) => s.botUserIds);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -134,7 +135,7 @@ const GroupMemberPanel: React.FC<GroupMemberPanelProps> = ({ groupId, visible, o
         dataSource={members}
         renderItem={(memberId) => {
           const name = participantNames[memberId] || memberId;
-          const isOnline = onlineUsers.has(memberId);
+          const isOnline = botUserIds.has(memberId) || onlineUsers.has(memberId);
           const isMemberOwner = memberId === groupOwnerId;
 
           return (

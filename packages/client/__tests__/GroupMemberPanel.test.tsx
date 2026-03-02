@@ -18,6 +18,7 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
         },
       ],
       loadConversations: jest.fn(),
+      botUserIds: new Set(),
     }),
 }));
 

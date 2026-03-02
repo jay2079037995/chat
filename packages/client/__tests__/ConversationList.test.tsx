@@ -39,6 +39,7 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       selectConversation: mockSelectConversation,
       participantNames: { user2: 'alice', user3: 'bob' },
       groupNames: { 'group:g1': '测试群组' },
+      botUserIds: new Set(),
     }),
 }));
 

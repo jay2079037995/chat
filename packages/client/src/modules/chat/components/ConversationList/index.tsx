@@ -39,6 +39,7 @@ const ConversationList: React.FC = () => {
   const groupNames = useChatStore((s) => s.groupNames);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
+  const botUserIds = useChatStore((s) => s.botUserIds);
 
   if (conversations.length === 0) {
     return <div className={styles.empty}>暂无会话，搜索用户开始聊天</div>;
@@ -59,7 +60,8 @@ const ConversationList: React.FC = () => {
         } else {
           const otherParticipantId = conv.participants.find((p) => p !== currentUser?.id) || '';
           displayName = participantNames[otherParticipantId] || otherParticipantId;
-          isOnline = onlineUsers.has(otherParticipantId);
+          // 机器人通过 HTTP 接入，不走 Socket.IO，视为始终在线
+          isOnline = botUserIds.has(otherParticipantId) || onlineUsers.has(otherParticipantId);
         }
 
         // 群聊 lastMessage 预览加上发送者名称
