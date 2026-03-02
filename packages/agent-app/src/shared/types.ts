@@ -1,5 +1,5 @@
 /** LLM 服务提供商 */
-export type Provider = 'deepseek' | 'minimax';
+export type Provider = 'deepseek' | 'minimax' | 'openai' | 'claude' | 'qwen' | 'custom';
 
 /** Agent 配置（持久化） */
 export interface AgentConfig {
@@ -14,6 +14,10 @@ export interface AgentConfig {
   contextLength: number;
   enabled: boolean;
   createdAt: number;
+  /** provider='custom' 时使用的自定义 API 地址 */
+  customBaseUrl?: string;
+  /** provider='custom' 时使用的自定义模型名称 */
+  customModel?: string;
 }
 
 /** Agent 运行状态 */
@@ -56,5 +60,21 @@ export const PROVIDERS: Record<Provider, ProviderInfo> = {
   minimax: {
     baseUrl: 'https://api.minimax.io/v1',
     models: ['MiniMax-M2.5'],
+  },
+  openai: {
+    baseUrl: 'https://api.openai.com/v1',
+    models: ['gpt-4o', 'gpt-4o-mini'],
+  },
+  claude: {
+    baseUrl: 'https://api.anthropic.com/v1',
+    models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'],
+  },
+  qwen: {
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen-plus', 'qwen-turbo'],
+  },
+  custom: {
+    baseUrl: '',
+    models: [],
   },
 };

@@ -105,6 +105,43 @@ export class BotModule implements ServerModule {
       }
     });
 
+    // GET /api/bot/getHistory — 获取会话历史消息（通过 token 认证）
+    router.get('/getHistory', async (req, res) => {
+      try {
+        const token = req.query.token as string;
+        if (!token) {
+          res.status(400).json({ error: '缺少 token 参数' });
+          return;
+        }
+        const conversationId = req.query.conversationId as string;
+        if (!conversationId) {
+          res.status(400).json({ error: '缺少 conversationId 参数' });
+          return;
+        }
+
+        const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
+        const offset = parseInt(req.query.offset as string, 10) || 0;
+
+        const result = await botService.getHistory(token, conversationId, limit, offset);
+        res.json(result);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error.message === 'INVALID_TOKEN') {
+          res.status(401).json({ error: 'Token 无效' });
+          return;
+        }
+        if (error.message === 'CONVERSATION_NOT_FOUND') {
+          res.status(404).json({ error: '会话不存在' });
+          return;
+        }
+        if (error.message === 'NOT_PARTICIPANT') {
+          res.status(403).json({ error: '机器人不是该会话的参与者' });
+          return;
+        }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // GET /api/bot/getUpdates — 长轮询获取消息（通过 token 认证）
     router.get('/getUpdates', async (req, res) => {
       try {

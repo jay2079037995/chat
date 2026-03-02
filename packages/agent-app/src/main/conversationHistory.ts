@@ -44,6 +44,46 @@ export function getRecentMessages(
   return history.slice(-sliceCount);
 }
 
+/** 检查指定 agent + conversation 是否已有历史 */
+export function hasHistory(agentId: string, conversationId: string): boolean {
+  const agentHistory = historyMap.get(agentId);
+  if (!agentHistory) return false;
+  const msgs = agentHistory.get(conversationId);
+  return !!msgs && msgs.length > 0;
+}
+
+/** 预填充服务端历史消息（仅在当前会话历史为空时执行） */
+export function prefillHistory(
+  agentId: string,
+  conversationId: string,
+  serverMessages: Array<{ senderId: string; content: string; createdAt: number }>,
+  botUserId: string,
+): void {
+  if (hasHistory(agentId, conversationId)) return;
+
+  if (!historyMap.has(agentId)) {
+    historyMap.set(agentId, new Map());
+  }
+  const agentHistory = historyMap.get(agentId)!;
+
+  // 按 createdAt 升序排列
+  const sorted = [...serverMessages].sort((a, b) => a.createdAt - b.createdAt);
+  const chatMessages: ChatMessage[] = sorted.map((msg) => ({
+    role: msg.senderId === botUserId ? 'assistant' as const : 'user' as const,
+    content: msg.content,
+  }));
+
+  agentHistory.set(conversationId, chatMessages);
+}
+
+/** 清除指定 agent + conversation 的历史 */
+export function clearConversationHistory(agentId: string, conversationId: string): void {
+  const agentHistory = historyMap.get(agentId);
+  if (agentHistory) {
+    agentHistory.delete(conversationId);
+  }
+}
+
 /** 清除指定 agent 的所有历史 */
 export function clearHistory(agentId: string): void {
   historyMap.delete(agentId);

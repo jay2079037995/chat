@@ -157,8 +157,11 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
-    // 初始化 Agent 管理器
-    agentManager = new AgentManager(sendLog, sendStatusChange);
+    // 初始化 Agent 管理器（含 Slash 命令配置变更回调）
+    agentManager = new AgentManager(sendLog, sendStatusChange, (agentId, updates) => {
+      updateAgent(agentId, updates);
+      sendStatusChange(agentId, agentManager.getState(agentId) as any);
+    });
 
     // 注册 IPC
     registerIpcHandlers();

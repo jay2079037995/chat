@@ -33,7 +33,11 @@ const AgentForm: React.FC<AgentFormProps> = ({ agent }) => {
 
   const handleProviderChange = (provider: Provider) => {
     const models = PROVIDERS[provider].models;
-    form.setFieldValue('model', models[0]);
+    form.setFieldValue('model', models[0] || '');
+    if (provider !== 'custom') {
+      form.setFieldValue('customBaseUrl', undefined);
+      form.setFieldValue('customModel', undefined);
+    }
   };
 
   const handleSubmit = async (values: any) => {
@@ -100,6 +104,10 @@ const AgentForm: React.FC<AgentFormProps> = ({ agent }) => {
           <Select onChange={handleProviderChange}>
             <Select.Option value="deepseek">DeepSeek</Select.Option>
             <Select.Option value="minimax">MiniMax</Select.Option>
+            <Select.Option value="openai">OpenAI</Select.Option>
+            <Select.Option value="claude">Claude</Select.Option>
+            <Select.Option value="qwen">通义千问</Select.Option>
+            <Select.Option value="custom">自定义</Select.Option>
           </Select>
         </Form.Item>
 
@@ -111,19 +119,40 @@ const AgentForm: React.FC<AgentFormProps> = ({ agent }) => {
           <Input.Password placeholder="LLM 提供商的 API Key" />
         </Form.Item>
 
-        <Form.Item
-          name="model"
-          label="模型"
-          rules={[{ required: true }]}
-        >
-          <Select>
-            {modelOptions.map((m) => (
-              <Select.Option key={m} value={m}>
-                {m}
-              </Select.Option>
-            ))}
-          </Select>
-        </Form.Item>
+        {selectedProvider === 'custom' && (
+          <>
+            <Form.Item
+              name="customBaseUrl"
+              label="自定义 API 地址"
+              rules={[{ required: true, message: '请输入自定义 API 地址' }]}
+            >
+              <Input placeholder="https://api.example.com/v1" />
+            </Form.Item>
+            <Form.Item
+              name="customModel"
+              label="自定义模型名称"
+              rules={[{ required: true, message: '请输入模型名称' }]}
+            >
+              <Input placeholder="model-name" />
+            </Form.Item>
+          </>
+        )}
+
+        {selectedProvider !== 'custom' && (
+          <Form.Item
+            name="model"
+            label="模型"
+            rules={[{ required: true }]}
+          >
+            <Select>
+              {modelOptions.map((m) => (
+                <Select.Option key={m} value={m}>
+                  {m}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        )}
 
         <Form.Item name="systemPrompt" label="System Prompt">
           <TextArea rows={4} placeholder="系统提示词，定义 Agent 的角色和行为" />

@@ -33,6 +33,16 @@ export class BotClient {
     return data.updates ?? data ?? [];
   }
 
+  /** 获取会话历史消息 */
+  async getHistory(
+    conversationId: string,
+    limit: number = 50,
+    offset: number = 0,
+  ): Promise<{ messages: any[]; botUserId: string; total: number }> {
+    const apiUrl = `${this.serverUrl}/api/bot/getHistory?token=${encodeURIComponent(this.token)}&conversationId=${encodeURIComponent(conversationId)}&limit=${limit}&offset=${offset}`;
+    return this.request('GET', apiUrl);
+  }
+
   /** 发送消息 */
   async sendMessage(conversationId: string, content: string, type: string = 'text'): Promise<any> {
     const apiUrl = `${this.serverUrl}/api/bot/sendMessage`;

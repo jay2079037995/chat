@@ -121,6 +121,27 @@ export class BotService {
     return this.messageRepo.saveMessage(message);
   }
 
+  /** 获取会话历史消息（供 Bot 加载上下文） */
+  async getHistory(
+    token: string,
+    conversationId: string,
+    limit: number = 50,
+    offset: number = 0,
+  ): Promise<{ messages: Message[]; botUserId: string; total: number }> {
+    const botId = await this.userRepo.findBotByToken(token);
+    if (!botId) throw new Error('INVALID_TOKEN');
+
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(botId)) throw new Error('NOT_PARTICIPANT');
+
+    const redis = getRedisClient();
+    const total = await redis.zcard(`conv_msgs:${conversationId}`);
+    const messages = await this.messageRepo.getMessages(conversationId, offset, limit);
+
+    return { messages, botUserId: botId, total };
+  }
+
   /** 通过 token 获取机器人 ID */
   async getBotIdByToken(token: string): Promise<string | null> {
     return this.userRepo.findBotByToken(token);
