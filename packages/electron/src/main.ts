@@ -5,10 +5,11 @@
  * 开发模式下加载 webpack dev server (localhost:3000)，
  * 生产模式下加载后端服务 (localhost:3001，需先启动服务端)。
  */
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { createMainWindow, getMainWindow } from './windowManager';
 import { buildMenu } from './menuBuilder';
 import { createTray, destroyTray } from './trayManager';
+import { isDebugEnabled, watchDebugFile, stopWatching } from './debugFileWatcher';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -26,15 +27,24 @@ if (!gotSingleInstanceLock) {
     }
   });
 
+  // 注册调试状态 IPC
+  ipcMain.handle('debug:get-status', () => isDebugEnabled());
+
   app.whenReady().then(() => {
     // 构建菜单
     buildMenu();
 
     // 创建主窗口
-    createMainWindow();
+    const win = createMainWindow();
 
     // 创建系统托盘
     createTray();
+
+    // 启动调试控制文件监听，窗口加载完成后发送初始状态
+    watchDebugFile(getMainWindow);
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.send('debug:status', isDebugEnabled());
+    });
 
     // macOS：点击 Dock 图标时重新显示窗口
     app.on('activate', () => {
@@ -53,6 +63,7 @@ if (!gotSingleInstanceLock) {
   // 标记强制退出（区分「关闭窗口→隐藏」和「真正退出」）
   app.on('before-quit', () => {
     (app as any)._forceQuit = true;
+    stopWatching();
   });
 
   // macOS 以外：所有窗口关闭时退出
