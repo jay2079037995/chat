@@ -21,6 +21,8 @@ export interface Message {
   mimeType?: string;
   /** 代码语言（type 为 code 时使用） */
   codeLanguage?: string;
+  /** 被 @提及 的用户 ID 列表 */
+  mentions?: string[];
   /** 发送时间戳 */
   createdAt: number;
 }

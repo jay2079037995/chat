@@ -109,6 +109,20 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
+    // @提及 通知
+    socket.on('mention:notify', (data) => {
+      import('antd').then(({ notification }) => {
+        notification.info({
+          message: `${data.senderName} @了你`,
+          description: data.message.content.length > 80
+            ? data.message.content.slice(0, 80) + '...'
+            : data.message.content,
+          duration: 5,
+          placement: 'topRight',
+        });
+      });
+    });
+
     // 群组事件：被邀请入群 → 刷新会话列表
     socket.on('group:invited', () => {
       import('./useChatStore').then(({ useChatStore }) => {

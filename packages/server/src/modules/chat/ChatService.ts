@@ -1,6 +1,7 @@
 import type { Message, Conversation } from '@chat/shared';
 import { generateId, MAX_MESSAGE_LENGTH } from '@chat/shared';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
+import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 
 /**
  * 聊天服务
@@ -9,7 +10,10 @@ import type { IMessageRepository } from '../../repositories/interfaces/IMessageR
  * 通过构造函数注入 Repository 依赖。
  */
 export class ChatService {
-  constructor(private messageRepo: IMessageRepository) {}
+  constructor(
+    private messageRepo: IMessageRepository,
+    private userRepo: IUserRepository,
+  ) {}
 
   /**
    * 生成确定性私聊会话 ID
@@ -77,6 +81,24 @@ export class ChatService {
         break;
     }
 
+    // 解析 @username 提及，转换为 userId 列表
+    let mentions: string[] | undefined;
+    if (type === 'text' || type === 'markdown') {
+      const mentionPattern = /@(\S+)/g;
+      const usernames = [...content.matchAll(mentionPattern)].map((m) => m[1]);
+      if (usernames.length > 0) {
+        const resolved: string[] = [];
+        const seen = new Set<string>();
+        for (const uname of usernames) {
+          if (seen.has(uname)) continue;
+          seen.add(uname);
+          const user = await this.userRepo.findByUsername(uname);
+          if (user) resolved.push(user.id);
+        }
+        if (resolved.length > 0) mentions = resolved;
+      }
+    }
+
     const message: Message = {
       id: generateId(),
       conversationId,
@@ -88,6 +110,7 @@ export class ChatService {
       ...(metadata?.fileSize !== undefined && { fileSize: metadata.fileSize }),
       ...(metadata?.mimeType && { mimeType: metadata.mimeType }),
       ...(metadata?.codeLanguage && { codeLanguage: metadata.codeLanguage }),
+      ...(mentions && { mentions }),
     };
 
     return this.messageRepo.saveMessage(message);

@@ -39,7 +39,7 @@ export class ChatModule implements ServerModule {
     const sessionRepo = ctx.resolve<ISessionRepository>(TOKENS.SessionRepository);
     const messageRepo = ctx.resolve<IMessageRepository>(TOKENS.MessageRepository);
 
-    const chatService = new ChatService(messageRepo);
+    const chatService = new ChatService(messageRepo, userRepo);
     const sessionMiddleware = createSessionMiddleware(sessionRepo, userRepo);
 
     const router = Router();
@@ -302,6 +302,21 @@ export class ChatModule implements ServerModule {
 
           // 广播给会话中的其他成员
           socket.to(data.conversationId).emit('message:receive', message);
+
+          // 通知被 @提及 的用户
+          if (message.mentions && message.mentions.length > 0) {
+            const sender = await userRepo.findById(userId);
+            const senderName = sender?.username || userId;
+            for (const mentionedUserId of message.mentions) {
+              if (mentionedUserId !== userId) {
+                io.to(`user:${mentionedUserId}`).emit('mention:notify', {
+                  message,
+                  conversationId: data.conversationId,
+                  senderName,
+                });
+              }
+            }
+          }
 
           // 检查离线参与者，将消息存入离线队列
           if (conv) {

@@ -15,6 +15,7 @@ import { chatService } from '../../services/chatService';
 import MessageBubble from '../MessageBubble';
 import MessageToolbar from '../MessageToolbar';
 import GroupMemberPanel from '../GroupMemberPanel';
+import MentionInput from '../MentionInput';
 import styles from './index.module.less';
 
 const { TextArea } = Input;
@@ -237,6 +238,13 @@ const ChatWindow: React.FC = () => {
     setMessageType('text');
   };
 
+  // 群聊可 @ 的成员列表
+  const mentionMembers = isGroup && currentConv
+    ? currentConv.participants
+        .filter((pid) => pid !== currentUser?.id)
+        .map((pid) => ({ id: pid, username: participantNames[pid] || pid }))
+    : [];
+
   if (!currentConversationId) return null;
 
   /** 渲染输入区域 */
@@ -323,7 +331,15 @@ const ChatWindow: React.FC = () => {
         );
 
       default:
-        return (
+        return isGroup ? (
+          <MentionInput
+            value={inputValue}
+            onChange={setInputValue}
+            onKeyDown={handleKeyDown}
+            members={mentionMembers}
+            placeholder="输入消息，@ 提及成员..."
+          />
+        ) : (
           <TextArea
             className={styles.textInput}
             value={inputValue}
@@ -402,7 +418,7 @@ const ChatWindow: React.FC = () => {
                     isSelf ? styles.bubbleSelf : styles.bubbleOther
                   } ${isMediaType ? styles.bubbleMedia : ''}`}
                 >
-                  <MessageBubble message={msg} isSelf={isSelf} />
+                  <MessageBubble message={msg} isSelf={isSelf} participantNames={participantNames} />
                 </div>
               </div>
             </div>

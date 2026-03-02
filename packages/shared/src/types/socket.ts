@@ -30,6 +30,8 @@ export interface ServerToClientEvents {
   'group:dissolved': (data: { groupId: string; conversationId: string }) => void;
   /** 上线后推送离线消息 */
   'sync:offline_messages': (messages: Message[]) => void;
+  /** 某条消息中 @提及 了当前用户 */
+  'mention:notify': (data: { message: Message; conversationId: string; senderName: string }) => void;
 }
 
 /** 客户端 → 服务端 事件 */

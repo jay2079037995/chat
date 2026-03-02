@@ -65,7 +65,7 @@ describe('ChatWindow (v0.3.0)', () => {
       renderChatWindow();
     });
 
-    expect(screen.getByText('alice')).toBeDefined();
+    expect(screen.getAllByText('alice').length).toBeGreaterThan(0);
     expect(screen.getByText('在线')).toBeDefined();
   });
 

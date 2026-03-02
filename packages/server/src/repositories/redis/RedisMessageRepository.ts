@@ -39,6 +39,7 @@ export class RedisMessageRepository implements IMessageRepository {
     if (msg.fileSize !== undefined) data.fileSize = String(msg.fileSize);
     if (msg.mimeType) data.mimeType = msg.mimeType;
     if (msg.codeLanguage) data.codeLanguage = msg.codeLanguage;
+    if (msg.mentions && msg.mentions.length > 0) data.mentions = JSON.stringify(msg.mentions);
     return data;
   }
 
@@ -56,6 +57,7 @@ export class RedisMessageRepository implements IMessageRepository {
     if (data.fileSize) msg.fileSize = parseInt(data.fileSize, 10);
     if (data.mimeType) msg.mimeType = data.mimeType;
     if (data.codeLanguage) msg.codeLanguage = data.codeLanguage;
+    if (data.mentions) msg.mentions = JSON.parse(data.mentions);
     return msg;
   }
 

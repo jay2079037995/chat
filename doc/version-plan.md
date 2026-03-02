@@ -243,3 +243,57 @@
 - [ ] 全量自动化测试通过（151 tests）
 - [ ] `pnpm build` 编译通过
 - [ ] 视觉检查全部页面
+
+---
+
+## v1.0.0 - @提及功能
+
+**目标**：群聊中支持 @提及 成员，高亮显示，被 @ 的用户收到通知。
+
+### 共享类型
+- [ ] `Message` 添加 `mentions?: string[]` 字段
+- [ ] Socket 新增 `mention:notify` Server→Client 事件
+
+### 后端
+- [ ] `ChatService` 注入 `IUserRepository`，解析消息中 `@username` → userId
+- [ ] `RedisMessageRepository` 序列化/反序列化 `mentions` 字段
+- [ ] `ChatModule` 消息广播后对被 @ 用户 emit `mention:notify`
+
+### 前端
+- [ ] `MentionInput` 组件（基于 Ant Design Mentions，@ 触发下拉成员列表）
+- [ ] `ChatWindow` 群聊使用 `MentionInput`，私聊保持 `TextArea`
+- [ ] `MessageBubble` 中 `@username` 高亮渲染
+- [ ] Socket store 监听 `mention:notify`，弹出通知
+
+### 测试
+- [ ] 服务端：@解析、序列化、通知测试
+- [ ] 前端：MentionInput 组件测试
+
+---
+
+## v1.1.0 - 机器人系统
+
+**目标**：Telegram 风格机器人，外部程序通过 HTTP API 轮询收取消息、发送消息。
+
+### 共享类型
+- [ ] `User` 添加 `isBot?`、`botOwnerId?` 字段
+- [ ] 新增 `Bot`、`BotUpdate` 类型
+
+### 后端
+- [ ] `IUserRepository` 新增 `createBot`、`findBotByToken`、`getBotsByOwner`、`deleteBot`
+- [ ] `RedisUserRepository` 实现机器人 CRUD（含 token 索引）
+- [ ] `BotService`：创建机器人、getUpdates（BLPOP 长轮询）、sendMessage、enqueueUpdate
+- [ ] `BotModule`：5 个 API 路由（create/list/delete + getUpdates/sendMessage）
+- [ ] `ChatModule` 消息发送后检查参与者中的机器人，入队 bot_updates
+- [ ] GET `/api/chat/conversations` 返回 `botUserIds`
+
+### 前端
+- [ ] `botService` HTTP 服务（create/list/delete）
+- [ ] `BotManager` Drawer 组件（创建/列表/删除机器人，显示 token）
+- [ ] Home Header 添加"机器人"按钮
+- [ ] `useChatStore` 新增 `botUserIds` 状态
+- [ ] 会话列表/群成员中机器人用户标识
+
+### 测试
+- [ ] 服务端：机器人 CRUD、getUpdates、sendMessage 完整测试
+- [ ] 前端：BotManager 组件测试
