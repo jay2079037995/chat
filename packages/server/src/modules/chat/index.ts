@@ -77,10 +77,38 @@ export class ChatModule implements ServerModule {
       }
     });
 
+    // GET /api/chat/messages/search — 搜索聊天记录（跨用户所有会话）
+    router.get('/messages/search', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const keyword = (req.query.q as string || '').trim();
+        if (!keyword) {
+          res.status(400).json({ error: '请输入搜索关键词' });
+          return;
+        }
+
+        const messages = await chatService.searchMessages(req.userId!, keyword);
+        res.json({ messages });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // GET /api/chat/conversations/:id/messages — 分页获取会话消息
     router.get('/conversations/:id/messages', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const id = req.params.id as string;
+
+        // 权限检查：验证用户是会话参与者
+        const conv = await chatService.getConversation(id);
+        if (!conv) {
+          res.status(404).json({ error: '会话不存在' });
+          return;
+        }
+        if (!conv.participants.includes(req.userId!)) {
+          res.status(403).json({ error: '无权访问该会话' });
+          return;
+        }
+
         const offset = parseInt(req.query.offset as string, 10) || 0;
         const limit = parseInt(req.query.limit as string, 10) || MESSAGES_PER_PAGE;
 

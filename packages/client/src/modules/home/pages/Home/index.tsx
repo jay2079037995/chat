@@ -6,13 +6,14 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Layout, Button, Typography } from 'antd';
-import { LogoutOutlined, UsergroupAddOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import UserSearch from '../../components/UserSearch';
 import ConversationList from '../../../chat/components/ConversationList';
 import ChatWindow from '../../../chat/components/ChatWindow';
 import CreateGroupDialog from '../../../chat/components/CreateGroupDialog';
+import MessageSearch from '../../../chat/components/MessageSearch';
 import { useSocketStore } from '../../../chat/stores/useSocketStore';
 import { useChatStore } from '../../../chat/stores/useChatStore';
 import type { User } from '@chat/shared';
@@ -34,6 +35,7 @@ const Home: React.FC = () => {
   const currentConversationId = useChatStore((s) => s.currentConversationId);
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
 
   // 挂载时建立 Socket 连接 + 加载会话列表
   useEffect(() => {
@@ -67,6 +69,9 @@ const Home: React.FC = () => {
         </Text>
         <div className={styles.userInfo}>
           <Text className={styles.username}>{user?.username}</Text>
+          <Button type="text" icon={<SearchOutlined />} onClick={() => setShowMessageSearch(true)}>
+            搜索
+          </Button>
           <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
             登出
           </Button>
@@ -105,6 +110,11 @@ const Home: React.FC = () => {
       <CreateGroupDialog
         visible={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
+      />
+
+      <MessageSearch
+        visible={showMessageSearch}
+        onClose={() => setShowMessageSearch(false)}
       />
     </Layout>
   );

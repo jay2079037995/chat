@@ -205,6 +205,14 @@ run_structure_checks() {
     [ -f "packages/client/src/modules/chat/components/CreateGroupDialog/index.tsx" ] && pass "CreateGroupDialog 组件" || fail "CreateGroupDialog 缺失"
     [ -f "packages/client/src/modules/chat/components/GroupMemberPanel/index.tsx" ] && pass "GroupMemberPanel 组件" || fail "GroupMemberPanel 缺失"
   fi
+
+  # v0.6.0 结构
+  if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.6" ]; then
+    echo -e "  ${BOLD}-- v0.6.0 聊天记录与搜索结构 --${NC}"
+    # 前端
+    [ -f "packages/client/src/modules/chat/components/MessageSearch/index.tsx" ] && pass "MessageSearch 组件" || fail "MessageSearch 组件缺失"
+    [ -f "packages/client/src/modules/chat/components/MessageSearch/index.module.less" ] && pass "MessageSearch 样式" || fail "MessageSearch 样式缺失"
+  fi
 }
 
 if $RUN_STRUCTURE; then

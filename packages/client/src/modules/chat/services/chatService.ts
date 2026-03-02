@@ -59,6 +59,14 @@ export const chatService = {
     await api.post(`/chat/conversations/${conversationId}/read`);
   },
 
+  /** 搜索聊天记录（跨所有会话） */
+  async searchMessages(keyword: string): Promise<Message[]> {
+    const res = await api.get<{ messages: Message[] }>('/chat/messages/search', {
+      params: { q: keyword },
+    });
+    return res.data.messages;
+  },
+
   /** 上传图片 */
   async uploadImage(file: File): Promise<UploadResult> {
     const formData = new FormData();

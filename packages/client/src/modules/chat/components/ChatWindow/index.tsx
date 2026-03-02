@@ -4,8 +4,8 @@
  * 显示与某用户的聊天历史，提供消息输入和发送功能。
  * 支持文字、图片、音频、代码、Markdown、文件等消息类型。
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Upload, Progress, message as antMessage } from 'antd';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, Input, Select, Upload, Progress, Spin, message as antMessage } from 'antd';
 import { SendOutlined, TeamOutlined } from '@ant-design/icons';
 import type { MessageType } from '@chat/shared';
 import { useChatStore } from '../../stores/useChatStore';
@@ -48,6 +48,9 @@ const ChatWindow: React.FC = () => {
   const participantNames = useChatStore((s) => s.participantNames);
   const groupNames = useChatStore((s) => s.groupNames);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const hasMore = useChatStore((s) => s.hasMore);
+  const loadingMore = useChatStore((s) => s.loadingMore);
+  const loadMoreMessages = useChatStore((s) => s.loadMoreMessages);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -60,6 +63,7 @@ const ChatWindow: React.FC = () => {
   const [showMemberPanel, setShowMemberPanel] = useState(false);
 
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const messageAreaRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -81,6 +85,24 @@ const ChatWindow: React.FC = () => {
       messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [currentMessages.length]);
+
+  /** 上滑加载更多历史消息 */
+  const handleScroll = useCallback(() => {
+    const el = messageAreaRef.current;
+    if (!el || !currentConversationId) return;
+
+    if (el.scrollTop <= 0 && hasMore[currentConversationId] && !loadingMore) {
+      const prevScrollHeight = el.scrollHeight;
+      void loadMoreMessages(currentConversationId).then(() => {
+        // 恢复滚动位置
+        requestAnimationFrame(() => {
+          if (messageAreaRef.current) {
+            messageAreaRef.current.scrollTop = messageAreaRef.current.scrollHeight - prevScrollHeight;
+          }
+        });
+      });
+    }
+  }, [currentConversationId, hasMore, loadingMore, loadMoreMessages]);
 
   // 切换消息类型时重置输入
   useEffect(() => {
@@ -343,7 +365,14 @@ const ChatWindow: React.FC = () => {
       </div>
 
       {/* 消息区域 */}
-      <div className={styles.messageArea}>
+      <div className={styles.messageArea} ref={messageAreaRef} onScroll={handleScroll}>
+        {/* 顶部加载指示 */}
+        {currentConversationId && loadingMore && (
+          <div className={styles.loadMoreHint}><Spin size="small" /> 加载中...</div>
+        )}
+        {currentConversationId && !hasMore[currentConversationId] && currentMessages.length > 0 && (
+          <div className={styles.loadMoreHint}>没有更多消息</div>
+        )}
         {currentMessages.map((msg) => {
           const isSelf = msg.senderId === currentUser?.id;
           const isMediaType = msg.type === 'image' || msg.type === 'code' || msg.type === 'file';

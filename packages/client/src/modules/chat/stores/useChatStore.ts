@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import type { Message, MessageType } from '@chat/shared';
+import { MESSAGES_PER_PAGE } from '@chat/shared';
 import { chatService, type ConversationWithUnread } from '../services/chatService';
 import { groupService } from '../services/groupService';
 import { useSocketStore } from './useSocketStore';
@@ -22,6 +23,10 @@ interface ChatState {
   groupNames: Record<string, string>;
   /** 是否正在加载 */
   loading: boolean;
+  /** 各会话是否还有更多历史消息 */
+  hasMore: Record<string, boolean>;
+  /** 是否正在加载历史消息 */
+  loadingMore: boolean;
 
   /** 加载用户的会话列表 */
   loadConversations: () => Promise<void>;
@@ -37,6 +42,8 @@ interface ChatState {
   startPrivateChat: (targetUserId: string) => Promise<void>;
   /** 创建群组 */
   createGroup: (name: string, memberIds: string[]) => Promise<void>;
+  /** 加载更多历史消息（上滑分页） */
+  loadMoreMessages: (conversationId: string) => Promise<void>;
   /** 处理已读回执 */
   handleReadReceipt: (conversationId: string, userId: string) => void;
 }
@@ -48,6 +55,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   participantNames: {},
   groupNames: {},
   loading: false,
+  hasMore: {},
+  loadingMore: false,
 
   loadConversations: async () => {
     try {
@@ -74,6 +83,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const msgs = await chatService.getMessages(conversationId);
       set((state) => ({
         messages: { ...state.messages, [conversationId]: msgs.reverse() },
+        hasMore: { ...state.hasMore, [conversationId]: msgs.length >= MESSAGES_PER_PAGE },
         loading: false,
       }));
 
@@ -210,6 +220,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) {
       console.error('创建群组失败:', err);
       throw err;
+    }
+  },
+
+  loadMoreMessages: async (conversationId: string) => {
+    const { hasMore, loadingMore, messages } = get();
+    if (!hasMore[conversationId] || loadingMore) return;
+
+    set({ loadingMore: true });
+
+    try {
+      const currentMsgs = messages[conversationId] || [];
+      const offset = currentMsgs.length;
+      const olderMsgs = await chatService.getMessages(conversationId, offset);
+
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [conversationId]: [...olderMsgs.reverse(), ...currentMsgs],
+        },
+        hasMore: {
+          ...state.hasMore,
+          [conversationId]: olderMsgs.length >= MESSAGES_PER_PAGE,
+        },
+        loadingMore: false,
+      }));
+    } catch (err) {
+      console.error('加载历史消息失败:', err);
+      set({ loadingMore: false });
     }
   },
 

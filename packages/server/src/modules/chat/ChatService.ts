@@ -115,4 +115,23 @@ export class ChatService {
   async markAsRead(conversationId: string, userId: string): Promise<void> {
     await this.messageRepo.clearUnread(conversationId, userId);
   }
+
+  /**
+   * 跨会话搜索消息
+   *
+   * 遍历用户参与的所有会话，搜索包含关键词的消息，
+   * 合并结果按时间降序返回。
+   */
+  async searchMessages(userId: string, keyword: string): Promise<Message[]> {
+    const conversations = await this.messageRepo.getConversationsByUserId(userId);
+    const allResults: Message[] = [];
+
+    for (const conv of conversations) {
+      const results = await this.messageRepo.searchMessages(conv.id, keyword);
+      allResults.push(...results);
+    }
+
+    allResults.sort((a, b) => b.createdAt - a.createdAt);
+    return allResults;
+  }
 }

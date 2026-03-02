@@ -27,6 +27,9 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       participantNames: { user2: 'alice' },
       groupNames: {},
       sendMessage: mockSendMessage,
+      hasMore: {},
+      loadingMore: false,
+      loadMoreMessages: jest.fn(),
     }),
 }));
 
