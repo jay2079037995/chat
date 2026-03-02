@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Layout, Button, Typography } from 'antd';
-import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined, MessageOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined, MessageOutlined, RobotOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import UserSearch from '../../components/UserSearch';
@@ -14,6 +14,7 @@ import ConversationList from '../../../chat/components/ConversationList';
 import ChatWindow from '../../../chat/components/ChatWindow';
 import CreateGroupDialog from '../../../chat/components/CreateGroupDialog';
 import MessageSearch from '../../../chat/components/MessageSearch';
+import BotManager from '../../../chat/components/BotManager';
 import { useSocketStore } from '../../../chat/stores/useSocketStore';
 import { useChatStore } from '../../../chat/stores/useChatStore';
 import type { User } from '@chat/shared';
@@ -37,6 +38,7 @@ const Home: React.FC = () => {
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [showBotManager, setShowBotManager] = useState(false);
 
   // 挂载时建立 Socket 连接 + 加载会话列表
   useEffect(() => {
@@ -67,12 +69,15 @@ const Home: React.FC = () => {
     <Layout className={styles.layout}>
       <Header className={styles.header}>
         <Text strong className={styles.brand}>
-          Chat <Text className={styles.version}>v1.0.0</Text>
+          Chat <Text className={styles.version}>v1.1.0</Text>
         </Text>
         <div className={styles.userInfo}>
           <Text className={styles.username}>{user?.username}</Text>
           <Button type="text" icon={<SearchOutlined />} onClick={() => setShowMessageSearch(true)}>
             搜索
+          </Button>
+          <Button type="text" icon={<RobotOutlined />} onClick={() => setShowBotManager(true)}>
+            机器人
           </Button>
           <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
             登出
@@ -118,6 +123,11 @@ const Home: React.FC = () => {
       <MessageSearch
         visible={showMessageSearch}
         onClose={() => setShowMessageSearch(false)}
+      />
+
+      <BotManager
+        visible={showBotManager}
+        onClose={() => setShowBotManager(false)}
       />
     </Layout>
   );

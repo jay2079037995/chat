@@ -8,4 +8,5 @@ export const TOKENS = {
   // Services（跨模块共享时使用）
   AuthService: 'AuthService',
   UserService: 'UserService',
+  BotService: 'BotService',
 } as const;

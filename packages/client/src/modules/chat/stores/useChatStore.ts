@@ -22,6 +22,8 @@ interface ChatState {
   participantNames: Record<string, string>;
   /** 群组名称映射：groupId → groupName */
   groupNames: Record<string, string>;
+  /** 机器人用户 ID 集合 */
+  botUserIds: Set<string>;
   /** 是否正在加载 */
   loading: boolean;
   /** 各会话是否还有更多历史消息 */
@@ -57,17 +59,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: {},
   participantNames: {},
   groupNames: {},
+  botUserIds: new Set(),
   loading: false,
   hasMore: {},
   loadingMore: false,
 
   loadConversations: async () => {
     try {
-      const { conversations, participantNames, groupNames } = await chatService.getConversations();
+      const { conversations, participantNames, groupNames, botUserIds } = await chatService.getConversations();
       set((state) => ({
         conversations,
         participantNames: { ...state.participantNames, ...participantNames },
         groupNames: { ...state.groupNames, ...groupNames },
+        botUserIds: botUserIds ? new Set([...state.botUserIds, ...botUserIds]) : state.botUserIds,
       }));
       // 缓存会话列表到 localStorage
       cacheService.saveConversations({ conversations, participantNames, groupNames });

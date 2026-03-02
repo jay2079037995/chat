@@ -1,6 +1,6 @@
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { app, container, socketHandlers } from './app';
+import { app, container, socketHandlers, botModule } from './app';
 import { config } from './config';
 import { TOKENS } from './core/tokens';
 import type { ServerToClientEvents, ClientToServerEvents } from '@chat/shared';
@@ -37,6 +37,9 @@ io.use(async (socket, next) => {
   (socket.data as any).sessionId = sessionId;
   next();
 });
+
+// 将 Socket.IO 引用传给 BotModule，用于机器人发消息后广播
+botModule.setIO(io);
 
 io.on('connection', async (socket) => {
   const userId = (socket.data as any).userId as string;

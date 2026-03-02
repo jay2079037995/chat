@@ -12,6 +12,7 @@ import { AuthModule } from './modules/auth';
 import { UserModule } from './modules/user';
 import { ChatModule } from './modules/chat';
 import { GroupModule } from './modules/group';
+import { BotModule } from './modules/bot';
 
 // 初始化 DI 容器
 const container = new Container();
@@ -31,9 +32,11 @@ app.get('/api/health', (_req, res) => {
 });
 
 // --- 模块注册 ---
+const botModule = new BotModule();
 const modules: ServerModule[] = [
   new AuthModule(),
   new UserModule(),
+  botModule,
   new ChatModule(),
   new GroupModule(),
 ];
@@ -64,4 +67,4 @@ if (fs.existsSync(clientDistPath)) {
   });
 }
 
-export { app, container, socketHandlers };
+export { app, container, socketHandlers, botModule };

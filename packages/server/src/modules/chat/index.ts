@@ -6,6 +6,7 @@ import type { IUserRepository } from '../../repositories/interfaces/IUserReposit
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import { ChatService } from './ChatService';
+import { BotService } from '../bot/BotService';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 import { MESSAGES_PER_PAGE, ALLOWED_AUDIO_TYPES, MAX_AUDIO_SIZE, type Message } from '@chat/shared';
 import { imageUpload, fileUpload, getFileUrl } from './upload';
@@ -42,6 +43,14 @@ export class ChatModule implements ServerModule {
     const chatService = new ChatService(messageRepo, userRepo);
     const sessionMiddleware = createSessionMiddleware(sessionRepo, userRepo);
 
+    // BotService — 用于将消息入队给机器人
+    let botService: BotService | null = null;
+    try {
+      botService = ctx.resolve<BotService>(TOKENS.BotService);
+    } catch {
+      // BotModule 未注册时忽略
+    }
+
     const router = Router();
 
     // GET /api/chat/conversations — 获取当前用户的会话列表（附带参与者用户名）
@@ -49,14 +58,14 @@ export class ChatModule implements ServerModule {
       try {
         const conversations = await chatService.getConversations(req.userId!);
 
-        // 解析所有参与者的用户名
+        // 解析所有参与者的用户名，同时收集机器人用户 ID
         const participantNames: Record<string, string> = {};
+        const botUserIds: string[] = [];
         const allParticipantIds = new Set(conversations.flatMap((c) => c.participants));
         for (const pid of allParticipantIds) {
-          if (!participantNames[pid]) {
-            const user = await userRepo.findById(pid);
-            participantNames[pid] = user?.username || pid;
-          }
+          const user = await userRepo.findById(pid);
+          participantNames[pid] = user?.username || pid;
+          if (user?.isBot) botUserIds.push(pid);
         }
 
         // 解析群组名称
@@ -71,7 +80,7 @@ export class ChatModule implements ServerModule {
           }
         }
 
-        res.json({ conversations, participantNames, groupNames });
+        res.json({ conversations, participantNames, groupNames, botUserIds });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -318,7 +327,7 @@ export class ChatModule implements ServerModule {
             }
           }
 
-          // 检查离线参与者，将消息存入离线队列
+          // 检查离线参与者，将消息存入离线队列；同时将消息入队给机器人
           if (conv) {
             const redis = getRedisClient();
             const onlineUserIds = await messageRepo.getOnlineUsers();
@@ -326,6 +335,21 @@ export class ChatModule implements ServerModule {
             for (const pid of conv.participants) {
               if (pid !== userId && !onlineSet.has(pid)) {
                 await redis.rpush(`offline_msgs:${pid}`, JSON.stringify(message));
+              }
+            }
+
+            // 机器人消息入队：私聊 → 全部入队；群聊 → 仅 @机器人时入队
+            if (botService) {
+              for (const pid of conv.participants) {
+                if (pid === userId) continue;
+                const participant = await userRepo.findById(pid);
+                if (!participant?.isBot) continue;
+
+                const isPrivate = conv.type === 'private';
+                const isMentioned = message.mentions?.includes(pid);
+                if (isPrivate || isMentioned) {
+                  await botService.enqueueUpdate(pid, message, data.conversationId);
+                }
               }
             }
           }

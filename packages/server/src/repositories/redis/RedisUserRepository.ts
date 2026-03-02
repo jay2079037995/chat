@@ -6,6 +6,8 @@ import type { IUserRepository } from '../interfaces/IUserRepository';
 const USER_KEY = (id: string) => `user:${id}`;       // 用户详情 Hash
 const USERNAME_INDEX = 'index:username_to_id';         // 用户名 → ID 映射 Hash
 const ALL_USERS_KEY = 'users:all';                     // 所有用户 ID 集合 Set
+const BOT_TOKEN_KEY = (token: string) => `bot_token:${token}`;  // token → botId
+const BOT_OWNER_KEY = (ownerId: string) => `bot_owner:${ownerId}`;  // 用户拥有的机器人集合
 
 /**
  * 用户 Repository 的 Redis 实现
@@ -52,6 +54,8 @@ export class RedisUserRepository implements IUserRepository {
     return {
       id: data.id,
       username: data.username,
+      ...(data.isBot === 'true' && { isBot: true }),
+      ...(data.botOwnerId && { botOwnerId: data.botOwnerId }),
       createdAt: parseInt(data.createdAt, 10),
       updatedAt: parseInt(data.updatedAt, 10),
     };
@@ -76,6 +80,8 @@ export class RedisUserRepository implements IUserRepository {
         users.push({
           id: data.id,
           username: data.username,
+          ...(data.isBot === 'true' && { isBot: true }),
+          ...(data.botOwnerId && { botOwnerId: data.botOwnerId }),
           createdAt: parseInt(data.createdAt, 10),
           updatedAt: parseInt(data.updatedAt, 10),
         });
@@ -88,5 +94,76 @@ export class RedisUserRepository implements IUserRepository {
   async getPasswordHash(userId: string): Promise<string | null> {
     const redis = getRedisClient();
     return redis.hget(USER_KEY(userId), 'password');
+  }
+
+  // --- 机器人相关 ---
+
+  async createBot(data: { id: string; username: string; token: string; ownerId: string }): Promise<User> {
+    const redis = getRedisClient();
+    const now = Date.now();
+
+    const user: User = {
+      id: data.id,
+      username: data.username,
+      isBot: true,
+      botOwnerId: data.ownerId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await redis
+      .multi()
+      .hset(USER_KEY(data.id), {
+        id: data.id,
+        username: data.username,
+        password: '',
+        isBot: 'true',
+        botOwnerId: data.ownerId,
+        botToken: data.token,
+        createdAt: String(now),
+        updatedAt: String(now),
+      })
+      .hset(USERNAME_INDEX, data.username, data.id)
+      .sadd(ALL_USERS_KEY, data.id)
+      .set(BOT_TOKEN_KEY(data.token), data.id)
+      .sadd(BOT_OWNER_KEY(data.ownerId), data.id)
+      .exec();
+
+    return user;
+  }
+
+  async findBotByToken(token: string): Promise<string | null> {
+    const redis = getRedisClient();
+    return redis.get(BOT_TOKEN_KEY(token));
+  }
+
+  async getBotsByOwner(ownerId: string): Promise<User[]> {
+    const redis = getRedisClient();
+    const botIds = await redis.smembers(BOT_OWNER_KEY(ownerId));
+    const bots: User[] = [];
+    for (const id of botIds) {
+      const user = await this.findById(id);
+      if (user && user.isBot) bots.push(user);
+    }
+    return bots;
+  }
+
+  async deleteBot(botId: string): Promise<void> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(USER_KEY(botId));
+    if (!data || data.isBot !== 'true') return;
+
+    const { username, botToken, botOwnerId } = data;
+
+    await redis
+      .multi()
+      .del(USER_KEY(botId))
+      .hdel(USERNAME_INDEX, username)
+      .srem(ALL_USERS_KEY, botId)
+      .del(BOT_TOKEN_KEY(botToken))
+      .srem(BOT_OWNER_KEY(botOwnerId), botId)
+      .del(`bot_updates:${botId}`)
+      .del(`bot_update_seq:${botId}`)
+      .exec();
   }
 }

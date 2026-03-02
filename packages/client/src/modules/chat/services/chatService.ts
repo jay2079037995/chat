@@ -14,6 +14,7 @@ interface ConversationsResponse {
   conversations: ConversationWithUnread[];
   participantNames: Record<string, string>;
   groupNames: Record<string, string>;
+  botUserIds?: string[];
 }
 
 /** 创建私聊 API 返回值 */
