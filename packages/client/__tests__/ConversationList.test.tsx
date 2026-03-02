@@ -40,6 +40,14 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       participantNames: { user2: 'alice', user3: 'bob' },
       groupNames: { 'group:g1': '测试群组' },
       botUserIds: new Set(),
+      pinnedIds: new Set(),
+      mutedIds: new Set(),
+      archivedIds: new Set(),
+      convTags: {},
+      tagFilter: '',
+      showArchived: false,
+      setShowArchived: jest.fn(),
+      setTagFilter: jest.fn(),
     }),
 }));
 

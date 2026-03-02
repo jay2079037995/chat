@@ -38,6 +38,20 @@ interface ChatState {
   typingUsers: Record<string, Set<string>>;
   /** 参与者头像映射：userId → avatarUrl */
   participantAvatars: Record<string, string>;
+  /** 置顶会话 ID 集合 */
+  pinnedIds: Set<string>;
+  /** 免打扰会话 ID 集合 */
+  mutedIds: Set<string>;
+  /** 归档会话 ID 集合 */
+  archivedIds: Set<string>;
+  /** 会话标签映射：convId → string[] */
+  convTags: Record<string, string[]>;
+  /** 当前会话的置顶消息列表 */
+  pinnedMessages: Message[];
+  /** 当前标签筛选（空=不筛选） */
+  tagFilter: string;
+  /** 是否显示归档列表 */
+  showArchived: boolean;
 
   /** 加载用户的会话列表 */
   loadConversations: () => Promise<void>;
@@ -71,6 +85,26 @@ interface ChatState {
   handleEdited: (messageId: string, conversationId: string, newContent: string, editedAt: number) => void;
   /** 处理消息表情回应事件 */
   handleReacted: (messageId: string, conversationId: string, reactions: Record<string, string[]>) => void;
+  /** 切换置顶会话 */
+  togglePinConversation: (conversationId: string) => Promise<void>;
+  /** 切换免打扰会话 */
+  toggleMuteConversation: (conversationId: string) => Promise<void>;
+  /** 切换归档会话 */
+  toggleArchiveConversation: (conversationId: string) => Promise<void>;
+  /** 删除会话 */
+  deleteConversation: (conversationId: string) => Promise<void>;
+  /** 设置会话标签 */
+  setConversationTags: (conversationId: string, tags: string[]) => Promise<void>;
+  /** 加载当前会话的置顶消息 */
+  loadPinnedMessages: (conversationId: string) => Promise<void>;
+  /** 转发消息 */
+  forwardMessage: (messageId: string, targetConversationId: string) => Promise<void>;
+  /** 处理消息置顶事件 */
+  handleMessagePinned: (conversationId: string, messageId: string, pinned: boolean) => void;
+  /** 设置标签筛选 */
+  setTagFilter: (tag: string) => void;
+  /** 切换归档列表显示 */
+  setShowArchived: (show: boolean) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -87,10 +121,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   lastReadMap: {},
   typingUsers: {},
   participantAvatars: {},
+  pinnedIds: new Set(),
+  mutedIds: new Set(),
+  archivedIds: new Set(),
+  convTags: {},
+  pinnedMessages: [],
+  tagFilter: '',
+  showArchived: false,
 
   loadConversations: async () => {
     try {
-      const { conversations, participantNames, groupNames, botUserIds, lastReadMap, participantAvatars } = await chatService.getConversations();
+      const { conversations, participantNames, groupNames, botUserIds, lastReadMap, participantAvatars, pinnedIds, mutedIds, archivedIds, tags } = await chatService.getConversations();
       set((state) => ({
         conversations,
         participantNames: { ...state.participantNames, ...participantNames },
@@ -98,6 +139,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         botUserIds: botUserIds ? new Set([...state.botUserIds, ...botUserIds]) : state.botUserIds,
         lastReadMap: lastReadMap ? { ...state.lastReadMap, ...lastReadMap } : state.lastReadMap,
         participantAvatars: participantAvatars ? { ...state.participantAvatars, ...participantAvatars } : state.participantAvatars,
+        pinnedIds: pinnedIds ? new Set(pinnedIds) : state.pinnedIds,
+        mutedIds: mutedIds ? new Set(mutedIds) : state.mutedIds,
+        archivedIds: archivedIds ? new Set(archivedIds) : state.archivedIds,
+        convTags: tags || state.convTags,
       }));
       // 缓存会话列表到 localStorage
       cacheService.saveConversations({ conversations, participantNames, groupNames });
@@ -412,4 +457,72 @@ export const useChatStore = create<ChatState>((set, get) => ({
       };
     });
   },
+
+  // --- v1.5.0 会话管理 ---
+
+  togglePinConversation: async (conversationId: string) => {
+    const { pinned } = await chatService.togglePinConversation(conversationId);
+    set((state) => {
+      const next = new Set(state.pinnedIds);
+      pinned ? next.add(conversationId) : next.delete(conversationId);
+      return { pinnedIds: next };
+    });
+  },
+
+  toggleMuteConversation: async (conversationId: string) => {
+    const { muted } = await chatService.toggleMuteConversation(conversationId);
+    set((state) => {
+      const next = new Set(state.mutedIds);
+      muted ? next.add(conversationId) : next.delete(conversationId);
+      return { mutedIds: next };
+    });
+  },
+
+  toggleArchiveConversation: async (conversationId: string) => {
+    const { archived } = await chatService.toggleArchiveConversation(conversationId);
+    set((state) => {
+      const next = new Set(state.archivedIds);
+      archived ? next.add(conversationId) : next.delete(conversationId);
+      return { archivedIds: next };
+    });
+  },
+
+  deleteConversation: async (conversationId: string) => {
+    await chatService.deleteConversation(conversationId);
+    set((state) => ({
+      conversations: state.conversations.filter((c) => c.id !== conversationId),
+      currentConversationId: state.currentConversationId === conversationId ? null : state.currentConversationId,
+    }));
+  },
+
+  setConversationTags: async (conversationId: string, tags: string[]) => {
+    await chatService.setConversationTags(conversationId, tags);
+    set((state) => ({
+      convTags: { ...state.convTags, [conversationId]: tags },
+    }));
+  },
+
+  loadPinnedMessages: async (conversationId: string) => {
+    try {
+      const msgs = await chatService.getPinnedMessages(conversationId);
+      set({ pinnedMessages: msgs });
+    } catch {
+      set({ pinnedMessages: [] });
+    }
+  },
+
+  forwardMessage: async (messageId: string, targetConversationId: string) => {
+    await chatService.forwardMessage(messageId, targetConversationId);
+  },
+
+  handleMessagePinned: (conversationId: string, _messageId: string, _pinned: boolean) => {
+    const { currentConversationId, loadPinnedMessages } = get();
+    if (conversationId === currentConversationId) {
+      void loadPinnedMessages(conversationId);
+    }
+  },
+
+  setTagFilter: (tag: string) => set({ tagFilter: tag }),
+
+  setShowArchived: (show: boolean) => set({ showArchived: show }),
 }));

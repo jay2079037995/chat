@@ -34,4 +34,32 @@ export interface IMessageRepository {
   getLastReadAt(conversationId: string, userId: string): Promise<number>;
   /** 设置用户在某会话的最后已读时间戳 */
   setLastReadAt(conversationId: string, userId: string, timestamp: number): Promise<void>;
+
+  // --- 会话管理（per-user）---
+
+  /** 切换用户置顶会话状态，返回新状态 */
+  togglePinnedConversation(userId: string, conversationId: string): Promise<boolean>;
+  /** 获取用户所有置顶的会话 ID */
+  getPinnedConversations(userId: string): Promise<string[]>;
+  /** 切换用户免打扰会话状态，返回新状态 */
+  toggleMutedConversation(userId: string, conversationId: string): Promise<boolean>;
+  /** 获取用户所有免打扰的会话 ID */
+  getMutedConversations(userId: string): Promise<string[]>;
+  /** 切换用户归档会话状态，返回新状态 */
+  toggleArchivedConversation(userId: string, conversationId: string): Promise<boolean>;
+  /** 获取用户所有归档的会话 ID */
+  getArchivedConversations(userId: string): Promise<string[]>;
+  /** 删除会话（从用户的会话列表中移除，软删除） */
+  deleteConversationForUser(userId: string, conversationId: string): Promise<void>;
+  /** 设置用户对某会话的标签 */
+  setConversationTags(userId: string, conversationId: string, tags: string[]): Promise<void>;
+  /** 获取用户所有会话的标签映射 */
+  getConversationTags(userId: string): Promise<Record<string, string[]>>;
+
+  // --- 消息置顶（per-conversation，所有人可见）---
+
+  /** 置顶/取消置顶消息，返回新状态 */
+  togglePinnedMessage(conversationId: string, messageId: string): Promise<boolean>;
+  /** 获取会话中所有置顶消息 ID */
+  getPinnedMessageIds(conversationId: string): Promise<string[]>;
 }

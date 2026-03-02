@@ -42,6 +42,12 @@ export interface Message {
   replySnapshot?: ReplySnapshot;
   /** 表情回应：emoji → userId[] */
   reactions?: Record<string, string[]>;
+  /** 转发来源信息（消息被转发时携带） */
+  forwardedFrom?: {
+    conversationId: string;
+    senderId: string;
+    senderName: string;
+  };
   /** 发送时间戳 */
   createdAt: number;
 }

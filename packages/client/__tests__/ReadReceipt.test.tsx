@@ -36,6 +36,8 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       },
       typingUsers: {},
       participantAvatars: {},
+      pinnedMessages: [],
+      loadPinnedMessages: jest.fn(),
     }),
 }));
 

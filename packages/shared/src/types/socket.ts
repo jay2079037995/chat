@@ -40,6 +40,8 @@ export interface ServerToClientEvents {
   'group:dissolved': (data: { groupId: string; conversationId: string }) => void;
   /** 上线后推送离线消息 */
   'sync:offline_messages': (messages: Message[]) => void;
+  /** 消息被置顶/取消置顶 */
+  'message:pinned': (data: { conversationId: string; messageId: string; pinned: boolean; pinnedBy: string }) => void;
   /** 某条消息中 @提及 了当前用户 */
   'mention:notify': (data: { message: Message; conversationId: string; senderName: string }) => void;
 }
@@ -60,6 +62,8 @@ export interface ClientToServerEvents {
   'typing:start': (data: { conversationId: string }) => void;
   /** 用户停止输入 */
   'typing:stop': (data: { conversationId: string }) => void;
+  /** 置顶/取消置顶消息（会话内所有人可见） */
+  'message:pin': (data: { messageId: string; conversationId: string }, callback: (result: { success: boolean; error?: string; pinned?: boolean }) => void) => void;
   /** 加入会话房间（订阅该会话的实时消息） */
   'conversation:join': (conversationId: string) => void;
 }

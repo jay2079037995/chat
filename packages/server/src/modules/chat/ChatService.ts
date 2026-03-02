@@ -1,5 +1,5 @@
 import type { Message, Conversation, ReplySnapshot } from '@chat/shared';
-import { generateId, MAX_MESSAGE_LENGTH } from '@chat/shared';
+import { generateId, MAX_MESSAGE_LENGTH, MAX_CONV_TAGS, MAX_TAG_LENGTH } from '@chat/shared';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 
@@ -232,5 +232,107 @@ export class ChatService {
 
     await this.messageRepo.updateMessage(messageId, { reactions });
     return reactions;
+  }
+
+  // --- v1.5.0 会话管理 ---
+
+  /** 切换置顶会话（per-user） */
+  async togglePinConversation(userId: string, conversationId: string): Promise<boolean> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    return this.messageRepo.togglePinnedConversation(userId, conversationId);
+  }
+
+  /** 切换免打扰会话（per-user） */
+  async toggleMuteConversation(userId: string, conversationId: string): Promise<boolean> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    return this.messageRepo.toggleMutedConversation(userId, conversationId);
+  }
+
+  /** 切换归档会话（per-user） */
+  async toggleArchiveConversation(userId: string, conversationId: string): Promise<boolean> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    return this.messageRepo.toggleArchivedConversation(userId, conversationId);
+  }
+
+  /** 删除会话（per-user 软删除） */
+  async deleteConversation(userId: string, conversationId: string): Promise<void> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    await this.messageRepo.deleteConversationForUser(userId, conversationId);
+  }
+
+  /** 设置会话标签（per-user） */
+  async setConversationTags(userId: string, conversationId: string, tags: string[]): Promise<void> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    if (tags.length > MAX_CONV_TAGS) throw new Error('TOO_MANY_TAGS');
+    for (const tag of tags) {
+      if (tag.length > MAX_TAG_LENGTH) throw new Error('TAG_TOO_LONG');
+    }
+    await this.messageRepo.setConversationTags(userId, conversationId, tags);
+  }
+
+  /** 获取会话置顶消息列表 */
+  async getPinnedMessages(conversationId: string): Promise<Message[]> {
+    const ids = await this.messageRepo.getPinnedMessageIds(conversationId);
+    const messages: Message[] = [];
+    for (const id of ids) {
+      const msg = await this.messageRepo.getMessage(id);
+      if (msg) messages.push(msg);
+    }
+    return messages;
+  }
+
+  /** 切换消息置顶（per-conversation，所有人可见） */
+  async togglePinMessage(messageId: string, conversationId: string, userId: string): Promise<boolean> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    const msg = await this.messageRepo.getMessage(messageId);
+    if (!msg) throw new Error('MESSAGE_NOT_FOUND');
+    if (msg.conversationId !== conversationId) throw new Error('MESSAGE_NOT_IN_CONVERSATION');
+    return this.messageRepo.togglePinnedMessage(conversationId, messageId);
+  }
+
+  /** 转发消息到目标会话 */
+  async forwardMessage(messageId: string, targetConversationId: string, userId: string): Promise<Message> {
+    const original = await this.messageRepo.getMessage(messageId);
+    if (!original) throw new Error('MESSAGE_NOT_FOUND');
+    if (original.recalled) throw new Error('MESSAGE_RECALLED');
+
+    const targetConv = await this.messageRepo.getConversation(targetConversationId);
+    if (!targetConv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!targetConv.participants.includes(userId)) throw new Error('FORBIDDEN');
+
+    const originalSender = await this.userRepo.findById(original.senderId);
+    const senderName = originalSender?.username || original.senderId;
+
+    const forwarded: Message = {
+      id: generateId(),
+      conversationId: targetConversationId,
+      senderId: userId,
+      type: original.type,
+      content: original.content,
+      createdAt: Date.now(),
+      ...(original.fileName && { fileName: original.fileName }),
+      ...(original.fileSize !== undefined && { fileSize: original.fileSize }),
+      ...(original.mimeType && { mimeType: original.mimeType }),
+      ...(original.codeLanguage && { codeLanguage: original.codeLanguage }),
+      forwardedFrom: {
+        conversationId: original.conversationId,
+        senderId: original.senderId,
+        senderName,
+      },
+    };
+
+    return this.messageRepo.saveMessage(forwarded);
   }
 }

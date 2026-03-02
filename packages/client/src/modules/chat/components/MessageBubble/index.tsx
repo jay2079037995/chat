@@ -146,6 +146,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf, particip
 
   return (
     <div>
+      {/* 转发标记 */}
+      {message.forwardedFrom && (
+        <div className={isSelf ? styles.forwardedTagSelf : styles.forwardedTag}>
+          ↗ 转发自 {message.forwardedFrom.senderName}
+        </div>
+      )}
       {/* 引用快照 */}
       <ReplySnapshotBlock message={message} participantNames={participantNames} isSelf={isSelf} />
       {/* 消息内容 */}

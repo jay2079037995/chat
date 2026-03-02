@@ -4,12 +4,14 @@
  * 展示用户所有聊天会话，包含对方用户名、最后消息预览、时间、
  * 在线状态指示器和未读消息数 badge。
  */
-import React from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Badge } from 'antd';
+import { PushpinFilled, BellFilled, InboxOutlined } from '@ant-design/icons';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import UserAvatar from '../UserAvatar';
+import ConversationContextMenu from '../ConversationContextMenu';
 import styles from './index.module.less';
 
 /** 格式化时间戳为可读文本 */
@@ -31,6 +33,13 @@ function formatTime(timestamp: number): string {
   return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 }
 
+/** 右键菜单状态 */
+interface ContextMenuState {
+  visible: boolean;
+  conversationId: string;
+  position: { x: number; y: number };
+}
+
 const ConversationList: React.FC = () => {
   const conversations = useChatStore((s) => s.conversations);
   const currentConversationId = useChatStore((s) => s.currentConversationId);
@@ -40,6 +49,60 @@ const ConversationList: React.FC = () => {
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
   const botUserIds = useChatStore((s) => s.botUserIds);
+  const pinnedIds = useChatStore((s) => s.pinnedIds);
+  const mutedIds = useChatStore((s) => s.mutedIds);
+  const archivedIds = useChatStore((s) => s.archivedIds);
+  const convTags = useChatStore((s) => s.convTags);
+  const tagFilter = useChatStore((s) => s.tagFilter);
+  const showArchived = useChatStore((s) => s.showArchived);
+  const setShowArchived = useChatStore((s) => s.setShowArchived);
+  const setTagFilter = useChatStore((s) => s.setTagFilter);
+
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    conversationId: '',
+    position: { x: 0, y: 0 },
+  });
+
+  /** 收集所有标签用于筛选栏 */
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const tags of Object.values(convTags)) {
+      tags.forEach((t) => tagSet.add(t));
+    }
+    return Array.from(tagSet);
+  }, [convTags]);
+
+  /** 排序 + 筛选会话列表 */
+  const sortedConversations = useMemo(() => {
+    let list = conversations;
+    // 归档筛选：默认隐藏归档
+    if (!showArchived) {
+      list = list.filter((c) => !archivedIds.has(c.id));
+    } else {
+      list = list.filter((c) => archivedIds.has(c.id));
+    }
+    // 标签筛选
+    if (tagFilter) {
+      list = list.filter((c) => convTags[c.id]?.includes(tagFilter));
+    }
+    // 排序：置顶优先 → updatedAt 降序
+    return [...list].sort((a, b) => {
+      const aPinned = pinnedIds.has(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.has(b.id) ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      return b.updatedAt - a.updatedAt;
+    });
+  }, [conversations, showArchived, archivedIds, tagFilter, convTags, pinnedIds]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, convId: string) => {
+    e.preventDefault();
+    setContextMenu({ visible: true, conversationId: convId, position: { x: e.clientX, y: e.clientY } });
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu({ visible: false, conversationId: '', position: { x: 0, y: 0 } });
+  }, []);
 
   if (conversations.length === 0) {
     return <div className={styles.empty}>暂无会话，搜索用户开始聊天</div>;
@@ -47,11 +110,35 @@ const ConversationList: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      {conversations.map((conv) => {
+      {/* 标签筛选栏 */}
+      {allTags.length > 0 && (
+        <div className={styles.filterBar}>
+          <span
+            className={`${styles.filterTag} ${!tagFilter ? styles.filterTagActive : ''}`}
+            onClick={() => setTagFilter('')}
+          >
+            全部
+          </span>
+          {allTags.map((tag) => (
+            <span
+              key={tag}
+              className={`${styles.filterTag} ${tagFilter === tag ? styles.filterTagActive : ''}`}
+              onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* 会话列表 */}
+      {sortedConversations.map((conv) => {
         const isActive = conv.id === currentConversationId;
         const isGroup = conv.type === 'group';
+        const isPinned = pinnedIds.has(conv.id);
+        const isMuted = mutedIds.has(conv.id);
+        const tags = convTags[conv.id] || [];
 
-        // 群聊：显示群名；私聊：显示对方用户名
         let displayName: string;
         let isOnline = false;
 
@@ -60,11 +147,9 @@ const ConversationList: React.FC = () => {
         } else {
           const otherParticipantId = conv.participants.find((p) => p !== currentUser?.id) || '';
           displayName = participantNames[otherParticipantId] || otherParticipantId;
-          // 机器人通过 HTTP 接入，不走 Socket.IO，视为始终在线
           isOnline = botUserIds.has(otherParticipantId) || onlineUsers.has(otherParticipantId);
         }
 
-        // 群聊 lastMessage 预览加上发送者名称
         let lastMessagePreview = conv.lastMessage?.content || '暂无消息';
         if (isGroup && conv.lastMessage) {
           const senderName = participantNames[conv.lastMessage.senderId] || '';
@@ -76,8 +161,9 @@ const ConversationList: React.FC = () => {
         return (
           <div
             key={conv.id}
-            className={`${styles.item} ${isActive ? styles.itemActive : ''}`}
+            className={`${styles.item} ${isActive ? styles.itemActive : ''} ${isPinned ? styles.itemPinned : ''}`}
             onClick={() => selectConversation(conv.id)}
+            onContextMenu={(e) => handleContextMenu(e, conv.id)}
           >
             <div className={styles.avatarWrapper}>
               <UserAvatar
@@ -88,7 +174,11 @@ const ConversationList: React.FC = () => {
             </div>
             <div className={styles.info}>
               <div className={styles.nameRow}>
-                <span className={styles.name}>{displayName}</span>
+                <span className={styles.name}>
+                  {displayName}
+                  {isPinned && <PushpinFilled className={styles.pinIcon} />}
+                  {isMuted && <BellFilled className={styles.muteIcon} />}
+                </span>
                 {conv.lastMessage && (
                   <span className={styles.time}>{formatTime(conv.lastMessage.createdAt)}</span>
                 )}
@@ -96,13 +186,45 @@ const ConversationList: React.FC = () => {
               <div className={styles.lastMessage}>
                 {lastMessagePreview}
               </div>
+              {tags.length > 0 && (
+                <div className={styles.tagRow}>
+                  {tags.map((tag) => (
+                    <span key={tag} className={styles.tagPill}>{tag}</span>
+                  ))}
+                </div>
+              )}
             </div>
             {conv.unreadCount > 0 && (
-              <Badge count={conv.unreadCount} className={styles.badge} />
+              <Badge count={isMuted ? 0 : conv.unreadCount} dot={isMuted} className={styles.badge} />
             )}
           </div>
         );
       })}
+
+      {/* 归档入口 */}
+      <div
+        className={styles.archiveToggle}
+        onClick={() => setShowArchived(!showArchived)}
+      >
+        <InboxOutlined /> {showArchived ? '返回会话' : '归档会话'}
+      </div>
+
+      {/* 右键菜单 */}
+      {contextMenu.visible && (() => {
+        const conv = conversations.find((c) => c.id === contextMenu.conversationId);
+        if (!conv) return null;
+        return (
+          <ConversationContextMenu
+            conversationId={contextMenu.conversationId}
+            position={contextMenu.position}
+            isPinned={pinnedIds.has(contextMenu.conversationId)}
+            isMuted={mutedIds.has(contextMenu.conversationId)}
+            isArchived={archivedIds.has(contextMenu.conversationId)}
+            tags={convTags[contextMenu.conversationId] || []}
+            onClose={closeContextMenu}
+          />
+        );
+      })()}
     </div>
   );
 };

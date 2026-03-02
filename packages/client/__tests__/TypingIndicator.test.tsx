@@ -26,6 +26,8 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       lastReadMap: {},
       typingUsers: { conv1: new Set(['user2']) },
       participantAvatars: {},
+      pinnedMessages: [],
+      loadPinnedMessages: jest.fn(),
     }),
 }));
 

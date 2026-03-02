@@ -90,8 +90,9 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         const store = useChatStore.getState();
         store.receiveMessage(message);
 
-        // 浏览器通知：非当前会话 + 页面非聚焦时弹出
-        if (message.conversationId !== store.currentConversationId || document.hidden) {
+        // 浏览器通知：非当前会话 + 页面非聚焦时弹出（免打扰会话不通知）
+        const isMuted = store.mutedIds.has(message.conversationId);
+        if (!isMuted && (message.conversationId !== store.currentConversationId || document.hidden)) {
           import('../utils/notification').then(({ showBrowserNotification }) => {
             const senderName = store.participantNames[message.senderId] || message.senderId;
             const body = message.type === 'text'
@@ -155,6 +156,13 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     socket.on('message:reacted', (data) => {
       import('./useChatStore').then(({ useChatStore }) => {
         useChatStore.getState().handleReacted(data.messageId, data.conversationId, data.reactions);
+      });
+    });
+
+    // 消息置顶事件
+    socket.on('message:pinned', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().handleMessagePinned(data.conversationId, data.messageId, data.pinned);
       });
     });
 

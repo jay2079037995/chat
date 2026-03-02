@@ -19,21 +19,27 @@ interface MessageContextMenuProps {
   isSelf: boolean;
   /** 菜单位置 */
   position: { x: number; y: number };
+  /** 该消息是否已被置顶 */
+  isPinned?: boolean;
   /** 关闭菜单回调 */
   onClose: () => void;
   /** 回复消息回调 */
   onReply: (message: Message) => void;
   /** 编辑消息回调 */
   onEdit: (message: Message) => void;
+  /** 转发消息回调 */
+  onForward?: (message: Message) => void;
 }
 
 const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   message,
   isSelf,
   position,
+  isPinned,
   onClose,
   onReply,
   onEdit,
+  onForward,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +87,28 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
     });
     onClose();
   }, [message, onClose]);
+
+  /** 置顶/取消置顶消息 */
+  const handlePin = useCallback(() => {
+    const { socket } = useSocketStore.getState();
+    socket?.emit('message:pin', {
+      messageId: message.id,
+      conversationId: message.conversationId,
+    }, (result) => {
+      if (!result.success) {
+        import('antd').then(({ message: antMsg }) => {
+          void antMsg.error(result.error || '操作失败');
+        });
+      }
+    });
+    onClose();
+  }, [message, onClose]);
+
+  /** 转发消息 */
+  const handleForward = useCallback(() => {
+    onForward?.(message);
+    onClose();
+  }, [message, onForward, onClose]);
 
   /** 添加快捷 Reaction */
   const handleReaction = useCallback((emoji: string) => {
@@ -132,6 +160,26 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
         onClick={() => { onReply(message); onClose(); }}
       >
         💬 回复
+      </button>
+
+      {/* 转发 */}
+      {onForward && (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={handleForward}
+        >
+          ↗️ 转发
+        </button>
+      )}
+
+      {/* 置顶/取消置顶 */}
+      <button
+        type="button"
+        className={styles.menuItem}
+        onClick={handlePin}
+      >
+        📌 {isPinned ? '取消置顶' : '置顶'}
       </button>
 
       {/* 编辑（仅自己 + 文本类型 + 5 分钟内） */}

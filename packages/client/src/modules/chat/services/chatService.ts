@@ -19,6 +19,14 @@ interface ConversationsResponse {
   lastReadMap?: Record<string, Record<string, number>>;
   /** 参与者头像映射：userId → avatarUrl */
   participantAvatars?: Record<string, string>;
+  /** 用户置顶的会话 ID 列表 */
+  pinnedIds?: string[];
+  /** 用户免打扰的会话 ID 列表 */
+  mutedIds?: string[];
+  /** 用户归档的会话 ID 列表 */
+  archivedIds?: string[];
+  /** 会话标签映射：convId → string[] */
+  tags?: Record<string, string[]>;
 }
 
 /** 创建私聊 API 返回值 */
@@ -80,6 +88,46 @@ export const chatService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data;
+  },
+
+  /** 切换置顶会话 */
+  async togglePinConversation(conversationId: string): Promise<{ pinned: boolean }> {
+    const res = await api.post<{ pinned: boolean }>(`/chat/conversations/${conversationId}/pin`);
+    return res.data;
+  },
+
+  /** 切换免打扰会话 */
+  async toggleMuteConversation(conversationId: string): Promise<{ muted: boolean }> {
+    const res = await api.post<{ muted: boolean }>(`/chat/conversations/${conversationId}/mute`);
+    return res.data;
+  },
+
+  /** 切换归档会话 */
+  async toggleArchiveConversation(conversationId: string): Promise<{ archived: boolean }> {
+    const res = await api.post<{ archived: boolean }>(`/chat/conversations/${conversationId}/archive`);
+    return res.data;
+  },
+
+  /** 删除会话 */
+  async deleteConversation(conversationId: string): Promise<void> {
+    await api.delete(`/chat/conversations/${conversationId}`);
+  },
+
+  /** 设置会话标签 */
+  async setConversationTags(conversationId: string, tags: string[]): Promise<void> {
+    await api.post(`/chat/conversations/${conversationId}/tag`, { tags });
+  },
+
+  /** 获取置顶消息列表 */
+  async getPinnedMessages(conversationId: string): Promise<Message[]> {
+    const res = await api.get<{ messages: Message[] }>(`/chat/conversations/${conversationId}/pinned`);
+    return res.data.messages;
+  },
+
+  /** 转发消息 */
+  async forwardMessage(messageId: string, targetConversationId: string): Promise<Message> {
+    const res = await api.post<{ message: Message }>(`/chat/messages/${messageId}/forward`, { targetConversationId });
+    return res.data.message;
   },
 
   /** 上传文件（含音频） */

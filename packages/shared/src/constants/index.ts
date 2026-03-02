@@ -30,3 +30,7 @@ export const MAX_NICKNAME_LENGTH = 30;
 export const MAX_BIO_LENGTH = 200;
 /** 输入指示器自动超时（毫秒） */
 export const TYPING_TIMEOUT = 3000;
+/** 每个用户可为每个会话设置的最大标签数 */
+export const MAX_CONV_TAGS = 5;
+/** 会话标签最大长度 */
+export const MAX_TAG_LENGTH = 20;

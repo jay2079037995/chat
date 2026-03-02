@@ -95,7 +95,13 @@ export class ChatModule implements ServerModule {
           if (user?.avatar) participantAvatars[pid] = user.avatar;
         }
 
-        res.json({ conversations, participantNames, groupNames, botUserIds, lastReadMap, participantAvatars });
+        // 获取用户的会话管理数据
+        const pinnedIds = await messageRepo.getPinnedConversations(req.userId!);
+        const mutedIds = await messageRepo.getMutedConversations(req.userId!);
+        const archivedIds = await messageRepo.getArchivedConversations(req.userId!);
+        const tags = await messageRepo.getConversationTags(req.userId!);
+
+        res.json({ conversations, participantNames, groupNames, botUserIds, lastReadMap, participantAvatars, pinnedIds, mutedIds, archivedIds, tags });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -260,8 +266,116 @@ export class ChatModule implements ServerModule {
       });
     });
 
+    // POST /api/chat/conversations/:id/pin — 切换置顶会话
+    router.post('/conversations/:id/pin', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const pinned = await chatService.togglePinConversation(req.userId!, req.params.id as string);
+        res.json({ pinned });
+      } catch (err: any) {
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // POST /api/chat/conversations/:id/mute — 切换免打扰
+    router.post('/conversations/:id/mute', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const muted = await chatService.toggleMuteConversation(req.userId!, req.params.id as string);
+        res.json({ muted });
+      } catch (err: any) {
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // POST /api/chat/conversations/:id/archive — 切换归档
+    router.post('/conversations/:id/archive', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const archived = await chatService.toggleArchiveConversation(req.userId!, req.params.id as string);
+        res.json({ archived });
+      } catch (err: any) {
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // DELETE /api/chat/conversations/:id — 删除会话（per-user 软删除）
+    router.delete('/conversations/:id', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        await chatService.deleteConversation(req.userId!, req.params.id as string);
+        res.json({ success: true });
+      } catch (err: any) {
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // POST /api/chat/conversations/:id/tag — 设置会话标签
+    router.post('/conversations/:id/tag', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const { tags } = req.body;
+        if (!Array.isArray(tags)) { res.status(400).json({ error: '标签格式无效' }); return; }
+        await chatService.setConversationTags(req.userId!, req.params.id as string, tags);
+        res.json({ success: true, tags });
+      } catch (err: any) {
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        if (err.message === 'TOO_MANY_TAGS') { res.status(400).json({ error: '标签数量超过限制' }); return; }
+        if (err.message === 'TAG_TOO_LONG') { res.status(400).json({ error: '标签过长' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // GET /api/chat/conversations/:id/pinned — 获取置顶消息列表
+    router.get('/conversations/:id/pinned', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const conv = await chatService.getConversation(req.params.id as string);
+        if (!conv) { res.status(404).json({ error: '会话不存在' }); return; }
+        if (!conv.participants.includes(req.userId!)) { res.status(403).json({ error: '无权访问' }); return; }
+        const messages = await chatService.getPinnedMessages(req.params.id as string);
+        res.json({ messages });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // POST /api/chat/messages/:id/forward — 转发消息到目标会话
+    // 捕获模块级 io 引用，用于在 HTTP 路由中广播 socket 事件
+    let ioRef: TypedIO | null = null;
+
+    router.post('/messages/:id/forward', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const { targetConversationId } = req.body;
+        if (!targetConversationId) { res.status(400).json({ error: '请指定目标会话' }); return; }
+
+        const forwarded = await chatService.forwardMessage(
+          req.params.id as string,
+          targetConversationId,
+          req.userId!,
+        );
+
+        // 通过 socket 广播转发的消息到目标会话
+        if (ioRef) {
+          ioRef.to(targetConversationId).emit('message:receive', forwarded);
+        }
+
+        res.json({ message: forwarded });
+      } catch (err: any) {
+        if (err.message === 'MESSAGE_NOT_FOUND') { res.status(404).json({ error: '消息不存在' }); return; }
+        if (err.message === 'MESSAGE_RECALLED') { res.status(400).json({ error: '已撤回的消息无法转发' }); return; }
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '目标会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // Socket.IO 事件处理器
     const socketHandler = (io: TypedIO, socket: TypedSocket) => {
+      ioRef = io;
       const userId = (socket.data as any).userId as string;
       if (!userId) return;
 
@@ -453,6 +567,22 @@ export class ChatModule implements ServerModule {
           conversationId: data.conversationId,
           userId,
         });
+      });
+
+      // message:pin — 置顶/取消置顶消息（会话内所有人可见）
+      socket.on('message:pin', async (data, callback) => {
+        try {
+          const pinned = await chatService.togglePinMessage(data.messageId, data.conversationId, userId);
+          io.to(data.conversationId).emit('message:pinned', {
+            conversationId: data.conversationId,
+            messageId: data.messageId,
+            pinned,
+            pinnedBy: userId,
+          });
+          callback({ success: true, pinned });
+        } catch (err: any) {
+          callback({ success: false, error: err.message });
+        }
       });
 
       // conversation:join — 加入会话房间

@@ -1,0 +1,78 @@
+.container {
+  display: flex;
+  align-items: center;
+  padding: 8px 20px;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-light);
+  gap: 10px;
+  min-height: 40px;
+}
+
+.icon {
+  color: #667eea;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sender {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+  margin-right: 8px;
+}
+
+.text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.navBtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+
+  &:hover:not(:disabled) {
+    color: #667eea;
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+}
+
+.count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.unpinBtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  flex-shrink: 0;
+
+  &:hover {
+    color: #ff4d4f;
+  }
+}

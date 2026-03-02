@@ -20,6 +20,8 @@ import GroupMemberPanel from '../GroupMemberPanel';
 import MentionInput from '../MentionInput';
 import MessageContextMenu from '../MessageContextMenu';
 import ReplyPreview from '../ReplyPreview';
+import PinnedMessage from '../PinnedMessage';
+import ForwardModal from '../ForwardModal';
 import styles from './index.module.less';
 
 const { TextArea } = Input;
@@ -68,6 +70,8 @@ const ChatWindow: React.FC = () => {
   const setReplyingTo = useChatStore((s) => s.setReplyingTo);
   const lastReadMap = useChatStore((s) => s.lastReadMap);
   const typingUsers = useChatStore((s) => s.typingUsers);
+  const pinnedMessages = useChatStore((s) => s.pinnedMessages);
+  const loadPinnedMessages = useChatStore((s) => s.loadPinnedMessages);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -78,6 +82,8 @@ const ChatWindow: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showMemberPanel, setShowMemberPanel] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -120,6 +126,13 @@ const ChatWindow: React.FC = () => {
   useEffect(() => {
     setReplyingTo(null);
   }, [currentConversationId, setReplyingTo]);
+
+  // 切换会话时加载置顶消息
+  useEffect(() => {
+    if (currentConversationId) {
+      void loadPinnedMessages(currentConversationId);
+    }
+  }, [currentConversationId, loadPinnedMessages]);
 
   /** 上滑加载更多历史消息 */
   const handleScroll = useCallback(() => {
@@ -360,6 +373,12 @@ const ChatWindow: React.FC = () => {
     setReplyingTo(msg);
   };
 
+  /** 打开转发弹窗 */
+  const handleForward = (msg: Message) => {
+    setForwardingMessage(msg);
+    setShowForwardModal(true);
+  };
+
   /** 打开编辑弹窗 */
   const handleEdit = (msg: Message) => {
     setEditingMessage(msg);
@@ -533,6 +552,19 @@ const ChatWindow: React.FC = () => {
         )}
       </div>
 
+      {/* 置顶消息条 */}
+      <PinnedMessage
+        messages={pinnedMessages}
+        participantNames={participantNames}
+        onUnpin={(messageId) => {
+          const { socket } = useSocketStore.getState();
+          socket?.emit('message:pin', {
+            messageId,
+            conversationId: currentConversationId!,
+          }, () => {});
+        }}
+      />
+
       {/* 输入状态指示器 */}
       {currentConversationId && (() => {
         const convTyping = typingUsers[currentConversationId];
@@ -654,9 +686,11 @@ const ChatWindow: React.FC = () => {
           message={contextMenu.message}
           isSelf={contextMenu.message.senderId === currentUser?.id}
           position={contextMenu.position}
+          isPinned={pinnedMessages.some((pm) => pm.id === contextMenu.message?.id)}
           onClose={closeContextMenu}
           onReply={handleReply}
           onEdit={handleEdit}
+          onForward={handleForward}
         />
       )}
 
@@ -677,6 +711,13 @@ const ChatWindow: React.FC = () => {
           placeholder="编辑消息内容..."
         />
       </Modal>
+
+      {/* 转发弹窗 */}
+      <ForwardModal
+        visible={showForwardModal}
+        message={forwardingMessage}
+        onClose={() => { setShowForwardModal(false); setForwardingMessage(null); }}
+      />
     </div>
   );
 };

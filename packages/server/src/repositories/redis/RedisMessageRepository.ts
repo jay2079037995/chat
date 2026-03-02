@@ -10,6 +10,15 @@ const USER_CONVS_KEY = (userId: string) => `user_convs:${userId}`;   // 用户�
 const UNREAD_KEY = (convId: string) => `unread:${convId}`;           // 未读计数 Hash (field=userId)
 const LAST_READ_KEY = (convId: string, userId: string) => `lastread:${convId}:${userId}`;  // 用户最后已读时间戳
 
+// 会话管理（per-user）
+const PINNED_CONVS_KEY = (userId: string) => `pinned_convs:${userId}`;       // Set: 用户置顶会话 ID
+const MUTED_CONVS_KEY = (userId: string) => `muted_convs:${userId}`;         // Set: 用户免打扰会话 ID
+const ARCHIVED_CONVS_KEY = (userId: string) => `archived_convs:${userId}`;   // Set: 用户归档会话 ID
+const CONV_TAGS_KEY = (userId: string) => `conv_tags:${userId}`;             // Hash: field=convId, value=JSON(string[])
+
+// 消息置顶（per-conversation）
+const PINNED_MSG_KEY = (convId: string) => `pinned_msg:${convId}`;           // Set: 会话置顶消息 ID
+
 /**
  * 消息 Repository 的 Redis 实现
  *
@@ -47,6 +56,7 @@ export class RedisMessageRepository implements IMessageRepository {
     if (msg.replyTo) data.replyTo = msg.replyTo;
     if (msg.replySnapshot) data.replySnapshot = JSON.stringify(msg.replySnapshot);
     if (msg.reactions) data.reactions = JSON.stringify(msg.reactions);
+    if (msg.forwardedFrom) data.forwardedFrom = JSON.stringify(msg.forwardedFrom);
     return data;
   }
 
@@ -71,6 +81,7 @@ export class RedisMessageRepository implements IMessageRepository {
     if (data.replyTo) msg.replyTo = data.replyTo;
     if (data.replySnapshot) msg.replySnapshot = JSON.parse(data.replySnapshot);
     if (data.reactions) msg.reactions = JSON.parse(data.reactions);
+    if (data.forwardedFrom) msg.forwardedFrom = JSON.parse(data.forwardedFrom);
     return msg;
   }
 
@@ -285,5 +296,106 @@ export class RedisMessageRepository implements IMessageRepository {
   async setLastReadAt(conversationId: string, userId: string, timestamp: number): Promise<void> {
     const redis = getRedisClient();
     await redis.set(LAST_READ_KEY(conversationId, userId), String(timestamp));
+  }
+
+  // --- 会话管理（per-user）---
+
+  async togglePinnedConversation(userId: string, conversationId: string): Promise<boolean> {
+    const redis = getRedisClient();
+    const key = PINNED_CONVS_KEY(userId);
+    const isMember = await redis.sismember(key, conversationId);
+    if (isMember) {
+      await redis.srem(key, conversationId);
+      return false;
+    }
+    await redis.sadd(key, conversationId);
+    return true;
+  }
+
+  async getPinnedConversations(userId: string): Promise<string[]> {
+    const redis = getRedisClient();
+    return redis.smembers(PINNED_CONVS_KEY(userId));
+  }
+
+  async toggleMutedConversation(userId: string, conversationId: string): Promise<boolean> {
+    const redis = getRedisClient();
+    const key = MUTED_CONVS_KEY(userId);
+    const isMember = await redis.sismember(key, conversationId);
+    if (isMember) {
+      await redis.srem(key, conversationId);
+      return false;
+    }
+    await redis.sadd(key, conversationId);
+    return true;
+  }
+
+  async getMutedConversations(userId: string): Promise<string[]> {
+    const redis = getRedisClient();
+    return redis.smembers(MUTED_CONVS_KEY(userId));
+  }
+
+  async toggleArchivedConversation(userId: string, conversationId: string): Promise<boolean> {
+    const redis = getRedisClient();
+    const key = ARCHIVED_CONVS_KEY(userId);
+    const isMember = await redis.sismember(key, conversationId);
+    if (isMember) {
+      await redis.srem(key, conversationId);
+      return false;
+    }
+    await redis.sadd(key, conversationId);
+    return true;
+  }
+
+  async getArchivedConversations(userId: string): Promise<string[]> {
+    const redis = getRedisClient();
+    return redis.smembers(ARCHIVED_CONVS_KEY(userId));
+  }
+
+  async deleteConversationForUser(userId: string, conversationId: string): Promise<void> {
+    const redis = getRedisClient();
+    await redis.zrem(USER_CONVS_KEY(userId), conversationId);
+    // 同时清理该会话在此用户下的 pin/mute/archive/tags 状态
+    await redis.srem(PINNED_CONVS_KEY(userId), conversationId);
+    await redis.srem(MUTED_CONVS_KEY(userId), conversationId);
+    await redis.srem(ARCHIVED_CONVS_KEY(userId), conversationId);
+    await redis.hdel(CONV_TAGS_KEY(userId), conversationId);
+  }
+
+  async setConversationTags(userId: string, conversationId: string, tags: string[]): Promise<void> {
+    const redis = getRedisClient();
+    if (tags.length === 0) {
+      await redis.hdel(CONV_TAGS_KEY(userId), conversationId);
+    } else {
+      await redis.hset(CONV_TAGS_KEY(userId), conversationId, JSON.stringify(tags));
+    }
+  }
+
+  async getConversationTags(userId: string): Promise<Record<string, string[]>> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(CONV_TAGS_KEY(userId));
+    const result: Record<string, string[]> = {};
+    for (const [convId, json] of Object.entries(data)) {
+      result[convId] = JSON.parse(json);
+    }
+    return result;
+  }
+
+  // --- 消息置顶（per-conversation）---
+
+  async togglePinnedMessage(conversationId: string, messageId: string): Promise<boolean> {
+    const redis = getRedisClient();
+    const key = PINNED_MSG_KEY(conversationId);
+    const isMember = await redis.sismember(key, messageId);
+    if (isMember) {
+      await redis.srem(key, messageId);
+      return false;
+    }
+    await redis.sadd(key, messageId);
+    return true;
+  }
+
+  async getPinnedMessageIds(conversationId: string): Promise<string[]> {
+    const redis = getRedisClient();
+    return redis.smembers(PINNED_MSG_KEY(conversationId));
   }
 }
