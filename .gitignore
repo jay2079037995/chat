@@ -7,3 +7,5 @@ playwright-report/
 .DS_Store
 coverage/
 uploads/
+packages/electron/dist/
+packages/electron/release/

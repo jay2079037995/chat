@@ -23,6 +23,6 @@ export const config = {
   },
   /** CORS 跨域配置 */
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:3001'],
   },
 };

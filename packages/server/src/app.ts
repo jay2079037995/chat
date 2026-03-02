@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import { config } from './config';
 import { Container } from './core/container';
@@ -49,6 +50,18 @@ for (const mod of modules) {
   if (registration.socketHandler) {
     socketHandlers.push(registration.socketHandler);
   }
+}
+
+// --- 静态文件服务（生产环境：桌面端加载用） ---
+const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  // SPA fallback：非 API/Socket/上传请求返回 index.html
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io') && !req.path.startsWith('/uploads')) {
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+  });
 }
 
 export { app, container, socketHandlers };

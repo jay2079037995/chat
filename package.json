@@ -7,7 +7,8 @@
     "dev:client": "pnpm --filter @chat/client dev",
     "dev:server": "pnpm --filter @chat/server dev",
     "dev": "pnpm run dev:client & pnpm run dev:server",
-    "build": "pnpm --filter @chat/shared build && pnpm --filter @chat/client build && pnpm --filter @chat/server build",
+    "dev:electron": "pnpm --filter @chat/electron dev",
+    "build": "pnpm --filter @chat/shared build && pnpm --filter @chat/client build && pnpm --filter @chat/server build && pnpm --filter @chat/electron build",
     "test": "pnpm -r test",
     "test:ci": "bash scripts/test.sh",
     "test:env": "bash scripts/check-env.sh",
@@ -18,6 +19,9 @@
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron"]
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2"

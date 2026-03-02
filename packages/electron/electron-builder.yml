@@ -1,0 +1,54 @@
+appId: "com.chat.desktop"
+productName: "Chat"
+copyright: "Copyright © 2026"
+
+directories:
+  output: "release"
+  buildResources: "assets"
+
+files:
+  - "dist/**/*"
+  - "assets/**/*"
+  - "package.json"
+
+extraResources:
+  - from: "assets/"
+    to: "assets/"
+
+mac:
+  category: "public.app-category.social-networking"
+  icon: "assets/icon.png"
+  target:
+    - target: "dmg"
+      arch:
+        - "x64"
+        - "arm64"
+
+dmg:
+  title: "Chat"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: "link"
+      path: "/Applications"
+
+win:
+  icon: "assets/icon.png"
+  target:
+    - target: "nsis"
+      arch:
+        - "x64"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  icon: "assets/icon.png"
+  target:
+    - target: "AppImage"
+      arch:
+        - "x64"
+  category: "Network"

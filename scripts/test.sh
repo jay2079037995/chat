@@ -221,6 +221,19 @@ run_structure_checks() {
     [ -f "packages/server/__tests__/offline.test.ts" ] && pass "offline.test.ts 后端测试" || fail "offline.test.ts 缺失"
     [ -f "packages/client/__tests__/CacheService.test.tsx" ] && pass "CacheService.test.tsx 前端测试" || fail "CacheService.test.tsx 缺失"
   fi
+
+  # v0.8.0 结构
+  if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.8" ]; then
+    echo -e "  ${BOLD}-- v0.8.0 Electron 桌面端结构 --${NC}"
+    [ -f "packages/electron/package.json" ] && pass "electron package.json" || fail "electron package.json 缺失"
+    [ -f "packages/electron/src/main.ts" ] && pass "Electron 主进程" || fail "Electron 主进程缺失"
+    [ -f "packages/electron/src/preload.ts" ] && pass "Preload 脚本" || fail "Preload 脚本缺失"
+    [ -f "packages/electron/src/windowManager.ts" ] && pass "窗口管理器" || fail "窗口管理器缺失"
+    [ -f "packages/electron/src/menuBuilder.ts" ] && pass "菜单构建器" || fail "菜单构建器缺失"
+    [ -f "packages/electron/src/trayManager.ts" ] && pass "托盘管理器" || fail "托盘管理器缺失"
+    [ -f "packages/electron/electron-builder.yml" ] && pass "electron-builder 配置" || fail "electron-builder 配置缺失"
+    [ -f "packages/electron/__tests__/electron.test.ts" ] && pass "Electron 测试文件" || fail "Electron 测试文件缺失"
+  fi
 }
 
 if $RUN_STRUCTURE; then
@@ -267,6 +280,10 @@ run_unit_tests() {
       SERVER_PATTERN="(offline)"
       CLIENT_PATTERN="(Cache)"
       ;;
+    "0.8")
+      SERVER_PATTERN=""
+      CLIENT_PATTERN=""
+      ;;
     *)
       # 空 = 运行全部
       ;;
@@ -299,6 +316,14 @@ run_unit_tests() {
   echo -e "\n  ${BOLD}-- 共享包测试 --${NC}"
   if ! pnpm --filter @chat/shared exec jest --passWithNoTests --verbose 2>&1 | sed 's/^/  /'; then
     JEST_EXIT=1
+  fi
+
+  # Electron 测试
+  if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.8" ]; then
+    echo -e "\n  ${BOLD}-- Electron 测试 --${NC}"
+    if ! pnpm --filter @chat/electron exec jest --passWithNoTests --verbose 2>&1 | sed 's/^/  /'; then
+      JEST_EXIT=1
+    fi
   fi
 
   return $JEST_EXIT
