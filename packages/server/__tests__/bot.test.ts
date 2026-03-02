@@ -30,6 +30,10 @@ describe('Bot（机器人系统）', () => {
     ownerId = owner.id;
   });
 
+  afterEach(async () => {
+    await botService.close();
+  });
+
   afterAll(async () => {
     await closeRedisClient();
   });

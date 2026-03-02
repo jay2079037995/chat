@@ -1,9 +1,11 @@
 import crypto from 'crypto';
+import Redis from 'ioredis';
 import type { Message, BotUpdate } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import { getRedisClient } from '../../repositories/redis/RedisClient';
+import { config } from '../../config';
 
 const BOT_UPDATES_KEY = (botId: string) => `bot_updates:${botId}`;
 const BOT_UPDATE_SEQ_KEY = (botId: string) => `bot_update_seq:${botId}`;
@@ -12,12 +14,22 @@ const BOT_UPDATE_SEQ_KEY = (botId: string) => `bot_update_seq:${botId}`;
  * 机器人服务
  *
  * 处理机器人创建/删除、消息队列入队/出队、机器人发消息等核心逻辑。
+ * 注意：BLPOP 是阻塞命令，会独占 Redis 连接，因此使用独立连接。
  */
 export class BotService {
+  /** 专用于 BLPOP 的独立 Redis 连接（避免阻塞主连接） */
+  private blockingRedis: Redis;
+
   constructor(
     private userRepo: IUserRepository,
     private messageRepo: IMessageRepository,
-  ) {}
+  ) {
+    this.blockingRedis = new Redis({
+      host: config.redis.host,
+      port: config.redis.port,
+      password: config.redis.password,
+    });
+  }
 
   /** 创建机器人 */
   async createBot(ownerId: string, username: string) {
@@ -63,15 +75,15 @@ export class BotService {
     const botId = await this.userRepo.findBotByToken(token);
     if (!botId) throw new Error('INVALID_TOKEN');
 
-    const redis = getRedisClient();
-    // BLPOP 阻塞等待，timeout 秒后返回 null
-    const result = await redis.blpop(BOT_UPDATES_KEY(botId), timeout);
+    // 使用独立连接执行 BLPOP，避免阻塞主 Redis 连接
+    const result = await this.blockingRedis.blpop(BOT_UPDATES_KEY(botId), timeout);
     if (!result) return [];
 
     // BLPOP 返回 [key, value]
     const updates: BotUpdate[] = [JSON.parse(result[1])];
 
-    // 取出队列中剩余的（非阻塞）
+    // 取出队列中剩余的（非阻塞，用主连接即可）
+    const redis = getRedisClient();
     let item: string | null;
     // eslint-disable-next-line no-cond-assign
     while ((item = await redis.lpop(BOT_UPDATES_KEY(botId))) !== null) {
@@ -111,5 +123,10 @@ export class BotService {
   /** 通过 token 获取机器人 ID */
   async getBotIdByToken(token: string): Promise<string | null> {
     return this.userRepo.findBotByToken(token);
+  }
+
+  /** 关闭专用 Redis 连接（用于测试清理和优雅关机） */
+  async close() {
+    await this.blockingRedis.quit();
   }
 }
