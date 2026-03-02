@@ -67,7 +67,7 @@ const Home: React.FC = () => {
     <Layout className={styles.layout}>
       <Header className={styles.header}>
         <Text strong className={styles.brand}>
-          Chat
+          Chat <Text type="secondary" className={styles.version}>v0.8.0</Text>
         </Text>
         <div className={styles.userInfo}>
           <Text className={styles.username}>{user?.username}</Text>

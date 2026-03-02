@@ -9,7 +9,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { createMainWindow, getMainWindow } from './windowManager';
 import { buildMenu } from './menuBuilder';
 import { createTray, destroyTray } from './trayManager';
-import { isDebugEnabled, watchDebugFile, stopWatching } from './debugFileWatcher';
+import { isDebugEnabled } from './debugFileWatcher';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -40,8 +40,7 @@ if (!gotSingleInstanceLock) {
     // 创建系统托盘
     createTray();
 
-    // 启动调试控制文件监听，窗口加载完成后发送初始状态
-    watchDebugFile(getMainWindow);
+    // 窗口加载完成后发送调试状态
     win.webContents.once('did-finish-load', () => {
       win.webContents.send('debug:status', isDebugEnabled());
     });
@@ -63,7 +62,6 @@ if (!gotSingleInstanceLock) {
   // 标记强制退出（区分「关闭窗口→隐藏」和「真正退出」）
   app.on('before-quit', () => {
     (app as any)._forceQuit = true;
-    stopWatching();
   });
 
   // macOS 以外：所有窗口关闭时退出

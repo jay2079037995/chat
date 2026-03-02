@@ -45,6 +45,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     });
 
     socket.on('connect', () => {
+      console.log('[Socket] 已连接, id:', socket.id);
       set({ connected: true });
       // 重连时刷新会话列表（获取准确未读计数）
       import('./useChatStore').then(({ useChatStore }) => {
@@ -52,7 +53,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
-    socket.on('disconnect', () => {
+    socket.on('connect_error', (err) => {
+      console.error('[Socket] 连接失败:', err.message);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('[Socket] 断开连接:', reason);
       set({ connected: false });
     });
 

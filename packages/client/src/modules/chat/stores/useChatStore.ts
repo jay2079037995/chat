@@ -209,8 +209,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   startPrivateChat: async (targetUserId: string) => {
     try {
+      console.log('[Chat] 创建私聊, targetUserId:', targetUserId);
       const { conversation, participantNames } =
         await chatService.createPrivateConversation(targetUserId);
+      console.log('[Chat] 私聊已创建, conversationId:', conversation.id);
 
       set((state) => {
         const exists = state.conversations.some((c) => c.id === conversation.id);
@@ -224,7 +226,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       await get().selectConversation(conversation.id);
     } catch (err) {
-      console.error('创建私聊失败:', err);
+      console.error('[Chat] 创建私聊失败:', err);
     }
   },
 
