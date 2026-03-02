@@ -376,13 +376,22 @@ const ChatWindow: React.FC = () => {
         {currentMessages.map((msg) => {
           const isSelf = msg.senderId === currentUser?.id;
           const isMediaType = msg.type === 'image' || msg.type === 'code' || msg.type === 'file';
-          const showSenderName = isGroup && !isSelf;
-          const senderName = participantNames[msg.senderId] || msg.senderId;
+          const showSenderName = true;
+          const senderName = isSelf ? (currentUser?.username || '') : (participantNames[msg.senderId] || msg.senderId);
           return (
             <div key={msg.id}>
-              {showSenderName && (
-                <div className={styles.senderName}>{senderName}</div>
-              )}
+              <div
+                className={`${styles.messageMeta} ${
+                  isSelf ? styles.messageMetaSelf : styles.messageMetaOther
+                }`}
+              >
+                {showSenderName && (
+                  <span className={styles.senderName}>{senderName}</span>
+                )}
+                <span className={styles.messageTime}>
+                  {formatMessageTime(msg.createdAt)}
+                </span>
+              </div>
               <div
                 className={`${styles.messageItem} ${
                   isSelf ? styles.messageItemSelf : styles.messageItemOther
@@ -395,13 +404,6 @@ const ChatWindow: React.FC = () => {
                 >
                   <MessageBubble message={msg} isSelf={isSelf} />
                 </div>
-              </div>
-              <div
-                className={`${styles.messageTime} ${
-                  isSelf ? styles.messageTimeSelf : styles.messageTimeOther
-                }`}
-              >
-                {formatMessageTime(msg.createdAt)}
               </div>
             </div>
           );

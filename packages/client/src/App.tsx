@@ -20,7 +20,26 @@ const guardMap = {
  */
 const App: React.FC = () => {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: '#667eea',
+          colorLink: '#667eea',
+          colorSuccess: '#52c41a',
+          colorWarning: '#ffa940',
+          colorError: '#ff6b6b',
+          borderRadius: 8,
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        },
+        components: {
+          Button: { borderRadius: 8 },
+          Input: { borderRadius: 8 },
+          Card: { borderRadiusLG: 16 },
+          Modal: { borderRadiusLG: 16 },
+        },
+      }}
+    >
       <BrowserRouter>
         <Routes>
           {/* 遍历模块注册表，动态生成路由 */}

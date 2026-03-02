@@ -59,6 +59,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: './public/index.html',
       title: 'Chat',
+      favicon: './public/favicon.png',
     }),
   ],
   devServer: {

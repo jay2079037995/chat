@@ -3,17 +3,78 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: #f0f2f5;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #00d2ff 100%);
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.container::before,
+.container::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.container::before {
+  width: 300px;
+  height: 300px;
+  top: -50px;
+  left: -80px;
+}
+
+.container::after {
+  width: 400px;
+  height: 400px;
+  bottom: -100px;
+  right: -100px;
 }
 
 .card {
-  width: 400px;
+  width: 420px;
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  z-index: 1;
+}
+
+.logoArea {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.logo {
+  font-size: 48px;
+  margin-bottom: 4px;
 }
 
 .title {
   text-align: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px !important;
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 
 .footer {
   text-align: center;
+  color: var(--text-secondary);
 }

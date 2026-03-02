@@ -6,12 +6,12 @@
  */
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, MessageOutlined } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../stores/useAuthStore';
 import styles from './index.module.less';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const Register: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -41,9 +41,11 @@ const Register: React.FC = () => {
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
-        <Title level={3} className={styles.title}>
-          注册
-        </Title>
+        <div className={styles.logoArea}>
+          <div className={styles.logo}><MessageOutlined /></div>
+          <Title level={3} className={styles.title}>Chat</Title>
+          <Text className={styles.subtitle}>创建新账号</Text>
+        </div>
         <Form name="register" onFinish={onFinish} size="large">
           <Form.Item
             name="username"

@@ -6,12 +6,12 @@
  */
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, MessageOutlined } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../stores/useAuthStore';
 import styles from './index.module.less';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -36,9 +36,11 @@ const Login: React.FC = () => {
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
-        <Title level={3} className={styles.title}>
-          登录
-        </Title>
+        <div className={styles.logoArea}>
+          <div className={styles.logo}><MessageOutlined /></div>
+          <Title level={3} className={styles.title}>Chat</Title>
+          <Text className={styles.subtitle}>欢迎回来</Text>
+        </div>
         <Form name="login" onFinish={onFinish} size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input prefix={<UserOutlined />} placeholder="用户名" />

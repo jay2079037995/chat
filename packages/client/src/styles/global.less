@@ -1,3 +1,50 @@
+/* === CSS Custom Properties === */
+:root {
+  /* Primary Gradient */
+  --primary-start: #667eea;
+  --primary-end: #764ba2;
+  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  /* Accent Colors */
+  --accent-purple: #8B5CF6;
+  --accent-green: #52c41a;
+  --accent-coral: #ff6b6b;
+  --accent-amber: #ffa940;
+  --accent-cyan: #00d2ff;
+
+  /* Backgrounds */
+  --bg-primary: #f8f9fe;
+  --bg-secondary: #f0f2f8;
+  --bg-sidebar: #2c2f3e;
+  --bg-sidebar-hover: #383b4a;
+
+  /* Surfaces */
+  --surface-card: #ffffff;
+
+  /* Text */
+  --text-primary: #1a1a2e;
+  --text-secondary: #6c6f80;
+  --text-tertiary: #9ca0b0;
+  --text-on-dark: #e4e6f0;
+  --text-on-dark-secondary: rgba(255, 255, 255, 0.4);
+
+  /* Borders */
+  --border-light: #e8eaf0;
+  --border-focus: #667eea;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(102, 126, 234, 0.08);
+  --shadow-md: 0 4px 16px rgba(102, 126, 234, 0.12);
+  --shadow-lg: 0 8px 32px rgba(102, 126, 234, 0.16);
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+}
+
+/* === Reset === */
 * {
   margin: 0;
   padding: 0;
@@ -7,4 +54,27 @@
 html, body, #root {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.4);
+}
+
+/* === Selection === */
+::selection {
+  background: rgba(102, 126, 234, 0.2);
 }

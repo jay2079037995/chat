@@ -1,0 +1,91 @@
+{
+  "version": "2.8",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "Frame",
+      "clip": true,
+      "width": 800,
+      "height": 600,
+      "fill": "#FFFFFF",
+      "layout": "none"
+    },
+    {
+      "type": "frame",
+      "id": "yLt1v",
+      "x": 0,
+      "y": 0,
+      "name": "App Icon 512",
+      "clip": true,
+      "width": 512,
+      "height": 512,
+      "fill": {
+        "type": "gradient",
+        "gradientType": "linear",
+        "enabled": true,
+        "rotation": 225,
+        "size": {
+          "height": 1
+        },
+        "colors": [
+          {
+            "color": "#667eea",
+            "position": 0
+          },
+          {
+            "color": "#764ba2",
+            "position": 1
+          }
+        ]
+      },
+      "cornerRadius": 112,
+      "layout": "none",
+      "children": [
+        {
+          "type": "path",
+          "id": "mzkHw",
+          "x": 96,
+          "y": 100,
+          "name": "Chat Bubble",
+          "geometry": "M0.15 0c-0.085 0-0.15 0.075-0.15 0.167l0 0.458c0 0.092 0.065 0.167 0.15 0.167l0.05 0-0.05 0.208 0.25-0.208 0.45 0c0.085 0 0.15-0.075 0.15-0.167l0-0.458c0-0.092-0.065-0.167-0.15-0.167z",
+          "fill": "#FFFFFF",
+          "width": 320,
+          "height": 280
+        },
+        {
+          "type": "ellipse",
+          "id": "sUoKJ",
+          "x": 168,
+          "y": 210,
+          "name": "Dot 1",
+          "fill": "#667eea",
+          "width": 40,
+          "height": 40
+        },
+        {
+          "type": "ellipse",
+          "id": "J3iaJ",
+          "x": 236,
+          "y": 210,
+          "name": "Dot 2",
+          "fill": "#764ba2",
+          "width": 40,
+          "height": 40
+        },
+        {
+          "type": "ellipse",
+          "id": "p8rX1",
+          "x": 304,
+          "y": 210,
+          "name": "Dot 3",
+          "fill": "#8B5CF6",
+          "width": 40,
+          "height": 40
+        }
+      ]
+    }
+  ]
+}

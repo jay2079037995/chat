@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Layout, Button, Typography } from 'antd';
-import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UsergroupAddOutlined, SearchOutlined, MessageOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import UserSearch from '../../components/UserSearch';
@@ -67,7 +67,7 @@ const Home: React.FC = () => {
     <Layout className={styles.layout}>
       <Header className={styles.header}>
         <Text strong className={styles.brand}>
-          Chat <Text type="secondary" className={styles.version}>v0.8.0</Text>
+          Chat <Text className={styles.version}>v0.9.0</Text>
         </Text>
         <div className={styles.userInfo}>
           <Text className={styles.username}>{user?.username}</Text>
@@ -102,8 +102,9 @@ const Home: React.FC = () => {
             <ChatWindow />
           ) : (
             <div className={styles.placeholder}>
+              <div className={styles.placeholderIcon}><MessageOutlined /></div>
               <Typography.Title level={4}>欢迎使用 Chat</Typography.Title>
-              <Text type="secondary">选择一个用户开始聊天</Text>
+              <Text type="secondary">选择一个会话开始聊天</Text>
             </div>
           )}
         </Content>

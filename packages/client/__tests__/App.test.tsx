@@ -23,7 +23,7 @@ describe('App', () => {
   it('redirects to login when not authenticated', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('登录')).toBeDefined();
+      expect(screen.getByText('欢迎回来')).toBeDefined();
     });
   });
 });

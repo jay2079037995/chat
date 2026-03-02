@@ -9,10 +9,23 @@
 .userItem {
   cursor: pointer;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: background 0.2s;
 
   &:hover {
-    background: #f5f5f5;
+    background: rgba(102, 126, 234, 0.15);
   }
+}
+
+/* Override Ant Design list text for dark sidebar */
+.results :global(.ant-list-item-meta-title) {
+  color: #e4e6f0 !important;
+}
+
+.results :global(.ant-list-item) {
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.results :global(.ant-empty-description) {
+  color: rgba(255, 255, 255, 0.35) !important;
 }

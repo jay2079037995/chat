@@ -78,7 +78,10 @@ const ConversationList: React.FC = () => {
             onClick={() => selectConversation(conv.id)}
           >
             <div className={styles.avatarWrapper}>
-              <Avatar icon={isGroup ? <TeamOutlined /> : <UserOutlined />} />
+              <Avatar
+                icon={isGroup ? <TeamOutlined /> : <UserOutlined />}
+                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}
+              />
               {!isGroup && isOnline && <span className={styles.onlineIndicator} />}
             </div>
             <div className={styles.info}>
