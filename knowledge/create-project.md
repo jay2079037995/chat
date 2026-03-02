@@ -210,13 +210,25 @@ const guardMap = { auth: AuthGuard, guest: GuestGuard } as const;
 
 ### 第 5 步：测试体系搭建
 
-#### 5.1 测试框架配置
+#### 5.1 测试铁律
+
+> **所有测试项必须为自动化测试（`[AUTO]`），禁止出现任何人工验证项（`[MANUAL]`）。**
+
+- 每个版本的测试文档（`doc/test/vX.X.0-test.md`）中所有测试项必须标记为 `[AUTO]`
+- 如果某个功能看似只能人工验证（如 UI 交互、Socket 广播、点击外部关闭浮层），必须通过以下手段转为自动化测试：
+  - **Socket 广播** → mock io/socket 对象，验证 `socket.to().emit()` 调用
+  - **UI 交互** → React Testing Library `fireEvent` / `userEvent` 模拟用户操作
+  - **动态导入组件** → `jest.mock()` 同时拦截静态和动态 `import()`
+  - **CSS Module 环境** → 避免依赖 CSS class 选择器，使用 `data-testid` 或 DOM 结构查询
+- 不允许以 "需要人工验证" 为由跳过自动化测试编写
+
+#### 5.2 测试框架配置
 
 - **单元/集成测试**: Jest + React Testing Library (前端) + Supertest (后端)
 - **E2E 测试**: Playwright
 - **测试脚本**: `scripts/test.sh`（支持版本筛选、回归测试）
 
-#### 5.2 后端测试约定
+#### 5.3 后端测试约定
 
 ```typescript
 // 使用内存 Redis (ioredis-mock) 进行测试
@@ -225,7 +237,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 ```
 
-#### 5.3 前端测试约定
+#### 5.4 前端测试约定
 
 ```typescript
 // jest.mock 路径必须与实际 import 路径一致
@@ -318,7 +330,7 @@ v0.3.0 - 核心功能 B
 3. **Repository 模式**抽象数据访问，预留存储替换能力
 4. **模块化架构**：每个功能为独立模块，通过统一接口注册
 5. **前后端共享类型**放在 `packages/shared`
-6. **每个功能写对应测试**
+6. **每个功能写对应测试，且所有测试必须为自动化测试（`[AUTO]`），禁止 `[MANUAL]`**
 7. **组件文件 PascalCase，工具函数 camelCase**
 8. **每次需求变更同步更新**：`doc/requirements.md`、测试文档、`CLAUDE.md`
 

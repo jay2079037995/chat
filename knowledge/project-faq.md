@@ -139,7 +139,34 @@ render(
 );
 ```
 
-### 4.3 后端测试使用 ioredis-mock
+### 4.3 将 "看似需要人工验证" 的测试项转为自动化
+
+**铁律**：所有测试项必须为 `[AUTO]`，禁止 `[MANUAL]`。
+
+**常见 MANUAL 场景及自动化方案**：
+
+| 场景 | 自动化方案 |
+|------|-----------|
+| Socket 广播验证 | mock io/socket 对象，捕获 `socket.on` 注册的 handler，直接调用并验证 `socket.to().emit()` |
+| UI 交互（右键菜单、点击外部关闭） | `fireEvent.contextMenu()` / `fireEvent.mouseDown()` 模拟用户操作 |
+| 动态导入组件（如 emoji-mart） | `jest.mock()` 同时拦截静态和动态 `import()`，mock 构造函数返回 DOM 元素 |
+| CSS Module 样式选择器 | 测试环境 styleMock 导出 `{}`，所有 class 为 undefined → 改用 `data-testid` 或 DOM 结构查询 |
+| "双方显示" 类端到端验证 | 拆分为：服务端广播测试 + 客户端渲染测试，各自独立验证 |
+| Emoji Picker 浮层可见性 | mock Picker 创建带 `data-testid` 的 DOM 元素，通过 `document.querySelector` 检测 |
+
+**示例：Socket 广播测试**
+```typescript
+const registeredHandlers: Record<string, Function> = {};
+const mockSocket = {
+  on: jest.fn((event, handler) => { registeredHandlers[event] = handler; }),
+  to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+};
+// 注册 handler 后直接调用
+await registeredHandlers['message:recall'](data, callback);
+expect(mockSocket.to).toHaveBeenCalledWith(conversationId);
+```
+
+### 4.4 后端测试使用 ioredis-mock
 
 **问题**：测试环境没有 Redis 服务。
 

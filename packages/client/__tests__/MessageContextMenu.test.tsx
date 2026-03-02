@@ -18,6 +18,16 @@ jest.mock('../src/modules/chat/stores/useSocketStore', () => ({
   },
 }));
 
+// Mock useChatStore
+const mockHandleRecalled = jest.fn();
+jest.mock('../src/modules/chat/stores/useChatStore', () => ({
+  useChatStore: {
+    getState: () => ({
+      handleRecalled: mockHandleRecalled,
+    }),
+  },
+}));
+
 // Mock antd message
 jest.mock('antd', () => ({
   ...jest.requireActual('antd'),
@@ -168,6 +178,37 @@ describe('MessageContextMenu (v1.3.0)', () => {
       expect.any(Function),
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('撤回成功后更新发送者本地消息状态', async () => {
+    // 让 mockEmit 在被调用时立即执行 callback({ success: true })
+    mockEmit.mockImplementation((_event: string, _data: unknown, cb?: (r: { success: boolean }) => void) => {
+      if (cb) cb({ success: true });
+    });
+
+    const msg = createMessage();
+    await act(async () => {
+      render(
+        <MessageContextMenu
+          message={msg}
+          isSelf={true}
+          position={position}
+          onClose={onClose}
+          onReply={onReply}
+          onEdit={onEdit}
+        />,
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/撤回/));
+    });
+
+    // 验证撤回成功后调用 handleRecalled 更新本地状态
+    expect(mockHandleRecalled).toHaveBeenCalledWith('msg1', 'conv1');
+
+    // 清理 mockEmit 的实现
+    mockEmit.mockReset();
   });
 
   it('显示 6 个快捷 Reaction 按钮', async () => {

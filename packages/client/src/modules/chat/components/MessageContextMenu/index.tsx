@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { Message } from '@chat/shared';
 import { useSocketStore } from '../../stores/useSocketStore';
+import { useChatStore } from '../../stores/useChatStore';
 import styles from './index.module.less';
 
 /** 快捷 Reaction Emoji 列表 */
@@ -63,7 +64,10 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       messageId: message.id,
       conversationId: message.conversationId,
     }, (result) => {
-      if (!result.success) {
+      if (result.success) {
+        // 撤回成功：更新发送者本地消息状态（服务端 socket.to 不会回传给自己）
+        useChatStore.getState().handleRecalled(message.id, message.conversationId);
+      } else {
         import('antd').then(({ message: antMsg }) => {
           const errorMap: Record<string, string> = {
             RECALL_TIMEOUT: '已超过 2 分钟，无法撤回',
