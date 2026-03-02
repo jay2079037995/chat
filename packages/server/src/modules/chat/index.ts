@@ -7,7 +7,7 @@ import type { ISessionRepository } from '../../repositories/interfaces/ISessionR
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import { ChatService } from './ChatService';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
-import { MESSAGES_PER_PAGE, ALLOWED_AUDIO_TYPES, MAX_AUDIO_SIZE } from '@chat/shared';
+import { MESSAGES_PER_PAGE, ALLOWED_AUDIO_TYPES, MAX_AUDIO_SIZE, type Message } from '@chat/shared';
 import { imageUpload, fileUpload, getFileUrl } from './upload';
 import { getRedisClient } from '../../repositories/redis/RedisClient';
 
@@ -256,6 +256,23 @@ export class ChatModule implements ServerModule {
         }
       })();
 
+      // 连接时推送离线消息
+      void (async () => {
+        try {
+          const redis = getRedisClient();
+          const key = `offline_msgs:${userId}`;
+          const rawMsgs = await redis.lrange(key, 0, -1);
+          if (rawMsgs.length > 0) {
+            const messages: Message[] = rawMsgs.map((r) => JSON.parse(r));
+            messages.sort((a, b) => a.createdAt - b.createdAt);
+            socket.emit('sync:offline_messages', messages);
+            await redis.del(key);
+          }
+        } catch (err) {
+          console.error('推送离线消息失败:', err);
+        }
+      })();
+
       // message:send — 发送消息
       socket.on('message:send', async (data, callback) => {
         try {
@@ -285,6 +302,18 @@ export class ChatModule implements ServerModule {
 
           // 广播给会话中的其他成员
           socket.to(data.conversationId).emit('message:receive', message);
+
+          // 检查离线参与者，将消息存入离线队列
+          if (conv) {
+            const redis = getRedisClient();
+            const onlineUserIds = await messageRepo.getOnlineUsers();
+            const onlineSet = new Set(onlineUserIds);
+            for (const pid of conv.participants) {
+              if (pid !== userId && !onlineSet.has(pid)) {
+                await redis.rpush(`offline_msgs:${pid}`, JSON.stringify(message));
+              }
+            }
+          }
 
           // 通过 callback 返回持久化后的消息给发送者
           callback(message);

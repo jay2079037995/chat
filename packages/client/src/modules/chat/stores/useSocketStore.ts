@@ -46,6 +46,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     socket.on('connect', () => {
       set({ connected: true });
+      // 重连时刷新会话列表（获取准确未读计数）
+      import('./useChatStore').then(({ useChatStore }) => {
+        void useChatStore.getState().loadConversations();
+      });
     });
 
     socket.on('disconnect', () => {
@@ -85,6 +89,17 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     socket.on('message:read', (data) => {
       import('./useChatStore').then(({ useChatStore }) => {
         useChatStore.getState().handleReadReceipt(data.conversationId, data.userId);
+      });
+    });
+
+    // 上线后接收离线消息
+    socket.on('sync:offline_messages', (messages) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        const store = useChatStore.getState();
+        for (const msg of messages) {
+          store.receiveMessage(msg);
+        }
+        void store.loadConversations();
       });
     });
 

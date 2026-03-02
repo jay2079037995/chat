@@ -213,6 +213,14 @@ run_structure_checks() {
     [ -f "packages/client/src/modules/chat/components/MessageSearch/index.tsx" ] && pass "MessageSearch 组件" || fail "MessageSearch 组件缺失"
     [ -f "packages/client/src/modules/chat/components/MessageSearch/index.module.less" ] && pass "MessageSearch 样式" || fail "MessageSearch 样式缺失"
   fi
+
+  # v0.7.0 结构
+  if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" = "0.7" ]; then
+    echo -e "  ${BOLD}-- v0.7.0 缓存与离线结构 --${NC}"
+    [ -f "packages/client/src/services/cacheService.ts" ] && pass "cacheService 缓存服务" || fail "cacheService 缺失"
+    [ -f "packages/server/__tests__/offline.test.ts" ] && pass "offline.test.ts 后端测试" || fail "offline.test.ts 缺失"
+    [ -f "packages/client/__tests__/CacheService.test.tsx" ] && pass "CacheService.test.tsx 前端测试" || fail "CacheService.test.tsx 缺失"
+  fi
 }
 
 if $RUN_STRUCTURE; then
@@ -254,6 +262,10 @@ run_unit_tests() {
     "0.6")
       SERVER_PATTERN="(history|search)"
       CLIENT_PATTERN="(History|Search)"
+      ;;
+    "0.7")
+      SERVER_PATTERN="(offline)"
+      CLIENT_PATTERN="(Cache)"
       ;;
     *)
       # 空 = 运行全部

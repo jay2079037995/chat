@@ -31,6 +31,7 @@ const Home: React.FC = () => {
   const connect = useSocketStore((s) => s.connect);
   const disconnect = useSocketStore((s) => s.disconnect);
   const loadConversations = useChatStore((s) => s.loadConversations);
+  const loadFromCache = useChatStore((s) => s.loadFromCache);
   const startPrivateChat = useChatStore((s) => s.startPrivateChat);
   const currentConversationId = useChatStore((s) => s.currentConversationId);
 
@@ -40,6 +41,7 @@ const Home: React.FC = () => {
   // 挂载时建立 Socket 连接 + 加载会话列表
   useEffect(() => {
     if (sessionId) {
+      loadFromCache();
       connect(sessionId);
       void loadConversations();
     }
@@ -47,7 +49,7 @@ const Home: React.FC = () => {
     return () => {
       disconnect();
     };
-  }, [sessionId, connect, disconnect, loadConversations]);
+  }, [sessionId, connect, disconnect, loadConversations, loadFromCache]);
 
   /** 登出并跳转到登录页 */
   const handleLogout = async () => {

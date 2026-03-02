@@ -9,6 +9,7 @@ import { MESSAGES_PER_PAGE } from '@chat/shared';
 import { chatService, type ConversationWithUnread } from '../services/chatService';
 import { groupService } from '../services/groupService';
 import { useSocketStore } from './useSocketStore';
+import { cacheService } from '../../../services/cacheService';
 
 interface ChatState {
   /** 会话列表（含未读计数） */
@@ -46,6 +47,8 @@ interface ChatState {
   loadMoreMessages: (conversationId: string) => Promise<void>;
   /** 处理已读回执 */
   handleReadReceipt: (conversationId: string, userId: string) => void;
+  /** 从本地缓存加载数据（启动时调用） */
+  loadFromCache: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -66,6 +69,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         participantNames: { ...state.participantNames, ...participantNames },
         groupNames: { ...state.groupNames, ...groupNames },
       }));
+      // 缓存会话列表到 localStorage
+      cacheService.saveConversations({ conversations, participantNames, groupNames });
     } catch (err) {
       console.error('加载会话列表失败:', err);
     }
@@ -81,11 +86,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       // 加载消息
       const msgs = await chatService.getMessages(conversationId);
+      const reversed = msgs.reverse();
       set((state) => ({
-        messages: { ...state.messages, [conversationId]: msgs.reverse() },
+        messages: { ...state.messages, [conversationId]: reversed },
         hasMore: { ...state.hasMore, [conversationId]: msgs.length >= MESSAGES_PER_PAGE },
         loading: false,
       }));
+      // 缓存消息到 localStorage
+      cacheService.saveMessages(conversationId, reversed);
 
       // 标记已读
       await chatService.markAsRead(conversationId);
@@ -98,8 +106,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ),
       }));
     } catch (err) {
+      // 加载失败时尝试从缓存读取
+      const cachedMsgs = cacheService.getMessages(conversationId);
+      if (cachedMsgs) {
+        set((state) => ({
+          messages: { ...state.messages, [conversationId]: cachedMsgs },
+          loading: false,
+        }));
+      } else {
+        set({ loading: false });
+      }
       console.error('加载消息失败:', err);
-      set({ loading: false });
     }
   },
 
@@ -134,6 +151,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ),
           };
         });
+        // 更新消息缓存
+        cacheService.saveMessages(currentConversationId, get().messages[currentConversationId] || []);
       },
     );
   },
@@ -171,6 +190,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       return { messages: updatedMessages, conversations };
     });
+
+    // 更新消息缓存
+    cacheService.saveMessages(message.conversationId, get().messages[message.conversationId] || []);
 
     // 新会话：从服务端拉取完整会话列表以获取新会话信息
     if (!conversationExists) {
@@ -253,5 +275,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   handleReadReceipt: (_conversationId: string, _userId: string) => {
     // v0.3.0 基础实现：暂不做 UI 更新
+  },
+
+  loadFromCache: () => {
+    const cached = cacheService.getConversations();
+    if (cached) {
+      set((state) => ({
+        conversations: cached.conversations,
+        participantNames: { ...state.participantNames, ...cached.participantNames },
+        groupNames: { ...state.groupNames, ...cached.groupNames },
+      }));
+    }
   },
 }));

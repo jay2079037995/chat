@@ -28,6 +28,8 @@ export interface ServerToClientEvents {
   'group:kicked': (data: { groupId: string; conversationId: string }) => void;
   /** 群组已解散 */
   'group:dissolved': (data: { groupId: string; conversationId: string }) => void;
+  /** 上线后推送离线消息 */
+  'sync:offline_messages': (messages: Message[]) => void;
 }
 
 /** 客户端 → 服务端 事件 */

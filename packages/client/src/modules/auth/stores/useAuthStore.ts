@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import type { User } from '@chat/shared';
 import { authService } from '../services/authService';
+import { cacheService } from '../../../services/cacheService';
 
 /** 认证状态接口 */
 interface AuthState {
@@ -40,6 +41,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const result = await authService.register(username, password);
     localStorage.setItem('token', result.token);
     sessionStorage.setItem('sessionId', result.sessionId);
+    cacheService.saveUserInfo(result.user);
     set({ user: result.user, token: result.token, sessionId: result.sessionId });
   },
 
@@ -48,6 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const result = await authService.login(username, password);
     localStorage.setItem('token', result.token);
     sessionStorage.setItem('sessionId', result.sessionId);
+    cacheService.saveUserInfo(result.user);
     set({ user: result.user, token: result.token, sessionId: result.sessionId });
   },
 
@@ -60,6 +63,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     localStorage.removeItem('token');
     sessionStorage.removeItem('sessionId');
+    cacheService.clearAll();
     set({ user: null, token: null, sessionId: null });
   },
 
@@ -72,6 +76,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initAuth: async () => {
     const { initialized } = get();
     if (initialized) return;
+
+    // 先从缓存恢复用户信息（快速首屏）
+    const cachedUser = cacheService.getUserInfo();
+    if (cachedUser) {
+      set({ user: cachedUser });
+    }
 
     set({ loading: true });
 
