@@ -8,6 +8,7 @@ import type { BotRunMode, LLMConfig } from '@chat/shared';
 import { LLM_PROVIDERS } from '@chat/shared';
 import { BotService } from './BotService';
 import { ServerBotManager } from './ServerBotManager';
+import { SkillDispatcher } from './SkillDispatcher';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 
 /**
@@ -25,6 +26,9 @@ export class BotModule implements ServerModule {
 
   /** 服务端 Bot 管理器 */
   serverBotManager: ServerBotManager | null = null;
+
+  /** Skill 分发器（供 index.ts 注入和 Socket handler 使用） */
+  readonly skillDispatcher = new SkillDispatcher();
 
   setIO(io: TypedIO) {
     this.io = io;
@@ -356,6 +360,14 @@ export class BotModule implements ServerModule {
       res.json({ providers: LLM_PROVIDERS });
     });
 
-    return { router };
+    // Socket handler：监听 skill:result 事件
+    const skillDispatcher = this.skillDispatcher;
+    const socketHandler = (_io: TypedIO, socket: import('../../core/types').TypedSocket) => {
+      socket.on('skill:result', (result) => {
+        skillDispatcher.handleResult(result);
+      });
+    };
+
+    return { router, socketHandler };
   }
 }

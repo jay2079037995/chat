@@ -10,6 +10,7 @@ import { createMainWindow, getMainWindow } from './windowManager';
 import { buildMenu } from './menuBuilder';
 import { createTray, destroyTray } from './trayManager';
 import { isDebugEnabled } from './debugFileWatcher';
+import { SkillRuntime } from './skills/SkillRuntime';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -29,6 +30,13 @@ if (!gotSingleInstanceLock) {
 
   // 注册调试状态 IPC
   ipcMain.handle('debug:get-status', () => isDebugEnabled());
+
+  // --- Skill 系统 IPC ---
+  const skillRuntime = new SkillRuntime();
+  ipcMain.handle('skill:exec', (_event, request) => skillRuntime.execute(request));
+  ipcMain.handle('skill:get-logs', (_event, limit?: number) => skillRuntime.getLogs(limit));
+  ipcMain.handle('skill:get-whitelist', () => skillRuntime.getWhitelist());
+  ipcMain.handle('skill:set-whitelist', (_event, list: string[]) => skillRuntime.setWhitelist(list));
 
   app.whenReady().then(() => {
     // 允许麦克风、摄像头等媒体权限请求（否则 Electron 默认静默拒绝）

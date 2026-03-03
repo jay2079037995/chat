@@ -1,4 +1,5 @@
 import type { Message } from './message';
+import type { LLMToolCall } from './skill';
 
 /** 机器人运行模式 */
 export type BotRunMode = 'client' | 'server';
@@ -22,8 +23,16 @@ export interface LLMConfig {
 
 /** LLM 对话消息 */
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  /** 消息角色：system/user/assistant/tool */
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  /** 消息内容 */
   content: string;
+  /** LLM 返回的 tool_calls（仅 assistant 角色） */
+  tool_calls?: LLMToolCall[];
+  /** tool 角色消息对应的 tool_call ID */
+  tool_call_id?: string;
+  /** tool 角色消息对应的函数名 */
+  name?: string;
 }
 
 /** Provider 配置信息 */

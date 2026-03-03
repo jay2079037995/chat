@@ -7,17 +7,27 @@
 import type { Server as SocketIOServer } from 'socket.io';
 import type { LLMConfig } from '@chat/shared';
 import type { BotService } from './BotService';
+import type { SkillRegistry } from '../skill/SkillRegistry';
+import type { SkillDispatcher } from './SkillDispatcher';
 import { ServerBotRunner } from './ServerBotRunner';
 
 export class ServerBotManager {
   private runners = new Map<string, ServerBotRunner>();
   private io: SocketIOServer | null = null;
+  private skillRegistry?: SkillRegistry;
+  private skillDispatcher?: SkillDispatcher;
 
   constructor(private botService: BotService) {}
 
   /** 延迟注入 Socket.IO 实例 */
   setIO(io: SocketIOServer): void {
     this.io = io;
+  }
+
+  /** 延迟注入 Skill 系统依赖 */
+  setSkillDependencies(registry: SkillRegistry, dispatcher: SkillDispatcher): void {
+    this.skillRegistry = registry;
+    this.skillDispatcher = dispatcher;
   }
 
   /** 启动一个服务端 Bot */
@@ -27,7 +37,10 @@ export class ServerBotManager {
       await this.stopBot(botId);
     }
 
-    const runner = new ServerBotRunner(botId, llmConfig, this.botService, this.io);
+    const runner = new ServerBotRunner(
+      botId, llmConfig, this.botService, this.io,
+      this.skillRegistry, this.skillDispatcher,
+    );
     this.runners.set(botId, runner);
     await runner.start();
   }

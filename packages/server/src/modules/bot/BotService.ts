@@ -346,6 +346,23 @@ export class BotService {
     await redis.del(BOT_CONV_HISTORY_KEY(botId, convId));
   }
 
+  /** 获取 Bot 允许使用的 Skill 函数列表（默认 ['*'] 表示全部允许） */
+  async getBotAllowedSkills(botId: string): Promise<string[]> {
+    const redis = getRedisClient();
+    const members = await redis.smembers(`bot_skills:${botId}`);
+    return members.length > 0 ? members : ['*'];
+  }
+
+  /** 设置 Bot 允许使用的 Skill 函数列表 */
+  async setBotAllowedSkills(botId: string, skills: string[]): Promise<void> {
+    const redis = getRedisClient();
+    const key = `bot_skills:${botId}`;
+    await redis.del(key);
+    if (skills.length > 0) {
+      await redis.sadd(key, ...skills);
+    }
+  }
+
   /** 关闭专用 Redis 连接（用于测试清理和优雅关机） */
   async close() {
     await this.blockingRedis.quit();

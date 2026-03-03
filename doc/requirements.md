@@ -281,3 +281,44 @@ chat/
 - 离线消息队列（断网时暂存消息，恢复后自动发送）
 - "添加到主屏幕" 安装提示
 - 网络状态监听（断线提示 + 自动重连）
+
+### 4.7 服务端机器人运行模式（v1.10.0）
+- 创建机器人时可选择「服务端运行」或「客户端运行」
+- 服务端模式：服务器直接消费消息队列并调用 LLM 回复，无需 agent-app
+- LLM 配置在创建时填写（provider/apiKey/model/systemPrompt/contextLength）
+- 支持全部 6 种 LLM provider（deepseek/minimax/openai/claude/qwen/custom）
+- API Key AES-256-GCM 加密存储，前端回显脱敏
+- 对话历史 Redis 持久化，服务器重启不丢失上下文
+- 创建后自动运行，列表可编辑配置、暂停/恢复
+- 服务器启动时自动恢复运行中的 Bot
+
+### 4.8 远程 Skill 系统（v1.11.0）
+
+#### 4.8.1 概述
+- 服务端 Bot 通过标准化 Skill 协议远程控制用户的 Electron 桌面端
+- Bot 的 LLM 使用 function calling 决策调用哪个 Skill
+- 指令通过 Socket.IO 下发到 Electron 客户端本地执行
+- 执行能力集中在 Electron 端（完整 Node.js 环境 + 系统 API）
+
+#### 4.8.2 Skill 标准协议
+- 统一的 Skill 接口定义（name/description/parameters/platform/permissions）
+- Skill 参数使用 JSON Schema 描述，与 LLM function calling 天然匹配
+- 支持异步执行和超时控制
+
+#### 4.8.3 内置 Skill（Mac 平台）
+- 备忘录（Notes.app）：列出/搜索/读取/创建/更新/删除笔记
+- 日历（Calendar.app）：查看/创建/删除日程
+- 提醒事项（Reminders.app）：增删改查
+- 文件操作（Finder）：搜索/打开/移动/复制/压缩
+- 相册（Photos.app）：列出相册/搜索/导出照片
+- 剪贴板：读写剪贴板内容
+- Shell 命令：执行任意终端命令
+- 浏览器：打开 URL、获取当前标签页信息
+- 系统信息：CPU/内存/磁盘/网络状态
+- 系统通知：发送桌面通知
+
+#### 4.8.4 安全机制
+- 权限分级：read（自动执行）、write（单次确认）、execute（单次确认）、dangerous（逐次确认 + 命令预览）
+- Skill 白名单：用户可配置允许/禁止的 Skill
+- 审计日志：所有 Skill 执行记录可查
+- Bot 权限绑定：每个 Bot 可配置允许使用的 Skill 子集

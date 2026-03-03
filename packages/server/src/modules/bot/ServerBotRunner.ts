@@ -10,10 +10,15 @@
  */
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { LLMConfig, ChatMessage, BotStatus } from '@chat/shared';
+import type { LLMConfig, ChatMessage, BotStatus, LLMTool } from '@chat/shared';
 import type { BotService } from './BotService';
-import { callLLM, detectMarkdown } from './LLMClient';
+import type { SkillRegistry } from '../skill/SkillRegistry';
+import type { SkillDispatcher } from './SkillDispatcher';
+import { callLLM, callLLMWithTools, detectMarkdown } from './LLMClient';
 import { config } from '../../config';
+
+/** 最大 tool calling 轮次，防止无限循环 */
+const MAX_TOOL_ROUNDS = 5;
 
 const BOT_UPDATES_KEY = (botId: string) => `bot_updates:${botId}`;
 
@@ -42,6 +47,8 @@ export class ServerBotRunner {
     private llmConfig: LLMConfig,
     private botService: BotService,
     private io: SocketIOServer | null,
+    private skillRegistry?: SkillRegistry,
+    private skillDispatcher?: SkillDispatcher,
   ) {}
 
   /** 启动轮询 */
@@ -175,8 +182,23 @@ export class ServerBotRunner {
             })),
           ];
 
-          // 调用 LLM
-          const reply = await callLLM(this.llmConfig, llmMessages);
+          // 生成 tools 列表（有 SkillRegistry 时才附带）
+          const tools: LLMTool[] | undefined = this.skillRegistry
+            ? this.skillRegistry.generateTools({ platform: 'mac' })
+            : undefined;
+          const hasTools = tools && tools.length > 0;
+
+          let reply: string;
+
+          if (hasTools && this.skillDispatcher) {
+            // 带 function calling 的调用循环
+            reply = await this.runToolCallingLoop(
+              llmMessages, tools, conversationId, message.senderId, signal,
+            );
+          } else {
+            // 无 Skill 支持，直接文本调用（向后兼容）
+            reply = await callLLM(this.llmConfig, llmMessages);
+          }
 
           if (signal.aborted || this._status !== 'running') break;
 
@@ -230,6 +252,80 @@ export class ServerBotRunner {
         await this.sleep(delay, signal);
       }
     }
+  }
+
+  /**
+   * 带 function calling 的 LLM 调用循环
+   *
+   * 流程：调用 LLM → 如果返回 tool_calls → 分发到 Electron 执行 →
+   * 将结果反馈给 LLM → 重复直到 LLM 返回文本回复或达到最大轮次。
+   */
+  private async runToolCallingLoop(
+    messages: ChatMessage[],
+    tools: LLMTool[],
+    conversationId: string,
+    targetUserId: string,
+    signal: AbortSignal,
+  ): Promise<string> {
+    let round = 0;
+    // 工作副本，追加 tool 交互消息
+    const workMessages = [...messages];
+
+    while (round < MAX_TOOL_ROUNDS) {
+      if (signal.aborted || this._status !== 'running') {
+        return '（已中断）';
+      }
+
+      const result = await callLLMWithTools(this.llmConfig, workMessages, tools);
+
+      if (!result.hasToolCalls || !result.toolCalls) {
+        // LLM 返回了最终文本回复
+        return result.content || '（无回复内容）';
+      }
+
+      // 将 assistant 消息（含 tool_calls）追加到对话
+      workMessages.push({
+        role: 'assistant',
+        content: result.content || '',
+        tool_calls: result.toolCalls,
+      });
+
+      // 逐个分发 tool_call 到 Electron 端执行
+      for (const toolCall of result.toolCalls) {
+        let params: Record<string, unknown> = {};
+        try {
+          params = JSON.parse(toolCall.function.arguments);
+        } catch {
+          // 参数解析失败
+        }
+
+        const execResult = await this.skillDispatcher!.dispatch(
+          targetUserId,
+          toolCall.function.name,
+          params,
+          this.botId,
+          conversationId,
+        );
+
+        // 将 tool 执行结果追加到对话
+        const resultContent = execResult.success
+          ? JSON.stringify(execResult.data ?? '操作成功')
+          : `错误: ${execResult.error || '未知错误'}`;
+
+        workMessages.push({
+          role: 'tool',
+          content: resultContent,
+          tool_call_id: toolCall.id,
+          name: toolCall.function.name,
+        });
+      }
+
+      round++;
+    }
+
+    // 达到最大轮次，做最后一次不带 tools 的调用让 LLM 总结
+    const finalResult = await callLLMWithTools(this.llmConfig, workMessages);
+    return finalResult.content || '（已完成所有操作）';
   }
 
   /** 处理 Slash 命令 */

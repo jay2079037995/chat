@@ -572,3 +572,57 @@
 - [ ] BotManager 服务端模式 UI 测试
 - [ ] BotService 新方法测试
 - [ ] pnpm build + pnpm test 全量通过
+
+---
+
+## v1.11.0 - 远程 Skill 系统（Electron）
+
+**目标**：服务端 Bot 通过 Skill 协议远程控制用户的 Electron 桌面端，实现操作 Mac 原生应用（备忘录、相册、日历等）、文件系统、Shell 命令等能力。Bot 的 LLM 通过 function calling 决策调用哪个 Skill，指令通过 Socket.IO 下发到 Electron 客户端本地执行。
+
+### 共享类型
+- [ ] `Skill` 接口 — name/description/parameters(JSONSchema)/platform/permissions
+- [ ] `SkillExecRequest` — skillName/params/requestId/targetUserId
+- [ ] `SkillExecResult` — requestId/success/data/error
+- [ ] `SkillPermission` — read/write/execute/dangerous 权限等级
+- [ ] Socket 新增 `skill:exec` (Server→Client) / `skill:result` (Client→Server) 事件
+
+### 后端
+- [ ] `SkillRegistry` — 注册所有可用 Skill 的元数据（name/description/parameters），供 LLM function calling 使用
+- [ ] `ServerBotRunner` 扩展 — LLM 调用改为 function calling 模式，tools 列表从 SkillRegistry 获取
+- [ ] `ServerBotRunner` 扩展 — LLM 返回 tool_call 时，通过 Socket.IO 向目标用户 Electron 端下发 `skill:exec`
+- [ ] `ServerBotRunner` 扩展 — 等待 `skill:result` 回传，将结果反馈给 LLM 继续对话
+- [ ] `SkillModule` — Skill 相关 API 路由（GET /skills 列表、GET /skills/:name 详情）
+- [ ] 超时机制 — Skill 执行超时（默认 30s）自动返回错误
+
+### Electron 客户端（packages/electron）
+- [ ] `SkillRuntime` — Skill 执行引擎，注册/发现/执行本地 Skill
+- [ ] `SkillBridge` — Socket.IO 监听 `skill:exec` 事件，调用 SkillRuntime 执行，返回 `skill:result`
+- [ ] 权限管理 — 按 Skill 权限等级弹出确认框（read 自动执行、write 需确认、dangerous 逐次确认）
+- [ ] Skill 执行日志 — 记录所有 Skill 调用历史，供用户审计
+
+### 内置 Skill（Mac 平台）
+- [ ] `mac:notes` — 备忘录操作（AppleScript → Notes.app）：列出/搜索/读取/创建/更新/删除笔记
+- [ ] `mac:calendar` — 日历操作（AppleScript → Calendar.app）：查看/创建/删除日程
+- [ ] `mac:reminders` — 提醒事项（AppleScript → Reminders.app）：增删改查
+- [ ] `mac:finder` — 文件操作（Node.js fs + child_process）：搜索/打开/移动/复制/压缩
+- [ ] `mac:photos` — 相册操作（AppleScript → Photos.app）：列出相册/搜索/导出照片
+- [ ] `mac:clipboard` — 剪贴板（Electron clipboard API）：读写剪贴板内容
+- [ ] `mac:shell` — Shell 命令执行（child_process）：执行任意终端命令（dangerous 权限）
+- [ ] `mac:browser` — 浏览器操作（AppleScript → Safari/Chrome）：打开 URL、获取当前标签页
+- [ ] `mac:system-info` — 系统信息（os + child_process）：CPU/内存/磁盘/网络状态
+- [ ] `mac:notification` — 系统通知（Electron Notification）：发送桌面通知
+
+### 安全设计
+- [ ] 权限分级：read（自动）、write（单次确认）、execute（单次确认）、dangerous（逐次确认 + 命令预览）
+- [ ] Skill 白名单 — 用户可配置允许/禁止的 Skill 列表
+- [ ] 审计日志 — 所有 Skill 执行记录可查
+- [ ] Bot 权限绑定 — 每个 Bot 可配置允许使用的 Skill 子集
+
+### 测试
+- [ ] SkillRegistry 注册/查询测试
+- [ ] ServerBotRunner function calling 流程测试（mock LLM tool_call）
+- [ ] SkillBridge Socket.IO 通信测试
+- [ ] SkillRuntime 执行 + 权限校验测试
+- [ ] 各内置 Skill 单元测试（mock AppleScript/child_process）
+- [ ] 超时/错误处理测试
+- [ ] pnpm build + pnpm test 全量通过

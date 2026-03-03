@@ -5,6 +5,7 @@
  */
 import type { Message, Conversation } from './message';
 import type { Group } from './group';
+import type { SkillExecRequest, SkillExecResult } from './skill';
 
 /** 服务端 → 客户端 事件 */
 export interface ServerToClientEvents {
@@ -44,6 +45,8 @@ export interface ServerToClientEvents {
   'message:pinned': (data: { conversationId: string; messageId: string; pinned: boolean; pinnedBy: string }) => void;
   /** 某条消息中 @提及 了当前用户 */
   'mention:notify': (data: { message: Message; conversationId: string; senderName: string }) => void;
+  /** 远程 Skill 执行请求（Bot → 用户 Electron 客户端） */
+  'skill:exec': (request: SkillExecRequest) => void;
 }
 
 /** 客户端 → 服务端 事件 */
@@ -66,4 +69,6 @@ export interface ClientToServerEvents {
   'message:pin': (data: { messageId: string; conversationId: string }, callback: (result: { success: boolean; error?: string; pinned?: boolean }) => void) => void;
   /** 加入会话房间（订阅该会话的实时消息） */
   'conversation:join': (conversationId: string) => void;
+  /** 远程 Skill 执行结果（Electron 客户端 → 服务端） */
+  'skill:result': (result: SkillExecResult) => void;
 }

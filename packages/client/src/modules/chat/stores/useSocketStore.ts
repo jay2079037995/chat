@@ -257,6 +257,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
+    // Skill 执行请求 → 转发到 Electron IPC
+    import('../services/skillBridge').then(({ initSkillBridge }) => {
+      initSkillBridge(socket);
+    });
+
     // 群组事件：群组已解散 → 移除会话（逻辑同 group:kicked）
     socket.on('group:dissolved', (data) => {
       import('./useChatStore').then(({ useChatStore }) => {

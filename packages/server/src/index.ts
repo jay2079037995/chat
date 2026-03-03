@@ -1,6 +1,6 @@
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { app, container, socketHandlers, botModule } from './app';
+import { app, container, socketHandlers, botModule, skillModule } from './app';
 import { config } from './config';
 import { TOKENS } from './core/tokens';
 import type { ServerToClientEvents, ClientToServerEvents } from '@chat/shared';
@@ -42,9 +42,16 @@ io.use(async (socket, next) => {
 // 将 Socket.IO 引用传给 BotModule，用于机器人发消息后广播
 botModule.setIO(io);
 
-// 初始化服务端 Bot 管理器
+// 初始化 Skill 分发器
+botModule.skillDispatcher.setIO(io);
+
+// 初始化服务端 Bot 管理器（注入 Skill 依赖）
 if (botModule.serverBotManager) {
   botModule.serverBotManager.setIO(io);
+  botModule.serverBotManager.setSkillDependencies(
+    skillModule.skillRegistry,
+    botModule.skillDispatcher,
+  );
   void botModule.serverBotManager.recoverRunningBots().then(() => {
     console.log('Server bot recovery completed');
   }).catch((err) => {
