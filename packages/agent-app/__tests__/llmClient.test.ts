@@ -5,6 +5,7 @@ describe('LLM Client（LLM 客户端配置）', () => {
     const deepseek = PROVIDERS.deepseek;
     expect(deepseek.baseUrl).toBe('https://api.deepseek.com/v1');
     expect(deepseek.models).toContain('deepseek-chat');
+    expect(deepseek.models).toContain('deepseek-reasoner');
   });
 
   it('should have correct MiniMax provider config', () => {

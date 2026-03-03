@@ -123,6 +123,38 @@ export interface SkillExecResult {
   error?: string;
 }
 
+/** Skill 市场注册表条目 */
+export interface SkillRegistryEntry {
+  /** Skill 名称（唯一标识） */
+  name: string;
+  /** 显示名称 */
+  displayName: string;
+  /** 描述 */
+  description: string;
+  /** 支持的平台 */
+  platform: SkillPlatform;
+  /** 版本号 */
+  version: string;
+  /** 作者 */
+  author: string;
+  /** 下载地址（zip 包） */
+  downloadUrl: string;
+  /** 包大小（字节） */
+  size?: number;
+  /** 标签 */
+  tags?: string[];
+}
+
+/** Skill 注册表索引（注册表服务器返回的 JSON 格式） */
+export interface SkillRegistryIndex {
+  /** 注册表名称 */
+  name?: string;
+  /** 最后更新时间 */
+  updatedAt?: string;
+  /** Skill 列表 */
+  skills: SkillRegistryEntry[];
+}
+
 /** OpenAI function calling 格式的工具定义 */
 export interface LLMTool {
   /** 工具类型（固定为 function） */

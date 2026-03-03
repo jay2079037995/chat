@@ -12,6 +12,7 @@ import { createTray, destroyTray } from './trayManager';
 import { isDebugEnabled } from './debugFileWatcher';
 import { SkillRuntime } from './skills/SkillRuntime';
 import { BotTrustStore } from './skills/BotTrustStore';
+import { SkillMarketplace } from './skills/SkillMarketplace';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -60,6 +61,13 @@ if (!gotSingleInstanceLock) {
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
+
+  // --- Skill 市场 IPC ---
+  const skillMarketplace = new SkillMarketplace(skillRuntime.getPackageManager());
+  ipcMain.handle('skill:get-registries', () => skillMarketplace.getRegistries());
+  ipcMain.handle('skill:set-registries', (_event, urls: string[]) => skillMarketplace.setRegistries(urls));
+  ipcMain.handle('skill:fetch-marketplace', () => skillMarketplace.fetchAllSkills());
+  ipcMain.handle('skill:download-install', (_event, entry: any) => skillMarketplace.downloadAndInstall(entry));
 
   // --- Bot 信任管理 IPC ---
   ipcMain.handle('bot-trust:list', () => botTrustStore.listTrustConfigs());

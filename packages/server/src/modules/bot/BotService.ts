@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import Redis from 'ioredis';
-import type { Message, BotUpdate, LLMConfig, BotRunMode, BotStatus } from '@chat/shared';
+import type { Message, BotUpdate, LLMConfig, BotRunMode, BotStatus, LLMCallLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
@@ -12,7 +12,13 @@ const BOT_UPDATES_KEY = (botId: string) => `bot_updates:${botId}`;
 const BOT_UPDATE_SEQ_KEY = (botId: string) => `bot_update_seq:${botId}`;
 const BOT_CONFIG_KEY = (botId: string) => `bot_config:${botId}`;
 const BOT_CONV_HISTORY_KEY = (botId: string, convId: string) => `bot_conv_history:${botId}:${convId}`;
+const BOT_LLM_LOGS_KEY = (botId: string) => `bot_llm_logs:${botId}`;
 const SERVER_BOTS_KEY = 'server_bots';
+
+/** 每个 Bot 最多保留的日志条数 */
+const MAX_LLM_LOGS = 100;
+/** 日志 TTL（7 天） */
+const LLM_LOGS_TTL = 7 * 24 * 60 * 60;
 
 /**
  * 机器人服务
@@ -97,6 +103,10 @@ export class BotService {
       if (historyKeys.length > 0) {
         await redis.del(...historyKeys);
       }
+      // 清理 LLM 调用日志
+      await redis.del(BOT_LLM_LOGS_KEY(botId));
+      // 清理 Skill 权限
+      await redis.del(`bot_skills:${botId}`);
     }
 
     await this.userRepo.deleteBot(botId);
@@ -361,6 +371,41 @@ export class BotService {
     if (skills.length > 0) {
       await redis.sadd(key, ...skills);
     }
+  }
+
+  // ========================
+  // LLM 调用日志
+  // ========================
+
+  /** 保存 LLM 调用日志 */
+  async saveLLMCallLog(log: LLMCallLog): Promise<void> {
+    const redis = getRedisClient();
+    const key = BOT_LLM_LOGS_KEY(log.botId);
+    await redis.zadd(key, log.timestamp, JSON.stringify(log));
+    // 裁剪到最多 MAX_LLM_LOGS 条（保留最新的）
+    const count = await redis.zcard(key);
+    if (count > MAX_LLM_LOGS) {
+      await redis.zremrangebyrank(key, 0, count - MAX_LLM_LOGS - 1);
+    }
+    // 刷新 TTL
+    await redis.expire(key, LLM_LOGS_TTL);
+  }
+
+  /** 分页查询 LLM 调用日志（倒序，最新在前） */
+  async getLLMCallLogs(botId: string, offset: number = 0, limit: number = 20): Promise<{ logs: LLMCallLog[]; total: number }> {
+    const redis = getRedisClient();
+    const key = BOT_LLM_LOGS_KEY(botId);
+    const total = await redis.zcard(key);
+    // ZREVRANGE 倒序取
+    const items = await redis.zrevrange(key, offset, offset + limit - 1);
+    const logs = items.map((item) => JSON.parse(item) as LLMCallLog);
+    return { logs, total };
+  }
+
+  /** 清空 LLM 调用日志 */
+  async clearLLMCallLogs(botId: string): Promise<void> {
+    const redis = getRedisClient();
+    await redis.del(BOT_LLM_LOGS_KEY(botId));
   }
 
   /** 关闭专用 Redis 连接（用于测试清理和优雅关机） */

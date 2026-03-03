@@ -82,3 +82,35 @@ export interface BotTrustConfig {
   /** 是否受信任 */
   trusted: boolean;
 }
+
+/** LLM 调用日志（Server Bot 每次 API 调用的完整记录） */
+export interface LLMCallLog {
+  /** 日志唯一标识 */
+  id: string;
+  /** Bot ID */
+  botId: string;
+  /** 调用时间戳 */
+  timestamp: number;
+  /** 会话 ID */
+  conversationId: string;
+  /** 请求信息 */
+  request: {
+    provider: string;
+    model: string;
+    messages: Array<{ role: string; content: string }>;
+    tools?: Array<{ name: string; description: string }>;
+  };
+  /** 响应信息（成功时） */
+  response?: {
+    content?: string;
+    toolCalls?: LLMToolCall[];
+    finishReason: string;
+    reasoningContent?: string;
+  };
+  /** 错误信息（失败时） */
+  error?: string;
+  /** 调用耗时（毫秒） */
+  durationMs: number;
+  /** Tool calling 轮次编号（仅在 tool calling 循环中） */
+  toolRound?: number;
+}

@@ -220,7 +220,13 @@ importers:
       electron-store:
         specifier: ^6.0.0
         version: 6.0.1
+      extract-zip:
+        specifier: ^2.0.1
+        version: 2.0.1
     devDependencies:
+      '@types/extract-zip':
+        specifier: ^2.0.3
+        version: 2.0.3
       '@types/jest':
         specifier: ^29.5.0
         version: 29.5.14
@@ -1581,6 +1587,10 @@ packages:
 
   '@types/express@5.0.6':
     resolution: {integrity: sha512-sKYVuV7Sv9fbPIt/442koC7+IIwK5olP1KWeD88e/idgoJqDm3JV/YUiPwkoKK92ylff2MGxSz1CSjsXelx0YA==}
+
+  '@types/extract-zip@2.0.3':
+    resolution: {integrity: sha512-yrO7h+0qOIGxHCmBeL5fKFzR+PBafh9LG6sOLBFFi2JuN+Hj663TAxfnqJh5vkQn963VimrhBF1GZzea3A+4Ig==}
+    deprecated: This is a stub types definition. extract-zip provides its own type definitions, so you do not need this installed.
 
   '@types/fs-extra@9.0.13':
     resolution: {integrity: sha512-nEnwB++1u5lVDM2UI4c1+5R+FYaKfaAzS4OococimjVm3nQw3TuzH5UNsocrcTBbhnerblyHj4A49qXbIiZdpA==}
@@ -7978,6 +7988,12 @@ snapshots:
       '@types/body-parser': 1.19.6
       '@types/express-serve-static-core': 5.1.1
       '@types/serve-static': 2.2.0
+
+  '@types/extract-zip@2.0.3':
+    dependencies:
+      extract-zip: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
 
   '@types/fs-extra@9.0.13':
     dependencies:

@@ -723,4 +723,70 @@ deepseek-reasoner 与 deepseek-chat 的 API 差异：不支持 function calling 
 | `packages/server/src/modules/bot/ServerBotManager.ts` | 启动时加载 allowedSkills + 热更新 |
 | `packages/server/src/modules/bot/index.ts` | `PUT /api/bot/:id/skills` + list 返回 skills |
 | `packages/client/src/modules/chat/services/botService.ts` | 新增 skill API 方法 |
+
+---
+
+## v1.14.0 - LLM 调用日志 + Skill 市场
+
+**目标**：Server Bot 管理界面可查看每次 LLM API 调用的完整日志；Skill 市场 UI 支持在线浏览/搜索/安装/卸载自定义 Skill。
+
+### 需求 A: LLM 调用日志
+
+在 ServerBotRunner 层记录每次 LLM API 调用，存储到 Redis Sorted Set（每 bot 最多 100 条，7 天 TTL）。
+
+#### 共享类型
+- [ ] `LLMCallLog` 接口（id, botId, timestamp, request, response, error, durationMs, toolRound）
+
+#### 服务端
+- [ ] BotService 新增 `saveLLMCallLog()` / `getLLMCallLogs()` / `clearLLMCallLogs()` 方法
+- [ ] LLMCallResult 接口增加 `reasoningContent` 字段
+- [ ] ServerBotRunner 包装所有 LLM 调用，记录请求/响应/错误/耗时
+- [ ] 新增 `GET /api/bot/:id/logs` 和 `DELETE /api/bot/:id/logs` API 端点
+
+#### 前端
+- [ ] `botService` 新增 `getBotLogs()` / `clearBotLogs()` 方法
+- [ ] 新建 BotLogViewer 组件（Modal，展示日志列表 + 展开详情 + 分页 + 清空）
+- [ ] BotManager 每个 server bot 增加"日志"按钮
+
+### 需求 B: Skill 市场
+
+定义 JSON 注册表格式，Electron 端下载/安装 Skill 包，UI 支持已安装管理和在线浏览/搜索。
+
+#### 共享类型
+- [ ] `SkillRegistryEntry` / `SkillRegistryIndex` 接口
+
+#### Electron 端
+- [ ] 新建 SkillMarketplace 管理器（注册表管理 + 下载安装）
+- [ ] 新增 IPC 处理器（get-registries, set-registries, fetch-marketplace, download-install）
+- [ ] Preload 暴露市场 API
+- [ ] 添加 `extract-zip` 依赖
+
+#### 前端
+- [ ] 新建 SkillMarketplace UI 组件（已安装 + 在线市场 Tab，搜索，注册表管理）
+- [ ] BotManager 增加"Skill 市场"按钮
+- [ ] 安装/卸载后通过 Socket.IO 同步到服务端 SkillRegistry
+
+### 测试
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/bot.ts` | 新增 `LLMCallLog` 类型 |
+| `packages/shared/src/types/skill.ts` | 新增 `SkillRegistryEntry`、`SkillRegistryIndex` 类型 |
+| `packages/server/src/modules/bot/BotService.ts` | 日志存储/查询/清理方法 |
+| `packages/server/src/modules/bot/LLMClient.ts` | `LLMCallResult` 增加 `reasoningContent` |
+| `packages/server/src/modules/bot/ServerBotRunner.ts` | 日志记录包装 |
+| `packages/server/src/modules/bot/index.ts` | `GET/DELETE /api/bot/:id/logs` |
+| `packages/client/src/modules/chat/services/botService.ts` | 日志 API 方法 |
+| `packages/client/src/modules/chat/components/BotManager/BotLogViewer.tsx` | **新建** 日志查看器 |
+| `packages/client/src/modules/chat/components/BotManager/BotLogViewer.module.less` | **新建** 样式 |
+| `packages/client/src/modules/chat/components/BotManager/SkillMarketplace.tsx` | **新建** Skill 市场 |
+| `packages/client/src/modules/chat/components/BotManager/SkillMarketplace.module.less` | **新建** 样式 |
+| `packages/client/src/modules/chat/components/BotManager/index.tsx` | 集成日志+市场按钮 |
+| `packages/electron/src/skills/SkillMarketplace.ts` | **新建** 市场管理器 |
+| `packages/electron/src/main.ts` | 市场 IPC 处理器 |
+| `packages/electron/src/preload.ts` | 暴露市场 API |
 | `packages/client/src/modules/chat/components/BotManager/index.tsx` | Skill 选择 UI |

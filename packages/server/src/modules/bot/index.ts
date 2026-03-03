@@ -395,6 +395,50 @@ export class BotModule implements ServerModule {
       }
     });
 
+    // GET /api/bot/:id/logs — 获取 LLM 调用日志（需 session + 所有权）
+    router.get('/:id/logs', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const botId = req.params.id as string;
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+        if (bot.botOwnerId !== req.userId) {
+          res.status(403).json({ error: '无权操作该机器人' });
+          return;
+        }
+
+        const offset = parseInt(req.query.offset as string, 10) || 0;
+        const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 100);
+        const result = await botService.getLLMCallLogs(botId, offset, limit);
+        res.json(result);
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // DELETE /api/bot/:id/logs — 清空 LLM 调用日志（需 session + 所有权）
+    router.delete('/:id/logs', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const botId = req.params.id as string;
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+        if (bot.botOwnerId !== req.userId) {
+          res.status(403).json({ error: '无权操作该机器人' });
+          return;
+        }
+
+        await botService.clearLLMCallLogs(botId);
+        res.json({ success: true });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // GET /api/bot/providers — 获取可用 LLM providers 及模型列表
     router.get('/providers', (_req, res) => {
       res.json({ providers: LLM_PROVIDERS });

@@ -14,11 +14,14 @@ import {
 import {
   PlusOutlined, DeleteOutlined, RobotOutlined,
   EditOutlined, PlayCircleOutlined, PauseCircleOutlined,
+  FileTextOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
 import type { Bot, LLMConfig, BotRunMode } from '@chat/shared';
 import { botService } from '../../services/botService';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
 import ServerBotConfigForm from './ServerBotConfigForm';
+import BotLogViewer from './BotLogViewer';
+import SkillMarketplace from './SkillMarketplace';
 import styles from './index.module.less';
 
 /** Skill 信息（从 /api/skill/list 获取） */
@@ -124,6 +127,12 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
 
   // 编辑配置 Modal
   const [editingBot, setEditingBot] = useState<Bot | null>(null);
+
+  // 日志查看器
+  const [logBot, setLogBot] = useState<Bot | null>(null);
+
+  // Skill 市场
+  const [marketplaceVisible, setMarketplaceVisible] = useState(false);
 
   // Skill 选择相关状态
   const [availableSkills, setAvailableSkills] = useState<SkillInfo[]>([]);
@@ -282,6 +291,16 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     if (bot.runMode === 'server') {
       actions.push(
         <Button
+          key="logs"
+          type="text"
+          icon={<FileTextOutlined />}
+          size="small"
+          onClick={() => setLogBot(bot)}
+          title="调用日志"
+        />,
+      );
+      actions.push(
+        <Button
           key="edit"
           type="text"
           icon={<EditOutlined />}
@@ -340,6 +359,15 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       open={visible}
       onClose={onClose}
       width={isMobile ? '100%' : 480}
+      extra={
+        <Button
+          icon={<AppstoreOutlined />}
+          size="small"
+          onClick={() => setMarketplaceVisible(true)}
+        >
+          Skill 市场
+        </Button>
+      }
     >
       {/* 创建区域 */}
       <div className={styles.createArea}>
@@ -459,6 +487,20 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           </>
         )}
       </Modal>
+
+      {/* LLM 调用日志查看器 */}
+      <BotLogViewer
+        visible={!!logBot}
+        onClose={() => setLogBot(null)}
+        botId={logBot?.id || ''}
+        botName={logBot?.username || ''}
+      />
+
+      {/* Skill 市场 */}
+      <SkillMarketplace
+        visible={marketplaceVisible}
+        onClose={() => setMarketplaceVisible(false)}
+      />
     </Drawer>
   );
 };

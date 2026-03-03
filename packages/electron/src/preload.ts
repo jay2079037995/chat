@@ -44,6 +44,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 选择 Skill 包目录（打开文件选择对话框） */
   selectSkillDir: (): Promise<string | null> =>
     ipcRenderer.invoke('skill:select-dir'),
+  // --- Skill 市场 ---
+  /** 获取注册表 URL 列表 */
+  getSkillRegistries: (): Promise<string[]> =>
+    ipcRenderer.invoke('skill:get-registries'),
+  /** 设置注册表 URL 列表 */
+  setSkillRegistries: (urls: string[]): Promise<void> =>
+    ipcRenderer.invoke('skill:set-registries', urls),
+  /** 拉取在线 Skill 列表 */
+  fetchMarketplaceSkills: (): Promise<unknown[]> =>
+    ipcRenderer.invoke('skill:fetch-marketplace'),
+  /** 下载并安装 Skill 包 */
+  downloadAndInstallSkill: (entry: unknown): Promise<unknown> =>
+    ipcRenderer.invoke('skill:download-install', entry),
   // --- Bot 信任管理 ---
   /** 获取所有 Bot 信任配置 */
   getBotTrustList: (): Promise<unknown[]> =>

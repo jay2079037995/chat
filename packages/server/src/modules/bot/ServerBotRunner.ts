@@ -10,7 +10,8 @@
  */
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { LLMConfig, ChatMessage, BotStatus, LLMTool } from '@chat/shared';
+import type { LLMConfig, ChatMessage, BotStatus, LLMTool, LLMCallLog } from '@chat/shared';
+import { generateId } from '@chat/shared';
 import type { BotService } from './BotService';
 import type { SkillRegistry } from '../skill/SkillRegistry';
 import type { SkillDispatcher } from './SkillDispatcher';
@@ -222,7 +223,16 @@ export class ServerBotRunner {
             );
           } else {
             // 无 Skill 支持，直接文本调用（向后兼容）
-            reply = await callLLM(this.llmConfig, llmMessages);
+            const startTime = Date.now();
+            try {
+              reply = await callLLM(this.llmConfig, llmMessages);
+              await this.saveLLMLog(conversationId, llmMessages, undefined, {
+                content: reply, finishReason: 'stop',
+              }, undefined, Date.now() - startTime);
+            } catch (llmErr: any) {
+              await this.saveLLMLog(conversationId, llmMessages, undefined, undefined, llmErr.message, Date.now() - startTime);
+              throw llmErr;
+            }
           }
 
           if (signal.aborted || this._status !== 'running') break;
@@ -301,7 +311,18 @@ export class ServerBotRunner {
         return '（已中断）';
       }
 
-      const result = await callLLMWithTools(this.llmConfig, workMessages, tools);
+      const startTime = Date.now();
+      let result: import('./LLMClient').LLMCallResult;
+      try {
+        result = await callLLMWithTools(this.llmConfig, workMessages, tools);
+        await this.saveLLMLog(conversationId, workMessages, tools, {
+          content: result.content, toolCalls: result.toolCalls,
+          finishReason: result.finishReason, reasoningContent: result.reasoningContent,
+        }, undefined, Date.now() - startTime, round);
+      } catch (llmErr: any) {
+        await this.saveLLMLog(conversationId, workMessages, tools, undefined, llmErr.message, Date.now() - startTime, round);
+        throw llmErr;
+      }
 
       if (!result.hasToolCalls || !result.toolCalls) {
         // LLM 返回了最终文本回复
@@ -349,8 +370,57 @@ export class ServerBotRunner {
     }
 
     // 达到最大轮次，做最后一次不带 tools 的调用让 LLM 总结
-    const finalResult = await callLLMWithTools(this.llmConfig, workMessages);
-    return finalResult.content || '（已完成所有操作）';
+    const finalStart = Date.now();
+    try {
+      const finalResult = await callLLMWithTools(this.llmConfig, workMessages);
+      await this.saveLLMLog(conversationId, workMessages, undefined, {
+        content: finalResult.content, finishReason: finalResult.finishReason,
+      }, undefined, Date.now() - finalStart, round);
+      return finalResult.content || '（已完成所有操作）';
+    } catch (llmErr: any) {
+      await this.saveLLMLog(conversationId, workMessages, undefined, undefined, llmErr.message, Date.now() - finalStart, round);
+      throw llmErr;
+    }
+  }
+
+  /** 保存 LLM 调用日志（失败不影响主流程） */
+  private async saveLLMLog(
+    conversationId: string,
+    messages: ChatMessage[],
+    tools: LLMTool[] | undefined,
+    response: LLMCallLog['response'] | undefined,
+    error: string | undefined,
+    durationMs: number,
+    toolRound?: number,
+  ): Promise<void> {
+    try {
+      const log: LLMCallLog = {
+        id: generateId(),
+        botId: this.botId,
+        timestamp: Date.now(),
+        conversationId,
+        request: {
+          provider: this.llmConfig.provider,
+          model: this.llmConfig.model,
+          // 截断每条 message.content 到 2000 字符
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content.length > 2000 ? m.content.slice(0, 2000) + '…' : m.content,
+          })),
+          tools: tools?.map((t) => ({
+            name: t.function.name,
+            description: t.function.description,
+          })),
+        },
+        response,
+        error,
+        durationMs,
+        toolRound,
+      };
+      await this.botService.saveLLMCallLog(log);
+    } catch {
+      // 日志保存失败不影响主流程
+    }
   }
 
   /** 处理 Slash 命令 */

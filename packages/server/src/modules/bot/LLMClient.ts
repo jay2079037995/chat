@@ -70,6 +70,8 @@ export interface LLMCallResult {
   toolCalls?: LLMToolCall[];
   /** 结束原因 */
   finishReason: string;
+  /** DeepSeek reasoner 原始思维链内容 */
+  reasoningContent?: string;
 }
 
 /** 调用 LLM 获取回复 */
@@ -245,6 +247,7 @@ async function callOpenAICompatibleWithTools(
         }))
       : undefined,
     finishReason: choice.finish_reason,
+    reasoningContent: reasoner ? (choice.message.reasoning_content ?? undefined) : undefined,
   };
 }
 

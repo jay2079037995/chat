@@ -15,9 +15,11 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "electron-store": "^6.0.0"
+    "electron-store": "^6.0.0",
+    "extract-zip": "^2.0.1"
   },
   "devDependencies": {
+    "@types/extract-zip": "^2.0.3",
     "@types/jest": "^29.5.0",
     "@types/node": "^22.0.0",
     "electron": "^33.0.0",
