@@ -1,6 +1,6 @@
 {
   "name": "@chat/agent-app",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
