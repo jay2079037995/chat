@@ -14,6 +14,8 @@ files:
 extraResources:
   - from: "assets/"
     to: "assets/"
+  - from: "../client/dist/"
+    to: "client-dist/"
 
 mac:
   category: "public.app-category.social-networking"

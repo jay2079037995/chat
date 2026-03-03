@@ -6,8 +6,11 @@ import axios from 'axios';
  * 所有模块的 API 请求都通过此实例发送。
  * 自动附加 Session ID 到请求头，自动处理 401 认证失效。
  */
+/** Electron 打包后从本地文件加载，API 需指向服务端地址 */
+const serverUrl = (window as any).electronAPI?.serverUrl || '';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${serverUrl}/api`,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -31,7 +34,7 @@ api.interceptors.response.use(
       sessionStorage.removeItem('sessionId');
       const token = localStorage.getItem('token');
       if (!token) {
-        window.location.href = '/login';
+        window.location.href = (window as any).electronAPI?.isElectron ? '#/login' : '/login';
       }
     }
     return Promise.reject(error);

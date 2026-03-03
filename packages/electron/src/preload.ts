@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   /** 是否为 Electron 环境 */
   isElectron: true,
+  /** 服务端地址（打包后客户端从本地文件加载，需指定服务端 URL） */
+  serverUrl: 'http://localhost:3001',
   /** 获取当前调试状态 */
   getDebugStatus: (): Promise<boolean> => ipcRenderer.invoke('debug:get-status'),
   /** 监听调试状态变化 */

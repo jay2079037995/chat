@@ -92,8 +92,14 @@ export function createMainWindow(): BrowserWindow {
 
   // 加载应用
   const isDev = !app.isPackaged;
-  const url = isDev ? 'http://localhost:3000' : 'http://localhost:3001';
-  void mainWindow.loadURL(url);
+  if (isDev) {
+    // 开发模式：加载 webpack dev server
+    void mainWindow.loadURL('http://localhost:3000');
+  } else {
+    // 生产模式：加载内嵌的客户端静态文件
+    const clientDistPath = path.join(process.resourcesPath, 'client-dist', 'index.html');
+    void mainWindow.loadFile(clientDistPath);
+  }
 
   // 开发模式下打开 DevTools
   if (isDev) {

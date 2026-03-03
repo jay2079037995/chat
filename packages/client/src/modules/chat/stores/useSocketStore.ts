@@ -46,7 +46,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     // 断开旧连接
     existing?.disconnect();
 
-    const socket: TypedSocket = io({
+    /** Electron 打包后从本地文件加载，Socket 需指向服务端地址 */
+    const serverUrl = (window as any).electronAPI?.serverUrl || '';
+
+    const socket: TypedSocket = io(serverUrl || undefined, {
       auth: { sessionId },
       autoConnect: true,
       reconnection: true,

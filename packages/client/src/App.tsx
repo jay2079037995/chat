@@ -1,11 +1,14 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import AuthGuard from './components/AuthGuard';
 import GuestGuard from './components/GuestGuard';
 import { modules } from './core/moduleRegistry';
 import { useThemeStore } from './modules/chat/stores/useThemeStore';
+
+/** Electron 打包后从 file:// 加载，需用 HashRouter；Web 版使用 BrowserRouter */
+const Router = (window as any).electronAPI?.isElectron ? HashRouter : BrowserRouter;
 
 /** Guard 类型到组件的映射 */
 const guardMap = {
@@ -49,7 +52,7 @@ const App: React.FC = () => {
         },
       }}
     >
-      <BrowserRouter>
+      <Router>
         <Routes>
           {/* 遍历模块注册表，动态生成路由 */}
           {modules.map((mod) =>
@@ -69,7 +72,7 @@ const App: React.FC = () => {
             }),
           )}
         </Routes>
-      </BrowserRouter>
+      </Router>
     </ConfigProvider>
   );
 };

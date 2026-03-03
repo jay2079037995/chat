@@ -11,6 +11,8 @@
     "dev:agent-renderer": "pnpm --filter @chat/agent-app dev:renderer",
     "dev:agent-main": "pnpm --filter @chat/agent-app dev:main",
     "build": "pnpm --filter @chat/shared build && pnpm --filter @chat/client build && pnpm --filter @chat/server build && pnpm --filter @chat/electron build && pnpm --filter @chat/agent-app build",
+    "clean": "rm -rf packages/client/dist packages/server/dist packages/electron/dist packages/electron/release",
+    "dist:mac": "pnpm run clean && pnpm run build && pnpm --filter @chat/electron dist:mac",
     "dist:agent-app": "pnpm --filter @chat/agent-app dist:mac",
     "test": "pnpm -r test",
     "test:ci": "bash scripts/test.sh",

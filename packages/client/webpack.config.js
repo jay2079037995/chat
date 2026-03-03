@@ -9,7 +9,7 @@ module.exports = (_env, argv) => ({
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.[contenthash].js',
-    publicPath: '/',
+    publicPath: './',
     clean: true,
   },
   resolve: {
@@ -76,7 +76,7 @@ module.exports = (_env, argv) => ({
           new GenerateSW({
             clientsClaim: true,
             skipWaiting: false,
-            navigateFallback: '/index.html',
+            navigateFallback: './index.html',
             navigateFallbackDenylist: [/^\/api/, /^\/socket\.io/, /^\/uploads/],
             runtimeCaching: [
               {
