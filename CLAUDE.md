@@ -193,9 +193,10 @@ pnpm lint             # 代码检查
 每个版本完成后：
 1. 自动化测试全部通过（`pnpm test` + `pnpm test:e2e`）
 2. 运行 `bash scripts/test.sh` 全量回归，全部 AUTO 通过后标记 `[x]`
-3. **用户确认通过后**，自动执行 `git add` + `git commit` 提交代码
-4. 打上对应的版本标签（`git tag vX.X.0`）并推送到远端（`git push && git push --tags`）
-5. 确认完成后再进入下一个版本开发
+3. **更新版本号**：所有 `package.json`（根目录 + 各子包）的 `version` 字段 + 客户端首页显示版本号（`packages/client/src/modules/home/pages/Home/index.tsx` 中的 `vX.X.0`）
+4. **用户确认通过后**，自动执行 `git add` + `git commit` 提交代码
+5. 打上对应的版本标签（`git tag vX.X.0`）并推送到远端（`git push && git push --tags`）
+6. 确认完成后再进入下一个版本开发
 
 ## 版本状态
 - [x] v0.1.0 - 项目基础设施
