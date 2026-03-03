@@ -129,3 +129,24 @@
   color: var(--text-secondary, #666);
   font-weight: 500;
 }
+
+/* === Mobile === */
+@import '../../../../styles/responsive.less';
+
+@media (max-width: @mobile) {
+  .reactionsBar {
+    gap: 6px;
+  }
+
+  .reactionPill {
+    padding: 4px 10px;
+  }
+
+  .reactionEmoji {
+    font-size: 16px;
+  }
+
+  .reactionCount {
+    font-size: 12px;
+  }
+}

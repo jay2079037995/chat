@@ -10,6 +10,7 @@ import UserAvatar from '../UserAvatar';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
 import { groupService } from '../../services/groupService';
 import { userService } from '../../../home/services/userService';
 import type { User } from '@chat/shared';
@@ -22,6 +23,7 @@ interface GroupMemberPanelProps {
 }
 
 const GroupMemberPanel: React.FC<GroupMemberPanelProps> = ({ groupId, visible, onClose }) => {
+  const isMobile = useIsMobile();
   const participantNames = useChatStore((s) => s.participantNames);
   const conversations = useChatStore((s) => s.conversations);
   const loadConversations = useChatStore((s) => s.loadConversations);
@@ -130,7 +132,7 @@ const GroupMemberPanel: React.FC<GroupMemberPanelProps> = ({ groupId, visible, o
       placement="right"
       onClose={onClose}
       open={visible}
-      width={320}
+      width={isMobile ? '100%' : 320}
     >
       <List
         dataSource={members}

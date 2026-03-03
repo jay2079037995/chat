@@ -4,12 +4,14 @@
  * 展示用户所有聊天会话，包含对方用户名、最后消息预览、时间、
  * 在线状态指示器和未读消息数 badge。
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { Badge } from 'antd';
 import { PushpinFilled, BellFilled, InboxOutlined } from '@ant-design/icons';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
+import { useLongPress } from '../../../../hooks/useLongPress';
 import UserAvatar from '../UserAvatar';
 import ConversationContextMenu from '../ConversationContextMenu';
 import styles from './index.module.less';
@@ -41,6 +43,7 @@ interface ContextMenuState {
 }
 
 const ConversationList: React.FC = () => {
+  const isMobile = useIsMobile();
   const conversations = useChatStore((s) => s.conversations);
   const currentConversationId = useChatStore((s) => s.currentConversationId);
   const selectConversation = useChatStore((s) => s.selectConversation);
@@ -62,6 +65,20 @@ const ConversationList: React.FC = () => {
     visible: false,
     conversationId: '',
     position: { x: 0, y: 0 },
+  });
+
+  /** 长按触发上下文菜单（移动端用） */
+  const longPressConvIdRef = useRef('');
+  const longPress = useLongPress({
+    onLongPress: () => {
+      const convId = longPressConvIdRef.current;
+      if (!convId) return;
+      setContextMenu({
+        visible: true,
+        conversationId: convId,
+        position: { x: 0, y: 0 },
+      });
+    },
   });
 
   /** 收集所有标签用于筛选栏 */
@@ -164,6 +181,9 @@ const ConversationList: React.FC = () => {
             className={`${styles.item} ${isActive ? styles.itemActive : ''} ${isPinned ? styles.itemPinned : ''}`}
             onClick={() => selectConversation(conv.id)}
             onContextMenu={(e) => handleContextMenu(e, conv.id)}
+            onTouchStart={(e) => { longPressConvIdRef.current = conv.id; longPress.onTouchStart(e); }}
+            onTouchEnd={longPress.onTouchEnd}
+            onTouchMove={longPress.onTouchMove}
           >
             <div className={styles.avatarWrapper}>
               <UserAvatar
@@ -221,6 +241,7 @@ const ConversationList: React.FC = () => {
             isMuted={mutedIds.has(contextMenu.conversationId)}
             isArchived={archivedIds.has(contextMenu.conversationId)}
             tags={convTags[contextMenu.conversationId] || []}
+            isMobile={isMobile}
             onClose={closeContextMenu}
           />
         );

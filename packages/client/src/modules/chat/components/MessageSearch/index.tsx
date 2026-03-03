@@ -10,6 +10,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import type { Message } from '@chat/shared';
 import { chatService } from '../../services/chatService';
 import { useChatStore } from '../../stores/useChatStore';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
 import styles from './index.module.less';
 
 const { Text } = Typography;
@@ -49,6 +50,7 @@ function formatTime(timestamp: number): string {
 }
 
 const MessageSearch: React.FC<MessageSearchProps> = ({ visible, onClose }) => {
+  const isMobile = useIsMobile();
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
@@ -119,7 +121,8 @@ const MessageSearch: React.FC<MessageSearchProps> = ({ visible, onClose }) => {
       open={visible}
       onCancel={handleClose}
       footer={null}
-      width={520}
+      width={isMobile ? '95vw' : 520}
+      style={isMobile ? { top: 20 } : undefined}
       destroyOnHidden
     >
       <Input

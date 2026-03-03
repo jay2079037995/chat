@@ -2,6 +2,7 @@
  * 消息右键菜单组件
  *
  * 消息气泡上右键弹出的上下文菜单，支持回复、撤回、编辑和快捷表情回应。
+ * 移动端以底部 ActionSheet 形式弹出，桌面端保持固定定位右键菜单。
  */
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { Message } from '@chat/shared';
@@ -17,10 +18,12 @@ interface MessageContextMenuProps {
   message: Message;
   /** 是否为自己发送的消息 */
   isSelf: boolean;
-  /** 菜单位置 */
+  /** 菜单位置（桌面端使用） */
   position: { x: number; y: number };
   /** 该消息是否已被置顶 */
   isPinned?: boolean;
+  /** 是否为移动端模式 */
+  isMobile?: boolean;
   /** 关闭菜单回调 */
   onClose: () => void;
   /** 回复消息回调 */
@@ -36,6 +39,7 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   isSelf,
   position,
   isPinned,
+  isMobile,
   onClose,
   onReply,
   onEdit,
@@ -45,13 +49,17 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
 
   /** 点击菜单外部关闭 */
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, [onClose]);
 
   /** 按 ESC 关闭 */
@@ -71,7 +79,6 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       conversationId: message.conversationId,
     }, (result) => {
       if (result.success) {
-        // 撤回成功：更新发送者本地消息状态（服务端 socket.to 不会回传给自己）
         useChatStore.getState().handleRecalled(message.id, message.conversationId);
       } else {
         import('antd').then(({ message: antMsg }) => {
@@ -131,19 +138,16 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
     && (Date.now() - message.createdAt) < 5 * 60 * 1000
     && (message.type === 'text' || message.type === 'markdown');
 
-  return (
-    <div
-      ref={menuRef}
-      className={styles.menu}
-      style={{ left: position.x, top: position.y }}
-    >
+  /** 菜单内容（桌面端和移动端共用） */
+  const renderMenuContent = () => (
+    <>
       {/* 快捷 Reaction 行 */}
-      <div className={styles.reactionRow}>
+      <div className={`${styles.reactionRow} ${isMobile ? styles.reactionRowMobile : ''}`}>
         {QUICK_REACTIONS.map((emoji) => (
           <button
             key={emoji}
             type="button"
-            className={styles.reactionBtn}
+            className={`${styles.reactionBtn} ${isMobile ? styles.reactionBtnMobile : ''}`}
             onClick={() => handleReaction(emoji)}
           >
             {emoji}
@@ -156,7 +160,7 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       {/* 回复 */}
       <button
         type="button"
-        className={styles.menuItem}
+        className={`${styles.menuItem} ${isMobile ? styles.menuItemMobile : ''}`}
         onClick={() => { onReply(message); onClose(); }}
       >
         💬 回复
@@ -166,7 +170,7 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       {onForward && (
         <button
           type="button"
-          className={styles.menuItem}
+          className={`${styles.menuItem} ${isMobile ? styles.menuItemMobile : ''}`}
           onClick={handleForward}
         >
           ↗️ 转发
@@ -176,7 +180,7 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       {/* 置顶/取消置顶 */}
       <button
         type="button"
-        className={styles.menuItem}
+        className={`${styles.menuItem} ${isMobile ? styles.menuItemMobile : ''}`}
         onClick={handlePin}
       >
         📌 {isPinned ? '取消置顶' : '置顶'}
@@ -186,7 +190,7 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       {canEdit && (
         <button
           type="button"
-          className={styles.menuItem}
+          className={`${styles.menuItem} ${isMobile ? styles.menuItemMobile : ''}`}
           onClick={() => { onEdit(message); onClose(); }}
         >
           ✏️ 编辑
@@ -197,12 +201,47 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       {canRecall && (
         <button
           type="button"
-          className={`${styles.menuItem} ${styles.danger}`}
+          className={`${styles.menuItem} ${styles.danger} ${isMobile ? styles.menuItemMobile : ''}`}
           onClick={handleRecall}
         >
           ↩️ 撤回
         </button>
       )}
+    </>
+  );
+
+  // 移动端：底部 ActionSheet
+  if (isMobile) {
+    return (
+      <div className={styles.overlay} onClick={onClose}>
+        <div
+          ref={menuRef}
+          className={styles.sheet}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className={styles.sheetHandle} />
+          {renderMenuContent()}
+          <div className={styles.divider} />
+          <button
+            type="button"
+            className={`${styles.menuItem} ${styles.menuItemMobile} ${styles.cancelBtn}`}
+            onClick={onClose}
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 桌面端：固定定位右键菜单
+  return (
+    <div
+      ref={menuRef}
+      className={styles.menu}
+      style={{ left: position.x, top: position.y }}
+    >
+      {renderMenuContent()}
     </div>
   );
 };

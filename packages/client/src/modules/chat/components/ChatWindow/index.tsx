@@ -7,13 +7,15 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Select, Upload, Progress, Spin, Modal, message as antMessage } from 'antd';
-import { SendOutlined, TeamOutlined, CheckOutlined } from '@ant-design/icons';
+import { SendOutlined, TeamOutlined, CheckOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import type { Message, MessageType } from '@chat/shared';
 import { TYPING_TIMEOUT } from '@chat/shared';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { chatService } from '../../services/chatService';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
+import { useLongPress } from '../../../../hooks/useLongPress';
 import MessageBubble from '../MessageBubble';
 import MessageToolbar from '../MessageToolbar';
 import GroupMemberPanel from '../GroupMemberPanel';
@@ -48,6 +50,10 @@ const CODE_LANGUAGES = [
   { value: 'sql', label: 'SQL' },
 ];
 
+interface ChatWindowProps {
+  onBack?: () => void;
+}
+
 /** 右键菜单状态 */
 interface ContextMenuState {
   visible: boolean;
@@ -55,7 +61,8 @@ interface ContextMenuState {
   position: { x: number; y: number };
 }
 
-const ChatWindow: React.FC = () => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
+  const isMobile = useIsMobile();
   const currentConversationId = useChatStore((s) => s.currentConversationId);
   const messages = useChatStore((s) => s.messages);
   const conversations = useChatStore((s) => s.conversations);
@@ -381,6 +388,20 @@ const ChatWindow: React.FC = () => {
     });
   };
 
+  /** 长按触发上下文菜单（移动端用） */
+  const longPressMessageRef = useRef<Message | null>(null);
+  const longPress = useLongPress({
+    onLongPress: () => {
+      const msg = longPressMessageRef.current;
+      if (!msg || msg.recalled) return;
+      setContextMenu({
+        visible: true,
+        message: msg,
+        position: { x: 0, y: 0 }, // 移动端使用底部 sheet，不需要坐标
+      });
+    },
+  });
+
   /** 关闭右键菜单 */
   const closeContextMenu = () => {
     setContextMenu({ visible: false, message: null, position: { x: 0, y: 0 } });
@@ -548,6 +569,14 @@ const ChatWindow: React.FC = () => {
     <div className={styles.container}>
       {/* 顶部 */}
       <div className={styles.header}>
+        {isMobile && onBack && (
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            className={styles.chatBackButton}
+            onClick={onBack}
+          />
+        )}
         {isGroup ? (
           <>
             <span className={styles.headerName}>{groupName}</span>
@@ -558,7 +587,7 @@ const ChatWindow: React.FC = () => {
               icon={<TeamOutlined />}
               onClick={() => setShowMemberPanel(true)}
             >
-              成员
+              {!isMobile && '成员'}
             </Button>
           </>
         ) : (
@@ -635,6 +664,9 @@ const ChatWindow: React.FC = () => {
                     isSelf ? styles.bubbleSelf : styles.bubbleOther
                   } ${isMediaType ? styles.bubbleMedia : ''} ${msg.recalled ? styles.bubbleRecalled : ''}`}
                   onContextMenu={(e) => handleContextMenu(e, msg)}
+                  onTouchStart={(e) => { longPressMessageRef.current = msg; longPress.onTouchStart(e); }}
+                  onTouchEnd={longPress.onTouchEnd}
+                  onTouchMove={longPress.onTouchMove}
                 >
                   <MessageBubble message={msg} isSelf={isSelf} participantNames={participantNames} />
                 </div>
@@ -661,6 +693,7 @@ const ChatWindow: React.FC = () => {
           activeType={messageType}
           onTypeChange={setMessageType}
           onEmojiSelect={(emoji) => setInputValue((v) => v + emoji)}
+          isMobile={isMobile}
         />
 
         {/* 引用回复预览条 */}
@@ -705,6 +738,7 @@ const ChatWindow: React.FC = () => {
           isSelf={contextMenu.message.senderId === currentUser?.id}
           position={contextMenu.position}
           isPinned={pinnedMessages.some((pm) => pm.id === contextMenu.message?.id)}
+          isMobile={isMobile}
           onClose={closeContextMenu}
           onReply={handleReply}
           onEdit={handleEdit}

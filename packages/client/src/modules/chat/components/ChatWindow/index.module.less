@@ -1,7 +1,9 @@
+@import '../../../../styles/responsive.less';
+
 .container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  height: calc(100vh - var(--header-height));
   background: var(--bg-primary);
 }
 
@@ -243,4 +245,37 @@
 @keyframes typingPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+/* === Chat Back Button === */
+.chatBackButton {
+  margin-right: 4px;
+  color: var(--text-primary);
+}
+
+/* === Mobile Styles === */
+@media (max-width: @mobile) {
+  .header {
+    padding: 10px 12px;
+  }
+
+  .messageArea {
+    padding: 12px;
+  }
+
+  .inputArea {
+    padding: 8px 12px 10px;
+  }
+
+  .bubble {
+    max-width: 85%;
+  }
+
+  .inputRow {
+    gap: 6px;
+  }
+
+  .sendButton {
+    padding: 4px 12px;
+  }
 }

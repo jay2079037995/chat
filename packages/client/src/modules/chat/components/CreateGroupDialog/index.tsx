@@ -8,6 +8,7 @@ import { Modal, Input, Button, List, Avatar, Tag, message as antMessage } from '
 import { SearchOutlined, UserOutlined, CloseOutlined } from '@ant-design/icons';
 import { MIN_GROUP_NAME_LENGTH, MAX_GROUP_NAME_LENGTH } from '@chat/shared';
 import { useChatStore } from '../../stores/useChatStore';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
 import { userService } from '../../../home/services/userService';
 import type { User } from '@chat/shared';
 import styles from './index.module.less';
@@ -18,6 +19,7 @@ interface CreateGroupDialogProps {
 }
 
 const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({ visible, onClose }) => {
+  const isMobile = useIsMobile();
   const createGroup = useChatStore((s) => s.createGroup);
 
   const [groupName, setGroupName] = useState('');
@@ -91,6 +93,8 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({ visible, onClose 
       confirmLoading={creating}
       okText="创建"
       cancelText="取消"
+      width={isMobile ? '95vw' : 520}
+      style={isMobile ? { top: 20 } : undefined}
     >
       <div className={styles.field}>
         <div className={styles.label}>群名称</div>

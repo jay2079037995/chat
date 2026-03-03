@@ -104,7 +104,7 @@ const Home: React.FC = () => {
         </Button>
       ) : (
         <Text strong className={styles.brand}>
-          Chat <Text className={styles.version}>v1.7.0</Text>
+          Chat <Text className={styles.version}>v1.8.0</Text>
         </Text>
       )}
       <div className={styles.userInfo}>
@@ -154,7 +154,7 @@ const Home: React.FC = () => {
       ) : (
         <div className={styles.mobileChat}>
           {currentConversationId ? (
-            <ChatWindow />
+            <ChatWindow onBack={handleMobileBack} />
           ) : (
             <div className={styles.placeholder}>
               <div className={styles.placeholderIcon}><MessageOutlined /></div>

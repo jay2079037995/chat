@@ -22,6 +22,12 @@
   }
 }
 
+.triggerBtnMobile {
+  min-width: 40px;
+  min-height: 36px;
+  justify-content: center;
+}
+
 .pickerPopover {
   position: absolute;
   bottom: 100%;
@@ -34,4 +40,74 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* === Mobile Bottom Sheet === */
+.mobileOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  animation: overlayFadeIn 0.2s ease;
+}
+
+.mobileSheet {
+  width: 100%;
+  background: var(--surface-card, #fff);
+  border-radius: 16px 16px 0 0;
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  animation: sheetSlideUp 0.25s ease;
+}
+
+.mobileSheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light, #f0f0f0);
+  flex-shrink: 0;
+}
+
+.mobileSheetTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mobileSheetClose {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-secondary);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.mobilePickerContainer {
+  flex: 1;
+  overflow: hidden;
+
+  /* Make emoji-mart picker fill the container */
+  em-emoji-picker {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }

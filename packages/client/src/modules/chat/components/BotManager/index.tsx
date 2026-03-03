@@ -9,6 +9,7 @@ import { Drawer, Button, Input, List, Typography, Popconfirm, message as antMess
 import { PlusOutlined, DeleteOutlined, CopyOutlined, RobotOutlined } from '@ant-design/icons';
 import type { Bot } from '@chat/shared';
 import { botService } from '../../services/botService';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
 import styles from './index.module.less';
 
 const { Text, Paragraph } = Typography;
@@ -19,6 +20,7 @@ interface BotManagerProps {
 }
 
 const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
+  const isMobile = useIsMobile();
   const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -91,7 +93,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       title="机器人管理"
       open={visible}
       onClose={onClose}
-      width={420}
+      width={isMobile ? '100%' : 420}
     >
       {/* 创建区域 */}
       <div className={styles.createArea}>

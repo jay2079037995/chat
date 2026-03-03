@@ -1,8 +1,19 @@
+@import '../../../../styles/responsive.less';
+
 .imageMessage {
   img {
     max-width: 200px;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     cursor: pointer;
+  }
+}
+
+@media (max-width: @mobile) {
+  .imageMessage {
+    img {
+      max-width: 100%;
+      width: auto;
+    }
   }
 }
