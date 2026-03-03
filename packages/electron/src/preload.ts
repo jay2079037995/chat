@@ -29,4 +29,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 设置 Skill 白名单 */
   setSkillWhitelist: (list: string[]): Promise<void> =>
     ipcRenderer.invoke('skill:set-whitelist', list),
+  // --- 自定义 Skill 管理 ---
+  /** 列出已安装的自定义 Skill */
+  listCustomSkills: (): Promise<unknown[]> =>
+    ipcRenderer.invoke('skill:list-custom'),
+  /** 安装自定义 Skill 包（传入源目录路径） */
+  installSkill: (sourcePath: string): Promise<unknown> =>
+    ipcRenderer.invoke('skill:install', sourcePath),
+  /** 卸载自定义 Skill */
+  uninstallSkill: (skillName: string): Promise<boolean> =>
+    ipcRenderer.invoke('skill:uninstall', skillName),
+  /** 选择 Skill 包目录（打开文件选择对话框） */
+  selectSkillDir: (): Promise<string | null> =>
+    ipcRenderer.invoke('skill:select-dir'),
+  // --- Bot 信任管理 ---
+  /** 获取所有 Bot 信任配置 */
+  getBotTrustList: (): Promise<unknown[]> =>
+    ipcRenderer.invoke('bot-trust:list'),
+  /** 设置 Bot 信任状态 */
+  setBotTrust: (botId: string, botUsername: string, trusted: boolean): Promise<void> =>
+    ipcRenderer.invoke('bot-trust:set', botId, botUsername, trusted),
+  /** 移除 Bot 信任配置 */
+  removeBotTrust: (botId: string): Promise<void> =>
+    ipcRenderer.invoke('bot-trust:remove', botId),
 });

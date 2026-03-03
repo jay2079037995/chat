@@ -42,6 +42,9 @@ export interface SkillAction {
   permission?: SkillPermission;
 }
 
+/** Skill 来源类型 */
+export type SkillSource = 'builtin' | 'custom';
+
 /** Skill 元数据定义 */
 export interface SkillDefinition {
   /** Skill 名称（唯一标识，如 mac:notes） */
@@ -56,6 +59,42 @@ export interface SkillDefinition {
   permission: SkillPermission;
   /** 该 Skill 包含的操作列表 */
   actions: SkillAction[];
+  /** Skill 来源（内置/自定义），默认 builtin */
+  source?: SkillSource;
+  /** 是否启用（默认 true） */
+  enabled?: boolean;
+}
+
+/** 自定义 Skill 包清单（对应 manifest.json） */
+export interface SkillPackageManifest {
+  /** Skill 名称（唯一标识） */
+  name: string;
+  /** 显示名称 */
+  displayName: string;
+  /** 描述 */
+  description: string;
+  /** 支持的平台 */
+  platform: SkillPlatform;
+  /** 默认权限级别 */
+  permission: SkillPermission;
+  /** 操作列表 */
+  actions: SkillAction[];
+  /** 包版本号 */
+  version?: string;
+  /** 作者信息 */
+  author?: string;
+}
+
+/** Skill 同步请求（Electron → 服务端，推送自定义 Skill 元数据） */
+export interface SkillSyncRequest {
+  /** 所有本地安装的自定义 Skill 清单列表 */
+  customSkills: SkillDefinition[];
+}
+
+/** Skill 同步结果（服务端 → Electron） */
+export interface SkillSyncResult {
+  /** 服务端已注册的所有 Skill（含启用状态） */
+  registeredSkills: Array<{ name: string; enabled: boolean }>;
 }
 
 /** Skill 执行请求（服务端 → 客户端） */

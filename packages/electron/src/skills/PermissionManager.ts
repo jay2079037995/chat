@@ -3,11 +3,12 @@
  *
  * 根据权限级别控制 Skill 操作的执行：
  * - read: 自动放行
- * - write/execute: 首次弹窗确认，可选"本次会话记住"
- * - dangerous: 每次弹窗确认，显示命令预览
+ * - Bot 受信任: 所有权限级别自动放行
+ * - write/execute/dangerous: 首次弹窗确认，可选"本次会话记住"
  */
 import { dialog } from 'electron';
 import { getMainWindow } from '../windowManager';
+import { BotTrustStore } from './BotTrustStore';
 
 /** 权限级别 */
 export type PermissionLevel = 'read' | 'write' | 'execute' | 'dangerous';
@@ -15,9 +16,26 @@ export type PermissionLevel = 'read' | 'write' | 'execute' | 'dangerous';
 export class PermissionManager {
   /** 本次会话已授权的操作（session 级，重启清空） */
   private sessionGrants = new Set<string>();
+  /** Bot 信任存储 */
+  private botTrustStore: BotTrustStore;
+
+  constructor(botTrustStore?: BotTrustStore) {
+    this.botTrustStore = botTrustStore || new BotTrustStore();
+  }
+
+  /** 获取 BotTrustStore 引用（供 IPC 调用） */
+  getBotTrustStore(): BotTrustStore {
+    return this.botTrustStore;
+  }
 
   /**
    * 检查权限，必要时弹窗询问用户
+   *
+   * 信任链：
+   * 1. read → 自动放行
+   * 2. Bot 受信任 → 自动放行（所有权限级别含 dangerous）
+   * 3. write/execute/dangerous + session grant → 放行
+   * 4. 其他 → 弹窗确认
    *
    * @returns true 允许执行，false 拒绝
    */
@@ -25,12 +43,18 @@ export class PermissionManager {
     functionName: string,
     permission: PermissionLevel,
     previewText?: string,
+    botId?: string,
   ): Promise<boolean> {
     // read 自动放行
     if (permission === 'read') return true;
 
-    // write/execute: 如果本次会话已授权，放行
-    if ((permission === 'write' || permission === 'execute') && this.sessionGrants.has(functionName)) {
+    // Bot 信任检查：受信 Bot 所有操作自动放行
+    if (botId && this.botTrustStore.isTrusted(botId)) {
+      return true;
+    }
+
+    // write/execute/dangerous: 如果本次会话已授权，放行
+    if (this.sessionGrants.has(functionName)) {
       return true;
     }
 
@@ -46,9 +70,7 @@ export class PermissionManager {
       type: permission === 'dangerous' ? 'warning' : 'question',
       title: 'Skill 权限确认',
       message,
-      buttons: permission === 'dangerous'
-        ? ['拒绝', '允许本次']
-        : ['拒绝', '允许本次', '本次会话始终允许'],
+      buttons: ['拒绝', '允许本次', '本次会话始终允许'],
       defaultId: 0,
       cancelId: 0,
     });
@@ -58,8 +80,8 @@ export class PermissionManager {
       return false;
     }
 
-    // write/execute 选择"本次会话始终允许"
-    if (result.response === 2 && permission !== 'dangerous') {
+    // 选择"本次会话始终允许"
+    if (result.response === 2) {
       this.sessionGrants.add(functionName);
     }
 

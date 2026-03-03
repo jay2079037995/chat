@@ -3,14 +3,16 @@
  *
  * Electron 主进程中的 Skill 执行引擎，负责：
  * 1. 白名单检查 — 不在白名单中的函数直接拒绝
- * 2. 权限检查 — 根据权限级别弹窗确认
- * 3. 执行 handler — 调用对应的 Skill 执行器
+ * 2. 权限检查 — 根据权限级别弹窗确认（受信 Bot 自动放行）
+ * 3. 执行 handler — 调用内置或自定义 Skill 执行器
  * 4. 审计记录 — 记录每次执行的结果
  */
 import Store from 'electron-store';
 import { handlers, permissionMap } from './handlers';
 import { PermissionManager } from './PermissionManager';
 import { AuditLogger, type AuditEntry } from './AuditLogger';
+import { BotTrustStore } from './BotTrustStore';
+import { SkillPackageManager } from './SkillPackageManager';
 
 /** Skill 执行请求（从渲染进程传入） */
 interface ExecRequest {
@@ -30,19 +32,31 @@ interface ExecResult {
 }
 
 export class SkillRuntime {
-  private permissionManager = new PermissionManager();
+  private permissionManager: PermissionManager;
   private auditLogger = new AuditLogger();
   private whitelistStore = new Store<{ skillWhitelist: string[] }>({
     name: 'skill-whitelist',
     defaults: { skillWhitelist: ['*'] }, // 默认允许所有
   });
+  /** 自定义 Skill 包管理器 */
+  private packageManager: SkillPackageManager;
+
+  constructor(botTrustStore?: BotTrustStore) {
+    this.permissionManager = new PermissionManager(botTrustStore);
+    this.packageManager = new SkillPackageManager();
+    // 启动时加载所有自定义 Skill 包
+    this.packageManager.loadAll();
+  }
 
   /** 执行 Skill 操作 */
   async execute(request: ExecRequest): Promise<ExecResult> {
     const { requestId, functionName, params, botId, conversationId } = request;
 
-    // 1. 检查 handler 是否存在
-    const handler = handlers[functionName];
+    // 1. 先查内置 handler，再查自定义 handler
+    let handler = handlers[functionName];
+    if (!handler) {
+      handler = this.packageManager.getHandler(functionName) as typeof handler;
+    }
     if (!handler) {
       this.auditLogger.log({
         functionName, params, botId, conversationId,
@@ -61,14 +75,16 @@ export class SkillRuntime {
       return { requestId, success: false, error: `函数 ${functionName} 不在白名单中` };
     }
 
-    // 3. 权限检查
-    const permission = permissionMap[functionName] || 'read';
+    // 3. 权限检查（先查内置 permissionMap，再查自定义权限）
+    const permission = permissionMap[functionName]
+      || this.packageManager.getPermission(functionName)
+      || 'read';
     const previewText = permission === 'dangerous'
       ? JSON.stringify(params, null, 2)
       : undefined;
 
     const allowed = await this.permissionManager.checkPermission(
-      functionName, permission, previewText,
+      functionName, permission, previewText, botId,
     );
 
     if (!allowed) {
@@ -109,5 +125,15 @@ export class SkillRuntime {
   /** 设置白名单 */
   setWhitelist(list: string[]): void {
     this.whitelistStore.set('skillWhitelist', list);
+  }
+
+  /** 获取 SkillPackageManager 引用（供 IPC 调用） */
+  getPackageManager(): SkillPackageManager {
+    return this.packageManager;
+  }
+
+  /** 获取 PermissionManager 引用（供 IPC 调用） */
+  getPermissionManager(): PermissionManager {
+    return this.permissionManager;
   }
 }

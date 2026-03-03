@@ -11,6 +11,7 @@ import { buildMenu } from './menuBuilder';
 import { createTray, destroyTray } from './trayManager';
 import { isDebugEnabled } from './debugFileWatcher';
 import { SkillRuntime } from './skills/SkillRuntime';
+import { BotTrustStore } from './skills/BotTrustStore';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -32,11 +33,42 @@ if (!gotSingleInstanceLock) {
   ipcMain.handle('debug:get-status', () => isDebugEnabled());
 
   // --- Skill 系统 IPC ---
-  const skillRuntime = new SkillRuntime();
+  const botTrustStore = new BotTrustStore();
+  const skillRuntime = new SkillRuntime(botTrustStore);
   ipcMain.handle('skill:exec', (_event, request) => skillRuntime.execute(request));
   ipcMain.handle('skill:get-logs', (_event, limit?: number) => skillRuntime.getLogs(limit));
   ipcMain.handle('skill:get-whitelist', () => skillRuntime.getWhitelist());
   ipcMain.handle('skill:set-whitelist', (_event, list: string[]) => skillRuntime.setWhitelist(list));
+
+  // --- 自定义 Skill 管理 IPC ---
+  ipcMain.handle('skill:list-custom', () =>
+    skillRuntime.getPackageManager().listCustomSkills(),
+  );
+  ipcMain.handle('skill:install', async (_event, sourcePath: string) =>
+    skillRuntime.getPackageManager().install(sourcePath),
+  );
+  ipcMain.handle('skill:uninstall', (_event, skillName: string) =>
+    skillRuntime.getPackageManager().uninstall(skillName),
+  );
+  ipcMain.handle('skill:select-dir', async () => {
+    const { dialog } = await import('electron');
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '选择 Skill 包目录',
+      message: '请选择包含 manifest.json 和 handler.js 的目录',
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  // --- Bot 信任管理 IPC ---
+  ipcMain.handle('bot-trust:list', () => botTrustStore.listTrustConfigs());
+  ipcMain.handle('bot-trust:set', (_event, botId: string, botUsername: string, trusted: boolean) => {
+    botTrustStore.setTrust(botId, botUsername, trusted);
+  });
+  ipcMain.handle('bot-trust:remove', (_event, botId: string) => {
+    botTrustStore.removeTrust(botId);
+  });
 
   app.whenReady().then(() => {
     // 允许麦克风、摄像头等媒体权限请求（否则 Electron 默认静默拒绝）

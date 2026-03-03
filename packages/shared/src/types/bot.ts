@@ -70,3 +70,13 @@ export interface BotUpdate {
   message: Message;
   conversationId: string;
 }
+
+/** Bot 信任配置（Electron 端持久化） */
+export interface BotTrustConfig {
+  /** Bot ID */
+  botId: string;
+  /** Bot 用户名（显示用） */
+  botUsername: string;
+  /** 是否受信任 */
+  trusted: boolean;
+}

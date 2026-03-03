@@ -322,3 +322,27 @@ chat/
 - Skill 白名单：用户可配置允许/禁止的 Skill
 - 审计日志：所有 Skill 执行记录可查
 - Bot 权限绑定：每个 Bot 可配置允许使用的 Skill 子集
+
+### 4.9 插件化 Skill + Bot 信任机制（v1.12.0）
+
+#### 4.9.1 可装卸 Skill
+- Skill 系统从内置硬编码升级为可插拔架构
+- 内置 Skill 可单独启用/禁用（不可卸载），启用状态 Redis 持久化
+- 支持安装/卸载自定义 Skill 包（manifest.json + handler.js）
+- 自定义 Skill 包存放在 Electron 端 userData/skills/ 目录
+- Electron 连接时通过 skill:sync 事件将自定义 Skill 元数据同步到服务端
+- 服务端 SkillRegistry 支持动态注册/注销，generateTools() 自动过滤已禁用 Skill
+
+#### 4.9.2 自定义 Skill 包格式
+- 每个包是一个目录，包含 manifest.json 和 handler.js
+- manifest.json：SkillDefinition 格式（name/displayName/description/platform/permission/actions）
+- handler.js：CommonJS 模块，导出以 functionName 为键的异步函数
+- 安装：通过 Electron 文件选择对话框选择包目录，自动复制到 userData/skills/
+- 卸载：删除 userData/skills/ 下对应目录，服务端自动注销
+
+#### 4.9.3 Bot 级信任机制
+- 每个 Bot 可标记为「受信任」或「不受信任」
+- 受信任 Bot 的所有 Skill 调用（包括 dangerous 级别）自动放行，不弹确认框
+- 不受信任 Bot 保持 v1.11.0 原有权限行为
+- 信任状态通过 electron-store 持久化，重启不丢失
+- 通过 IPC 提供信任管理 API（列出/设置/移除）

@@ -19,4 +19,5 @@ __exportStar(require("./message"), exports);
 __exportStar(require("./group"), exports);
 __exportStar(require("./socket"), exports);
 __exportStar(require("./bot"), exports);
+__exportStar(require("./skill"), exports);
 //# sourceMappingURL=index.js.map

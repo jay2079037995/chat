@@ -626,3 +626,41 @@
 - [ ] 各内置 Skill 单元测试（mock AppleScript/child_process）
 - [ ] 超时/错误处理测试
 - [ ] pnpm build + pnpm test 全量通过
+
+---
+
+## v1.12.0 - 插件化 Skill + Bot 信任机制
+
+**目标**：Skill 系统从内置硬编码升级为可插拔架构，支持安装/卸载自定义 Skill 包。同时引入 Bot 级别信任机制，受信 Bot 的所有操作自动放行。
+
+### 共享类型
+- [x] SkillDefinition 增加 `source?: 'builtin' | 'custom'`、`enabled?: boolean` 字段
+- [x] 新增 SkillPackageManifest 类型（manifest.json 格式，含 version?/author?）
+- [x] 新增 SkillSyncRequest / SkillSyncResult 类型
+- [x] 新增 BotTrustConfig 类型（botId/botUsername/trusted）
+- [x] Socket ClientToServerEvents 新增 `skill:sync` 事件（带 callback）
+
+### 服务端
+- [x] SkillRegistry 新增 unregister()（仅 custom 可卸载）
+- [x] SkillRegistry 新增 setEnabled()/loadEnabledStates()（Redis Hash `skill_enabled`）
+- [x] SkillRegistry.generateTools() 过滤已禁用的 Skill
+- [x] SkillModule 新增 PUT /api/skill/:name/enable 路由
+- [x] SkillModule 新增 socketHandler 处理 skill:sync 事件
+
+### Electron
+- [x] BotTrustStore — electron-store 持久化 Bot 信任配置
+- [x] PermissionManager 新增 botId 参数 — 受信 Bot 自动放行
+- [x] SkillPackageManager — 扫描/安装/卸载 userData/skills/ 下的自定义 Skill 包
+- [x] SkillRuntime 集成 — 查找自定义 handler + 传 botId 给 PermissionManager
+- [x] Preload + IPC 新增 7 个通道
+
+### 客户端
+- [x] skillBridge 连接后同步自定义 Skill 到服务端
+
+### 测试
+- [x] SkillRegistry 增强测试 10
+- [x] Skill 同步测试 4
+- [x] SkillPackageManager 测试 8
+- [x] Bot 信任测试 11
+- [x] 现有测试无破坏（473 → 506，新增 33）
+- [x] pnpm build + pnpm test 全量通过

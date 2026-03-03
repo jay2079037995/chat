@@ -218,3 +218,4 @@ pnpm lint             # 代码检查
 - [x] v1.9.0 - PWA 支持
 - [x] v1.10.0 - 服务端机器人运行模式
 - [ ] v1.11.0 - 远程 Skill 系统（Electron）
+- [x] v1.12.0 - 插件化 Skill + Bot 信任机制

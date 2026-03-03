@@ -7,7 +7,7 @@
  * 非 Electron 环境直接返回错误。
  */
 import type { Socket } from 'socket.io-client';
-import type { ServerToClientEvents, ClientToServerEvents, SkillExecRequest } from '@chat/shared';
+import type { ServerToClientEvents, ClientToServerEvents, SkillExecRequest, SkillDefinition } from '@chat/shared';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -20,6 +20,8 @@ interface ElectronAPI {
     data?: unknown;
     error?: string;
   }>;
+  /** 列出已安装的自定义 Skill */
+  listCustomSkills?: () => Promise<SkillDefinition[]>;
 }
 
 /** 获取 electronAPI（仅 Electron 环境可用） */
@@ -35,6 +37,20 @@ function getElectronAPI(): ElectronAPI | null {
  * 在 socket 连接建立后调用，注册 skill:exec 事件监听。
  */
 export function initSkillBridge(socket: TypedSocket): void {
+  // Electron 环境下：连接后同步自定义 Skill 到服务端
+  const electronAPI = getElectronAPI();
+  if (electronAPI && electronAPI.listCustomSkills) {
+    electronAPI.listCustomSkills().then((customSkills) => {
+      if (customSkills.length > 0) {
+        socket.emit('skill:sync', { customSkills }, (result) => {
+          console.log('[SkillBridge] Skill 同步完成:', result);
+        });
+      }
+    }).catch((err) => {
+      console.error('[SkillBridge] 获取自定义 Skill 列表失败:', err);
+    });
+  }
+
   socket.on('skill:exec', async (request: SkillExecRequest) => {
     const electronAPI = getElectronAPI();
 

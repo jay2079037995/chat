@@ -5,7 +5,7 @@
  */
 import type { Message, Conversation } from './message';
 import type { Group } from './group';
-import type { SkillExecRequest, SkillExecResult } from './skill';
+import type { SkillExecRequest, SkillExecResult, SkillSyncRequest, SkillSyncResult } from './skill';
 
 /** 服务端 → 客户端 事件 */
 export interface ServerToClientEvents {
@@ -71,4 +71,6 @@ export interface ClientToServerEvents {
   'conversation:join': (conversationId: string) => void;
   /** 远程 Skill 执行结果（Electron 客户端 → 服务端） */
   'skill:result': (result: SkillExecResult) => void;
+  /** 同步自定义 Skill 元数据（Electron → 服务端） */
+  'skill:sync': (data: SkillSyncRequest, callback: (result: SkillSyncResult) => void) => void;
 }
