@@ -5,10 +5,11 @@
  * - 客户端模式：创建后获取 token，通过 agent-app 运行
  * - 服务端模式：创建时配置 LLM，服务器自动运行
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Drawer, Button, Input, List, Typography, Popconfirm,
   message as antMessage, Alert, Radio, Tag, Badge, Modal, Form, Space,
+  Checkbox, Divider, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, RobotOutlined,
@@ -20,12 +21,97 @@ import { useIsMobile } from '../../../../hooks/useIsMobile';
 import ServerBotConfigForm from './ServerBotConfigForm';
 import styles from './index.module.less';
 
+/** Skill 信息（从 /api/skill/list 获取） */
+interface SkillInfo {
+  name: string;
+  displayName: string;
+  description: string;
+}
+
 const { Text, Paragraph } = Typography;
 
 interface BotManagerProps {
   visible: boolean;
   onClose: () => void;
 }
+
+/** Skill 选择器子组件 */
+const SkillSelector: React.FC<{
+  availableSkills: SkillInfo[];
+  selectedSkills: string[];
+  onChange: (skills: string[]) => void;
+  loading: boolean;
+  disabled: boolean;
+  form: ReturnType<typeof Form.useForm>[0];
+}> = ({ availableSkills, selectedSkills, onChange, loading, disabled, form }) => {
+  const model = Form.useWatch('model', form);
+  const isReasoner = model === 'deepseek-reasoner';
+  const isAll = selectedSkills.includes('*');
+
+  /** 所有 Skill 名称列表 */
+  const allSkillNames = availableSkills.map((s) => s.name);
+
+  /** 切换全选/自定义 */
+  const handleSelectAllChange = (checked: boolean) => {
+    if (checked) {
+      onChange(['*']);
+    } else {
+      // 取消全选时默认选中所有
+      onChange([...allSkillNames]);
+    }
+  };
+
+  /** 单个 Skill 变更 */
+  const handleSkillChange = (checkedValues: string[]) => {
+    if (checkedValues.length === allSkillNames.length) {
+      onChange(['*']);
+    } else {
+      onChange(checkedValues);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <Divider style={{ margin: '8px 0' }} />
+      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+        Skill 配置
+      </Typography.Text>
+      {isReasoner ? (
+        <Alert
+          type="info"
+          message="该模型不支持 Skill 调用"
+          description="deepseek-reasoner 是推理模型，不支持 function calling，Skill 功能将被禁用。"
+          showIcon
+          style={{ marginBottom: 8 }}
+        />
+      ) : (
+        <>
+          <Checkbox
+            checked={isAll}
+            onChange={(e) => handleSelectAllChange(e.target.checked)}
+            disabled={disabled || loading}
+            style={{ marginBottom: 8 }}
+          >
+            全部启用
+          </Checkbox>
+          {!isAll && (
+            <Checkbox.Group
+              value={selectedSkills}
+              onChange={(values) => handleSkillChange(values as string[])}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 24 }}
+            >
+              {availableSkills.map((skill) => (
+                <Tooltip key={skill.name} title={skill.description} placement="right">
+                  <Checkbox value={skill.name}>{skill.displayName}</Checkbox>
+                </Tooltip>
+              ))}
+            </Checkbox.Group>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   const isMobile = useIsMobile();
@@ -38,6 +124,11 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
 
   // 编辑配置 Modal
   const [editingBot, setEditingBot] = useState<Bot | null>(null);
+
+  // Skill 选择相关状态
+  const [availableSkills, setAvailableSkills] = useState<SkillInfo[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
 
   // LLM 配置表单
   const [createForm] = Form.useForm();
@@ -129,9 +220,31 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     }
   };
 
+  /** 加载可用 Skill 列表 */
+  const loadAvailableSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    try {
+      const skills = await botService.getAvailableSkills();
+      setAvailableSkills(skills);
+    } catch {
+      // Skill 列表加载失败不影响配置编辑
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, []);
+
   const handleEditConfig = (bot: Bot) => {
     setEditingBot(bot);
     editForm.resetFields();
+    // 初始化已选 Skill（['*'] 或空表示全选）
+    const allowed = bot.allowedSkills;
+    if (!allowed || allowed.length === 0 || allowed.includes('*')) {
+      setSelectedSkills(['*']);
+    } else {
+      setSelectedSkills(allowed);
+    }
+    // 加载可用 Skill 列表
+    void loadAvailableSkills();
   };
 
   const handleSaveConfig = async () => {
@@ -139,8 +252,14 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     try {
       const values = await editForm.validateFields();
       const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
+
+      // 保存 Skill 配置（推理模型跳过）
+      const isReasoner = values.model === 'deepseek-reasoner';
+      const skillsToSave = isReasoner ? ['*'] : selectedSkills;
+      const { allowedSkills: savedSkills } = await botService.setBotSkills(editingBot.id, skillsToSave);
+
       setBots((prev) => prev.map((b) =>
-        b.id === editingBot.id ? { ...b, llmConfig: updated } : b,
+        b.id === editingBot.id ? { ...b, llmConfig: updated, allowedSkills: savedSkills } : b,
       ));
       setEditingBot(null);
       void antMessage.success('配置已更新');
@@ -315,7 +434,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
 
       {/* 编辑配置 Modal */}
       <Modal
-        title="编辑 LLM 配置"
+        title="编辑 Bot 配置"
         open={!!editingBot}
         onOk={handleSaveConfig}
         onCancel={() => setEditingBot(null)}
@@ -324,10 +443,20 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         destroyOnClose
       >
         {editingBot && (
-          <ServerBotConfigForm
-            form={editForm}
-            initialValues={editingBot.llmConfig}
-          />
+          <>
+            <ServerBotConfigForm
+              form={editForm}
+              initialValues={editingBot.llmConfig}
+            />
+            <SkillSelector
+              availableSkills={availableSkills}
+              selectedSkills={selectedSkills}
+              onChange={setSelectedSkills}
+              loading={skillsLoading}
+              disabled={editForm.getFieldValue('model') === 'deepseek-reasoner'}
+              form={editForm}
+            />
+          </>
         )}
       </Modal>
     </Drawer>

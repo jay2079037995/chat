@@ -15,6 +15,8 @@ interface LLMResponse {
     message: {
       role: string;
       content: string;
+      /** DeepSeek reasoner 模型返回的思维链内容 */
+      reasoning_content?: string | null;
     };
     finish_reason: string;
   }>;
@@ -23,6 +25,25 @@ interface LLMResponse {
     completion_tokens: number;
     total_tokens: number;
   };
+}
+
+/** 判断是否为推理模型（不支持 tools、temperature 无效） */
+function isReasonerModel(model: string): boolean {
+  return model === 'deepseek-reasoner';
+}
+
+/**
+ * 将推理模型的思考过程和最终回答格式化为单条消息
+ */
+function formatReasonerResponse(reasoning: string | null | undefined, content: string | null | undefined): string {
+  const parts: string[] = [];
+  if (reasoning) {
+    parts.push(`**💭 思考过程**\n\n${reasoning}`);
+  }
+  if (content) {
+    parts.push(`**📝 最终回答**\n\n${content}`);
+  }
+  return parts.join('\n\n---\n\n') || '';
 }
 
 interface ClaudeResponse {
@@ -60,12 +81,17 @@ async function callOpenAICompatible(config: AgentConfig, messages: ChatMessage[]
   }
 
   const apiUrl = `${baseUrl}/chat/completions`;
-  const body = {
+  const reasoner = isReasonerModel(model);
+
+  const body: Record<string, unknown> = {
     model,
     messages,
-    temperature: 0.7,
     max_tokens: 2048,
   };
+  // 推理模型不支持 temperature 参数
+  if (!reasoner) {
+    body.temperature = 0.7;
+  }
 
   const response = await httpPost(apiUrl, body, {
     'Authorization': `Bearer ${config.apiKey}`,
@@ -75,7 +101,14 @@ async function callOpenAICompatible(config: AgentConfig, messages: ChatMessage[]
     throw new Error('LLM returned empty choices');
   }
 
-  return response.choices[0].message.content;
+  const msg = response.choices[0].message;
+
+  // 推理模型：组合思考过程和最终回答
+  if (reasoner) {
+    return formatReasonerResponse(msg.reasoning_content, msg.content);
+  }
+
+  return msg.content;
 }
 
 /** Claude API 格式调用 */

@@ -7,7 +7,7 @@ import type { LLMProvider, ProviderInfo } from '../types/bot';
 export const LLM_PROVIDERS: Record<LLMProvider, ProviderInfo> = {
   deepseek: {
     baseUrl: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat'],
+    models: ['deepseek-chat', 'deepseek-reasoner'],
   },
   minimax: {
     baseUrl: 'https://api.minimax.io/v1',

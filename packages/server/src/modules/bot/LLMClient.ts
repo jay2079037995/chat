@@ -15,6 +15,8 @@ interface LLMResponse {
     message: {
       role: string;
       content: string | null;
+      /** DeepSeek reasoner 模型返回的思维链内容 */
+      reasoning_content?: string | null;
       tool_calls?: Array<{
         id: string;
         type: 'function';
@@ -23,6 +25,27 @@ interface LLMResponse {
     };
     finish_reason: string;
   }>;
+}
+
+/** 判断是否为推理模型（不支持 tools、temperature 无效） */
+function isReasonerModel(model: string): boolean {
+  return model === 'deepseek-reasoner';
+}
+
+/**
+ * 将推理模型的思考过程和最终回答格式化为单条消息
+ *
+ * 格式：思考过程 + 分隔线 + 最终回答
+ */
+function formatReasonerResponse(reasoning: string | null | undefined, content: string | null | undefined): string {
+  const parts: string[] = [];
+  if (reasoning) {
+    parts.push(`**💭 思考过程**\n\n${reasoning}`);
+  }
+  if (content) {
+    parts.push(`**📝 最终回答**\n\n${content}`);
+  }
+  return parts.join('\n\n---\n\n') || '';
 }
 
 interface ClaudeResponse {
@@ -74,7 +97,13 @@ async function callOpenAICompatible(config: LLMConfig, messages: ChatMessage[]):
   }
 
   const apiUrl = `${baseUrl}/chat/completions`;
-  const body = { model, messages, temperature: 0.7, max_tokens: 2048 };
+  const reasoner = isReasonerModel(model);
+
+  const body: Record<string, unknown> = { model, messages, max_tokens: 2048 };
+  // 推理模型不支持 temperature 参数
+  if (!reasoner) {
+    body.temperature = 0.7;
+  }
 
   const response = await httpPost(apiUrl, body, {
     'Authorization': `Bearer ${config.apiKey}`,
@@ -84,7 +113,14 @@ async function callOpenAICompatible(config: LLMConfig, messages: ChatMessage[]):
     throw new Error('LLM returned empty choices');
   }
 
-  return response.choices[0].message.content || '';
+  const msg = response.choices[0].message;
+
+  // 推理模型：组合思考过程和最终回答
+  if (reasoner) {
+    return formatReasonerResponse(msg.reasoning_content, msg.content);
+  }
+
+  return msg.content || '';
 }
 
 /** Claude API 格式调用 */
@@ -165,15 +201,20 @@ async function callOpenAICompatibleWithTools(
     return msg;
   });
 
+  const reasoner = isReasonerModel(model);
+
   const body: Record<string, unknown> = {
     model,
     messages: reqMessages,
-    temperature: 0.7,
     max_tokens: 2048,
   };
+  // 推理模型不支持 temperature
+  if (!reasoner) {
+    body.temperature = 0.7;
+  }
 
-  // 只有传入非空 tools 时才附加
-  if (tools && tools.length > 0) {
+  // 推理模型不支持 function calling，跳过 tools
+  if (!reasoner && tools && tools.length > 0) {
     body.tools = tools;
   }
 
@@ -188,9 +229,14 @@ async function callOpenAICompatibleWithTools(
   const choice = response.choices[0];
   const hasToolCalls = !!choice.message.tool_calls && choice.message.tool_calls.length > 0;
 
+  // 推理模型：组合思考过程和最终回答
+  const content = reasoner
+    ? formatReasonerResponse(choice.message.reasoning_content, choice.message.content)
+    : (choice.message.content ?? undefined);
+
   return {
     hasToolCalls,
-    content: choice.message.content ?? undefined,
+    content,
     toolCalls: hasToolCalls
       ? choice.message.tool_calls!.map((tc) => ({
           id: tc.id,

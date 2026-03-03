@@ -664,3 +664,63 @@
 - [x] Bot 信任测试 11
 - [x] 现有测试无破坏（473 → 506，新增 33）
 - [x] pnpm build + pnpm test 全量通过
+
+---
+
+## v1.13.0 - DeepSeek 推理模型 + Bot Skill 定制
+
+**目标**：接入 DeepSeek deepseek-reasoner（R1 推理模型），完整展示思维链推理过程。同时让用户通过 UI 为每个 Bot 选择可用的 Skill，实现精细化的 Bot 能力管控。
+
+### 需求 A: deepseek-reasoner 模型接入
+
+deepseek-reasoner 与 deepseek-chat 的 API 差异：不支持 function calling (tools)、temperature 参数无效、响应含 `reasoning_content` 思维链字段、多轮对话不得传入 reasoning_content。
+
+#### 共享类型
+- [ ] LLM_PROVIDERS.deepseek.models 添加 `'deepseek-reasoner'`
+
+#### 服务端
+- [ ] LLMClient LLMResponse 接口 message 添加 `reasoning_content` 字段
+- [ ] LLMClient 新增 `isReasonerModel()` / `formatReasonerResponse()` 辅助函数
+- [ ] LLMClient `callOpenAICompatible` 推理模型不传 temperature，响应组合 reasoning_content + content
+- [ ] LLMClient `callOpenAICompatibleWithTools` 推理模型不传 temperature、不传 tools
+- [ ] ServerBotRunner 推理模型跳过 tool calling loop
+
+#### Agent App
+- [ ] agent-app LLMClient 同步适配（reasoning_content + 跳过 temperature）
+
+### 需求 B: Bot Skill 定制 UI
+
+现有 `BotService` 已有 `getBotAllowedSkills()`/`setBotAllowedSkills()` 方法但未接通。需要打通 UI → API → Runner。
+
+#### 共享类型
+- [ ] Bot 接口新增 `allowedSkills?: string[]` 字段
+
+#### 服务端
+- [ ] `GET /api/bot/list` 返回 `allowedSkills`
+- [ ] 新增 `PUT /api/bot/:id/skills` 路由设置 Bot 允许的 Skill
+- [ ] ServerBotRunner 构造函数接收 `allowedSkills`，generateTools 传入 `allowedFunctions` 白名单
+- [ ] ServerBotRunner 新增 `updateAllowedSkills()` 热更新方法
+- [ ] ServerBotManager 启动时加载 allowedSkills + 新增 `updateBotSkills()` 方法
+
+#### 前端
+- [ ] `botService` 新增 `getAvailableSkills()` / `setBotSkills()` API 方法
+- [ ] BotManager 编辑 Modal 新增 Skill 选择区域（Checkbox.Group，默认全选）
+- [ ] 选择 deepseek-reasoner 时 Skill 区域提示「该模型不支持 Skill 调用」并禁用
+
+### 测试
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/constants/index.ts` | deepseek models 添加 `'deepseek-reasoner'` |
+| `packages/shared/src/types/bot.ts` | Bot 新增 `allowedSkills` 字段 |
+| `packages/server/src/modules/bot/LLMClient.ts` | reasoning_content 处理 + 跳过 temperature |
+| `packages/agent-app/src/main/llmClient.ts` | 同上（简化版） |
+| `packages/server/src/modules/bot/ServerBotRunner.ts` | reasoner 跳过 tools + allowedSkills 过滤 |
+| `packages/server/src/modules/bot/ServerBotManager.ts` | 启动时加载 allowedSkills + 热更新 |
+| `packages/server/src/modules/bot/index.ts` | `PUT /api/bot/:id/skills` + list 返回 skills |
+| `packages/client/src/modules/chat/services/botService.ts` | 新增 skill API 方法 |
+| `packages/client/src/modules/chat/components/BotManager/index.tsx` | Skill 选择 UI |

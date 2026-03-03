@@ -37,9 +37,12 @@ export class ServerBotManager {
       await this.stopBot(botId);
     }
 
+    // 加载 Bot 允许的 Skill 列表
+    const allowedSkills = await this.botService.getBotAllowedSkills(botId);
+
     const runner = new ServerBotRunner(
       botId, llmConfig, this.botService, this.io,
-      this.skillRegistry, this.skillDispatcher,
+      this.skillRegistry, this.skillDispatcher, allowedSkills,
     );
     this.runners.set(botId, runner);
     await runner.start();
@@ -74,6 +77,14 @@ export class ServerBotManager {
     const runner = this.runners.get(botId);
     if (runner) {
       runner.updateConfig(llmConfig);
+    }
+  }
+
+  /** 热更新 Bot 允许的 Skill 列表 */
+  updateBotSkills(botId: string, skills: string[]): void {
+    const runner = this.runners.get(botId);
+    if (runner) {
+      runner.updateAllowedSkills(skills);
     }
   }
 

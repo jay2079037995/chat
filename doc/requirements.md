@@ -346,3 +346,20 @@ chat/
 - 不受信任 Bot 保持 v1.11.0 原有权限行为
 - 信任状态通过 electron-store 持久化，重启不丢失
 - 通过 IPC 提供信任管理 API（列出/设置/移除）
+
+### 4.10 DeepSeek 推理模型 + Bot Skill 定制（v1.13.0）
+
+#### 4.10.1 deepseek-reasoner 模型接入
+- 在 DeepSeek provider 下新增 deepseek-reasoner（R1 推理模型）
+- deepseek-reasoner 的 API 差异：不支持 function calling、temperature 参数无效、响应含 reasoning_content 思维链字段
+- 多轮对话不传 reasoning_content（否则 API 返回 400 错误）
+- 回复展示：思考过程和最终回答全部展示，用分隔线区分
+- 推理模型自动跳过 Skill/tools 调用
+
+#### 4.10.2 Bot Skill 定制
+- 用户可通过编辑 UI 为每个 server bot 选择可用的 Skill 子集
+- 默认全选所有 Skill（['*'] 表示全部允许）
+- Bot 运行时仅向 LLM 传入选中的 Skill 作为 tools
+- 使用 deepseek-reasoner 模型时 Skill 选择区域自动禁用并提示
+- Bot Skill 配置通过 Redis SET 持久化（`bot_skills:{botId}`）
+- 支持运行中热更新 Skill 配置

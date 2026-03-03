@@ -118,7 +118,8 @@ export class BotModule implements ServerModule {
             if (runMode === 'server') {
               const { status, error } = await botService.getBotStatus(b.id);
               const llmConfig = await botService.getServerBotConfigMasked(b.id);
-              return { ...base, status, statusError: error, llmConfig };
+              const allowedSkills = await botService.getBotAllowedSkills(b.id);
+              return { ...base, status, statusError: error, llmConfig, allowedSkills };
             }
 
             return base;
@@ -290,6 +291,45 @@ export class BotModule implements ServerModule {
 
         const masked = await botService.getServerBotConfigMasked(botId);
         res.json({ llmConfig: masked });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // PUT /api/bot/:id/skills — 设置 Bot 允许的 Skill 列表（需 session + 所有权）
+    router.put('/:id/skills', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const botId = req.params.id as string;
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+        if (bot.botOwnerId !== req.userId) {
+          res.status(403).json({ error: '无权操作该机器人' });
+          return;
+        }
+
+        const runMode = await botService.getBotRunMode(botId);
+        if (runMode !== 'server') {
+          res.status(400).json({ error: '仅服务端模式机器人支持此操作' });
+          return;
+        }
+
+        const { skills } = req.body as { skills: string[] };
+        if (!Array.isArray(skills)) {
+          res.status(400).json({ error: 'skills 必须是字符串数组' });
+          return;
+        }
+
+        await botService.setBotAllowedSkills(botId, skills);
+
+        // 热更新运行中 Runner 的 allowedSkills
+        if (this.serverBotManager) {
+          this.serverBotManager.updateBotSkills(botId, skills);
+        }
+
+        res.json({ allowedSkills: skills });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }

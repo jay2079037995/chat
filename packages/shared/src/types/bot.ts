@@ -50,6 +50,8 @@ export interface Bot {
   runMode?: BotRunMode;
   status?: BotStatus;
   llmConfig?: Omit<LLMConfig, 'apiKey'> & { apiKey: string };
+  /** Bot 允许使用的 Skill 函数名列表（['*'] 或空表示全部） */
+  allowedSkills?: string[];
 }
 
 /** 机器人创建后返回（含 token，仅 client 模式显示） */

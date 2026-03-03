@@ -133,11 +133,11 @@ describe('Home — 桌面端布局', () => {
     expect(screen.getByText('选择一个会话开始聊天')).toBeDefined();
   });
 
-  it('should show version v1.12.0', async () => {
+  it('should show version v1.13.0', async () => {
     await act(async () => {
       renderHome();
     });
-    expect(screen.getByText('v1.12.0')).toBeDefined();
+    expect(screen.getByText('v1.13.0')).toBeDefined();
   });
 });
 

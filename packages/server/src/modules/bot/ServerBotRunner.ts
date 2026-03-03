@@ -42,6 +42,9 @@ export class ServerBotRunner {
   private messagesProcessed = 0;
   private consecutiveErrors = 0;
 
+  /** Bot 允许使用的 Skill 函数名列表（['*'] 或空数组表示全部） */
+  private allowedSkills?: string[];
+
   constructor(
     private botId: string,
     private llmConfig: LLMConfig,
@@ -49,7 +52,10 @@ export class ServerBotRunner {
     private io: SocketIOServer | null,
     private skillRegistry?: SkillRegistry,
     private skillDispatcher?: SkillDispatcher,
-  ) {}
+    allowedSkills?: string[],
+  ) {
+    this.allowedSkills = allowedSkills;
+  }
 
   /** 启动轮询 */
   async start(): Promise<void> {
@@ -97,6 +103,11 @@ export class ServerBotRunner {
   /** 热更新 LLM 配置 */
   updateConfig(partial: Partial<LLMConfig>): void {
     this.llmConfig = { ...this.llmConfig, ...partial };
+  }
+
+  /** 热更新允许的 Skill 列表 */
+  updateAllowedSkills(skills: string[]): void {
+    this.allowedSkills = skills;
   }
 
   /** 获取运行状态 */
@@ -182,9 +193,23 @@ export class ServerBotRunner {
             })),
           ];
 
-          // 生成 tools 列表（有 SkillRegistry 时才附带）
-          const tools: LLMTool[] | undefined = this.skillRegistry
-            ? this.skillRegistry.generateTools({ platform: 'mac' })
+          // 推理模型不支持 function calling，跳过 tools
+          const isReasoner = this.llmConfig.model === 'deepseek-reasoner';
+          // 将 Skill 名称列表解析为 function 名称列表（白名单）
+          let allowedFunctions: string[] | undefined;
+          if (this.allowedSkills && !this.allowedSkills.includes('*') && this.allowedSkills.length > 0 && this.skillRegistry) {
+            allowedFunctions = [];
+            for (const skillName of this.allowedSkills) {
+              const skill = this.skillRegistry.getSkill(skillName);
+              if (skill) {
+                for (const action of skill.actions) {
+                  allowedFunctions.push(action.functionName);
+                }
+              }
+            }
+          }
+          const tools: LLMTool[] | undefined = (!isReasoner && this.skillRegistry)
+            ? this.skillRegistry.generateTools({ platform: 'mac', allowedFunctions })
             : undefined;
           const hasTools = tools && tools.length > 0;
 
