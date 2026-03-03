@@ -274,7 +274,9 @@ export class ServerBotRunner {
   /** Socket.IO 广播消息 */
   private broadcastMessage(message: any, conversationId: string): void {
     if (!this.io) return;
-    this.io.to(`conversation:${conversationId}`).emit('message', message);
+    // 房间名与 ChatModule 一致：直接使用 conversationId（无前缀）
+    // 事件名与 ChatModule 一致：message:receive
+    this.io.to(conversationId).emit('message:receive', message);
   }
 
   private sleep(ms: number, signal: AbortSignal): Promise<void> {
