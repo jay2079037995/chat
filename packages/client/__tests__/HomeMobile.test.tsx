@@ -36,15 +36,17 @@ jest.mock('../src/modules/chat/stores/useSocketStore', () => ({
     }),
 }));
 
-jest.mock('../src/modules/chat/stores/useChatStore', () => ({
-  useChatStore: (selector: (s: Record<string, unknown>) => unknown) =>
+jest.mock('../src/modules/chat/stores/useChatStore', () => {
+  const fn = (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       loadConversations: mockLoadConversations,
       loadFromCache: mockLoadFromCache,
       startPrivateChat: mockStartPrivateChat,
       currentConversationId: mockCurrentConversationId,
-    }),
-}));
+    });
+  fn.setState = jest.fn();
+  return { useChatStore: fn };
+});
 
 jest.mock('../src/modules/chat/stores/useThemeStore', () => ({
   useThemeStore: (selector: (s: Record<string, unknown>) => unknown) =>
@@ -131,11 +133,11 @@ describe('Home — 桌面端布局', () => {
     expect(screen.getByText('选择一个会话开始聊天')).toBeDefined();
   });
 
-  it('should show version v1.8.0', async () => {
+  it('should show version v1.9.0', async () => {
     await act(async () => {
       renderHome();
     });
-    expect(screen.getByText('v1.8.0')).toBeDefined();
+    expect(screen.getByText('v1.10.0')).toBeDefined();
   });
 });
 

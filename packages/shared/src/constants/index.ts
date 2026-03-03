@@ -1,6 +1,35 @@
 /**
  * 全局常量 —— 前后端共享的业务限制和配置
  */
+import type { LLMProvider, ProviderInfo } from '../types/bot';
+
+/** 所有 LLM Provider 配置 */
+export const LLM_PROVIDERS: Record<LLMProvider, ProviderInfo> = {
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: ['deepseek-chat'],
+  },
+  minimax: {
+    baseUrl: 'https://api.minimax.io/v1',
+    models: ['MiniMax-M2.5'],
+  },
+  openai: {
+    baseUrl: 'https://api.openai.com/v1',
+    models: ['gpt-4o', 'gpt-4o-mini'],
+  },
+  claude: {
+    baseUrl: 'https://api.anthropic.com/v1',
+    models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'],
+  },
+  qwen: {
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen-plus', 'qwen-turbo'],
+  },
+  custom: {
+    baseUrl: '',
+    models: [],
+  },
+};
 
 /** 单条消息最大字符数 */
 export const MAX_MESSAGE_LENGTH = 5000;

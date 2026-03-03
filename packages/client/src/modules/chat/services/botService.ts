@@ -1,13 +1,19 @@
 /**
  * 机器人服务 —— 封装所有与 /api/bot 相关的 HTTP 请求
  */
-import type { Bot, BotWithToken } from '@chat/shared';
+import type { Bot, BotRunMode, LLMConfig, ProviderInfo, LLMProvider } from '@chat/shared';
 import { api } from '../../../services/api';
 
 export const botService = {
   /** 创建机器人 */
-  async createBot(username: string): Promise<{ bot: Bot; token: string }> {
-    const res = await api.post<{ bot: Bot; token: string }>('/bot/create', { username });
+  async createBot(
+    username: string,
+    runMode: BotRunMode = 'client',
+    llmConfig?: LLMConfig,
+  ): Promise<{ bot: Bot; token?: string }> {
+    const res = await api.post<{ bot: Bot; token?: string }>('/bot/create', {
+      username, runMode, llmConfig,
+    });
     return res.data;
   },
 
@@ -20,5 +26,27 @@ export const botService = {
   /** 删除机器人 */
   async deleteBot(id: string): Promise<void> {
     await api.delete(`/bot/${id}`);
+  },
+
+  /** 更新服务端 Bot LLM 配置 */
+  async updateBotConfig(id: string, llmConfig: LLMConfig): Promise<{ llmConfig: LLMConfig }> {
+    const res = await api.put<{ llmConfig: LLMConfig }>(`/bot/${id}/config`, llmConfig);
+    return res.data;
+  },
+
+  /** 启动服务端 Bot */
+  async startBot(id: string): Promise<void> {
+    await api.post(`/bot/${id}/start`);
+  },
+
+  /** 停止服务端 Bot */
+  async stopBot(id: string): Promise<void> {
+    await api.post(`/bot/${id}/stop`);
+  },
+
+  /** 获取可用 LLM providers */
+  async getProviders(): Promise<Record<LLMProvider, ProviderInfo>> {
+    const res = await api.get<{ providers: Record<LLMProvider, ProviderInfo> }>('/bot/providers');
+    return res.data.providers;
   },
 };

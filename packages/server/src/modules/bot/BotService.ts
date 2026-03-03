@@ -1,14 +1,18 @@
 import crypto from 'crypto';
 import Redis from 'ioredis';
-import type { Message, BotUpdate } from '@chat/shared';
+import type { Message, BotUpdate, LLMConfig, BotRunMode, BotStatus } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import { getRedisClient } from '../../repositories/redis/RedisClient';
 import { config } from '../../config';
+import { encryptApiKey, decryptApiKey, maskApiKey } from './CryptoUtils';
 
 const BOT_UPDATES_KEY = (botId: string) => `bot_updates:${botId}`;
 const BOT_UPDATE_SEQ_KEY = (botId: string) => `bot_update_seq:${botId}`;
+const BOT_CONFIG_KEY = (botId: string) => `bot_config:${botId}`;
+const BOT_CONV_HISTORY_KEY = (botId: string, convId: string) => `bot_conv_history:${botId}:${convId}`;
+const SERVER_BOTS_KEY = 'server_bots';
 
 /**
  * 机器人服务
@@ -33,10 +37,20 @@ export class BotService {
   }
 
   /** 创建机器人 */
-  async createBot(ownerId: string, username: string) {
+  async createBot(
+    ownerId: string,
+    username: string,
+    runMode: BotRunMode = 'client',
+    llmConfig?: LLMConfig,
+  ) {
     // 机器人用户名必须以 bot 结尾
     if (!username.toLowerCase().endsWith('bot')) {
       throw new Error('BOT_NAME_INVALID');
+    }
+
+    // 服务端模式必须提供 LLM 配置
+    if (runMode === 'server' && !llmConfig) {
+      throw new Error('SERVER_MODE_REQUIRES_LLM_CONFIG');
     }
 
     // 检查用户名是否已存在
@@ -47,7 +61,18 @@ export class BotService {
     const token = crypto.randomBytes(32).toString('hex');
 
     const user = await this.userRepo.createBot({ id, username, token, ownerId });
-    return { ...user, token };
+
+    // 设置运行模式
+    const redis = getRedisClient();
+    await redis.hset(`user:${id}`, 'runMode', runMode);
+
+    if (runMode === 'server' && llmConfig) {
+      await this.saveServerBotConfig(id, llmConfig);
+      await redis.sadd(SERVER_BOTS_KEY, id);
+      await this.setBotStatus(id, 'stopped');
+    }
+
+    return { ...user, token, runMode };
   }
 
   /** 获取某用户拥有的机器人列表 */
@@ -60,6 +85,20 @@ export class BotService {
     const bot = await this.userRepo.findById(botId);
     if (!bot || !bot.isBot) throw new Error('BOT_NOT_FOUND');
     if (bot.botOwnerId !== requesterId) throw new Error('FORBIDDEN');
+
+    // 清理服务端模式相关数据
+    const redis = getRedisClient();
+    const runMode = await this.getBotRunMode(botId);
+    if (runMode === 'server') {
+      await redis.del(BOT_CONFIG_KEY(botId));
+      await redis.srem(SERVER_BOTS_KEY, botId);
+      // 清理所有对话历史
+      const historyKeys = await redis.keys(`bot_conv_history:${botId}:*`);
+      if (historyKeys.length > 0) {
+        await redis.del(...historyKeys);
+      }
+    }
+
     await this.userRepo.deleteBot(botId);
   }
 
@@ -145,6 +184,166 @@ export class BotService {
   /** 通过 token 获取机器人 ID */
   async getBotIdByToken(token: string): Promise<string | null> {
     return this.userRepo.findBotByToken(token);
+  }
+
+  // ========================
+  // 服务端机器人专用方法
+  // ========================
+
+  /** 机器人直接发送消息（内部调用，不验证 token） */
+  async sendMessageByBotId(
+    botId: string,
+    conversationId: string,
+    content: string,
+    type: Message['type'] = 'text',
+  ): Promise<Message> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(botId)) throw new Error('NOT_PARTICIPANT');
+
+    const message: Message = {
+      id: generateId(),
+      conversationId,
+      senderId: botId,
+      type,
+      content: content.trim(),
+      createdAt: Date.now(),
+    };
+
+    return this.messageRepo.saveMessage(message);
+  }
+
+  /** 保存服务端 Bot LLM 配置（apiKey 加密存储） */
+  async saveServerBotConfig(botId: string, llmConfig: LLMConfig): Promise<void> {
+    const redis = getRedisClient();
+    const encrypted = encryptApiKey(llmConfig.apiKey);
+    await redis.hset(BOT_CONFIG_KEY(botId), {
+      provider: llmConfig.provider,
+      encryptedApiKey: encrypted,
+      model: llmConfig.model,
+      systemPrompt: llmConfig.systemPrompt,
+      contextLength: String(llmConfig.contextLength),
+      customBaseUrl: llmConfig.customBaseUrl || '',
+      customModel: llmConfig.customModel || '',
+    });
+  }
+
+  /** 获取服务端 Bot LLM 配置（解密 apiKey） */
+  async getServerBotConfig(botId: string): Promise<LLMConfig | null> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(BOT_CONFIG_KEY(botId));
+    if (!data || !data.provider) return null;
+
+    return {
+      provider: data.provider as LLMConfig['provider'],
+      apiKey: decryptApiKey(data.encryptedApiKey),
+      model: data.model,
+      systemPrompt: data.systemPrompt,
+      contextLength: parseInt(data.contextLength, 10) || 10,
+      customBaseUrl: data.customBaseUrl || undefined,
+      customModel: data.customModel || undefined,
+    };
+  }
+
+  /** 获取脱敏的 LLM 配置（给前端展示） */
+  async getServerBotConfigMasked(botId: string): Promise<Omit<LLMConfig, 'apiKey'> & { apiKey: string } | null> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(BOT_CONFIG_KEY(botId));
+    if (!data || !data.provider) return null;
+
+    const realKey = decryptApiKey(data.encryptedApiKey);
+    return {
+      provider: data.provider as LLMConfig['provider'],
+      apiKey: maskApiKey(realKey),
+      model: data.model,
+      systemPrompt: data.systemPrompt,
+      contextLength: parseInt(data.contextLength, 10) || 10,
+      customBaseUrl: data.customBaseUrl || undefined,
+      customModel: data.customModel || undefined,
+    };
+  }
+
+  /** 设置 Bot 运行模式 */
+  async setBotRunMode(botId: string, runMode: BotRunMode): Promise<void> {
+    const redis = getRedisClient();
+    await redis.hset(`user:${botId}`, 'runMode', runMode);
+  }
+
+  /** 获取 Bot 运行模式 */
+  async getBotRunMode(botId: string): Promise<BotRunMode> {
+    const redis = getRedisClient();
+    const mode = await redis.hget(`user:${botId}`, 'runMode');
+    return (mode as BotRunMode) || 'client';
+  }
+
+  /** 设置服务端 Bot 运行状态 */
+  async setBotStatus(botId: string, status: BotStatus, error?: string): Promise<void> {
+    const redis = getRedisClient();
+    await redis.hset(`user:${botId}`, 'status', status);
+    if (error) {
+      await redis.hset(`user:${botId}`, 'statusError', error);
+    } else {
+      await redis.hdel(`user:${botId}`, 'statusError');
+    }
+  }
+
+  /** 获取服务端 Bot 运行状态 */
+  async getBotStatus(botId: string): Promise<{ status: BotStatus; error?: string }> {
+    const redis = getRedisClient();
+    const [status, error] = await Promise.all([
+      redis.hget(`user:${botId}`, 'status'),
+      redis.hget(`user:${botId}`, 'statusError'),
+    ]);
+    return {
+      status: (status as BotStatus) || 'stopped',
+      error: error || undefined,
+    };
+  }
+
+  /** 获取所有服务端模式的 Bot ID */
+  async getRunningServerBots(): Promise<string[]> {
+    const redis = getRedisClient();
+    return redis.smembers(SERVER_BOTS_KEY);
+  }
+
+  /** 获取会话历史（内部调用，不验证 token） */
+  async getHistoryByBotId(
+    botId: string,
+    conversationId: string,
+    limit: number = 50,
+    offset: number = 0,
+  ): Promise<{ messages: Message[]; botUserId: string; total: number }> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(botId)) throw new Error('NOT_PARTICIPANT');
+
+    const redis = getRedisClient();
+    const total = await redis.zcard(`conv_msgs:${conversationId}`);
+    const messages = await this.messageRepo.getMessages(conversationId, offset, limit);
+
+    return { messages, botUserId: botId, total };
+  }
+
+  /** 保存服务端 Bot 对话历史到 Redis */
+  async saveConvHistory(botId: string, convId: string, message: { role: string; content: string }): Promise<void> {
+    const redis = getRedisClient();
+    await redis.rpush(BOT_CONV_HISTORY_KEY(botId, convId), JSON.stringify(message));
+  }
+
+  /** 获取服务端 Bot 的 Redis 对话历史 */
+  async getConvHistory(botId: string, convId: string, limit?: number): Promise<Array<{ role: string; content: string }>> {
+    const redis = getRedisClient();
+    const key = BOT_CONV_HISTORY_KEY(botId, convId);
+    const items = limit
+      ? await redis.lrange(key, -limit, -1)
+      : await redis.lrange(key, 0, -1);
+    return items.map((item) => JSON.parse(item));
+  }
+
+  /** 清除服务端 Bot 某个会话的 Redis 对话历史 */
+  async clearConvHistory(botId: string, convId: string): Promise<void> {
+    const redis = getRedisClient();
+    await redis.del(BOT_CONV_HISTORY_KEY(botId, convId));
   }
 
   /** 关闭专用 Redis 连接（用于测试清理和优雅关机） */

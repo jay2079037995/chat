@@ -4,6 +4,11 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import BotManager from '../src/modules/chat/components/BotManager';
 
+// Mock useIsMobile
+jest.mock('../src/hooks/useIsMobile', () => ({
+  useIsMobile: () => false,
+}));
+
 // Mock botService
 const mockListBots = jest.fn();
 const mockCreateBot = jest.fn();
@@ -14,6 +19,10 @@ jest.mock('../src/modules/chat/services/botService', () => ({
     listBots: (...args: any[]) => mockListBots(...args),
     createBot: (...args: any[]) => mockCreateBot(...args),
     deleteBot: (...args: any[]) => mockDeleteBot(...args),
+    updateBotConfig: jest.fn(),
+    startBot: jest.fn(),
+    stopBot: jest.fn(),
+    getProviders: jest.fn(),
   },
 }));
 
@@ -45,7 +54,7 @@ describe('BotManager', () => {
     });
 
     expect(screen.getByPlaceholderText('输入机器人用户名（须以 bot 结尾）')).toBeDefined();
-    expect(screen.getByText('创建')).toBeDefined();
+    expect(screen.getByText('创建机器人')).toBeDefined();
   });
 
   it('should display bot list from API', async () => {

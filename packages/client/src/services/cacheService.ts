@@ -93,6 +93,30 @@ export const cacheService = {
     } catch { return null; }
   },
 
+  // ---- 缓存时间戳 ----
+
+  /** 记录缓存更新时间 */
+  saveCacheTimestamp(): void {
+    try {
+      localStorage.setItem('cache:last_updated', String(Date.now()));
+    } catch { /* 静默忽略 */ }
+  },
+
+  /** 获取缓存更新时间 */
+  getCacheTimestamp(): number | null {
+    try {
+      const raw = localStorage.getItem('cache:last_updated');
+      return raw ? Number(raw) : null;
+    } catch { return null; }
+  },
+
+  /** 缓存是否在指定时间内（默认 24 小时） */
+  isCacheFresh(maxAgeMs = 24 * 60 * 60 * 1000): boolean {
+    const ts = this.getCacheTimestamp();
+    if (!ts) return false;
+    return Date.now() - ts < maxAgeMs;
+  },
+
   // ---- 清理 ----
 
   /** 清除所有缓存（登出时调用） */
@@ -105,5 +129,7 @@ export const cacheService = {
       }
     }
     prefixKeys.forEach((k) => localStorage.removeItem(k));
+    // 清除离线消息队列
+    localStorage.removeItem('offline_queue');
   },
 };

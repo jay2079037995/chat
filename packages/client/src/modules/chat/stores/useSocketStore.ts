@@ -10,6 +10,9 @@ import type { ServerToClientEvents, ClientToServerEvents } from '@chat/shared';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+/** 网络监听器清理函数 */
+let networkCleanup: (() => void) | null = null;
+
 interface SocketState {
   /** Socket.IO 客户端实例 */
   socket: TypedSocket | null;
@@ -17,17 +20,24 @@ interface SocketState {
   connected: boolean;
   /** 在线用户 ID 集合 */
   onlineUsers: Set<string>;
+  /** 浏览器网络状态 */
+  isOnline: boolean;
 
   /** 建立 Socket 连接（传入 sessionId 用于认证） */
   connect: (sessionId: string) => void;
   /** 断开连接 */
   disconnect: () => void;
+  /** 开始监听网络状态变化 */
+  startNetworkListener: () => void;
+  /** 停止监听网络状态变化 */
+  stopNetworkListener: () => void;
 }
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
   connected: false,
   onlineUsers: new Set(),
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
 
   connect: (sessionId: string) => {
     const { socket: existing } = get();
@@ -50,6 +60,34 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       // 重连时刷新会话列表（获取准确未读计数）
       import('./useChatStore').then(({ useChatStore }) => {
         void useChatStore.getState().loadConversations();
+      });
+      // 连接成功后刷新离线消息队列
+      import('../../../services/offlineQueue').then(({ offlineQueue }) => {
+        if (offlineQueue.isEmpty()) return;
+        void offlineQueue.flush((msg) => {
+          return new Promise<boolean>((resolve) => {
+            socket.emit(
+              'message:send',
+              {
+                conversationId: msg.conversationId,
+                type: msg.type,
+                content: msg.content,
+                ...(msg.fileName && { fileName: msg.fileName }),
+                ...(msg.fileSize && { fileSize: msg.fileSize }),
+                ...(msg.mimeType && { mimeType: msg.mimeType }),
+                ...(msg.codeLanguage && { codeLanguage: msg.codeLanguage }),
+                ...(msg.replyTo && { replyTo: msg.replyTo }),
+              },
+              (message) => {
+                import('./useChatStore').then(({ useChatStore }) => {
+                  useChatStore.getState().receiveMessage(message);
+                });
+                resolve(true);
+              },
+            );
+            setTimeout(() => resolve(false), 3000);
+          });
+        });
       });
     });
 
@@ -245,5 +283,34 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       socket.disconnect();
       set({ socket: null, connected: false, onlineUsers: new Set() });
     }
+  },
+
+  startNetworkListener: () => {
+    const handleOnline = () => {
+      console.log('[Network] 网络已恢复');
+      set({ isOnline: true });
+      const { socket } = get();
+      if (socket && !socket.connected) {
+        socket.connect();
+      }
+    };
+
+    const handleOffline = () => {
+      console.warn('[Network] 网络已断开');
+      set({ isOnline: false });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    networkCleanup = () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  },
+
+  stopNetworkListener: () => {
+    networkCleanup?.();
+    networkCleanup = null;
   },
 }));

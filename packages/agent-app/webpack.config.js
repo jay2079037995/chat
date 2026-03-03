@@ -12,6 +12,9 @@ module.exports = {
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
+    alias: {
+      '@chat/shared': path.resolve(__dirname, '../shared/src'),
+    },
   },
   module: {
     rules: [

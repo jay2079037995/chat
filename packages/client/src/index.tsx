@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { registerServiceWorker } from './registerSW';
 import './styles/global.less';
 
 // --- vConsole 调试面板（Electron 环境，通过 ~/.chat-debug 控制） ---
@@ -39,3 +40,9 @@ if (container) {
     </React.StrictMode>
   );
 }
+
+// --- PWA Service Worker 注册 + 网络监听 ---
+registerServiceWorker();
+import('./modules/chat/stores/useSocketStore').then(({ useSocketStore }) => {
+  useSocketStore.getState().startNetworkListener();
+});

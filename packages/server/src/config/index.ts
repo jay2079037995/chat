@@ -23,6 +23,8 @@ export const config = {
     secret: process.env.JWT_SECRET || 'chat-app-jwt-secret-dev',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
+  /** Bot API Key 加密密钥（32 字节） */
+  botEncryptionKey: process.env.BOT_ENCRYPTION_KEY || 'chat-bot-encryption-key-dev-only',
   /** CORS 跨域配置 */
   cors: {
     origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:3001'],

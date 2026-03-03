@@ -1,5 +1,10 @@
-/** LLM 服务提供商 */
-export type Provider = 'deepseek' | 'minimax' | 'openai' | 'claude' | 'qwen' | 'custom';
+// 从 @chat/shared 导入并 re-export 共享类型
+import type { LLMProvider } from '@chat/shared';
+export type { LLMProvider, ChatMessage, ProviderInfo } from '@chat/shared';
+export { LLM_PROVIDERS as PROVIDERS } from '@chat/shared';
+
+/** 兼容别名 */
+export type Provider = LLMProvider;
 
 /** Agent 配置（持久化） */
 export interface AgentConfig {
@@ -38,43 +43,3 @@ export interface AgentState {
   lastError?: string;
   messagesProcessed: number;
 }
-
-/** LLM 对话消息 */
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-/** Provider 配置信息 */
-export interface ProviderInfo {
-  baseUrl: string;
-  models: string[];
-}
-
-/** 所有 Provider 配置 */
-export const PROVIDERS: Record<Provider, ProviderInfo> = {
-  deepseek: {
-    baseUrl: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat'],
-  },
-  minimax: {
-    baseUrl: 'https://api.minimax.io/v1',
-    models: ['MiniMax-M2.5'],
-  },
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-4o', 'gpt-4o-mini'],
-  },
-  claude: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'],
-  },
-  qwen: {
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: ['qwen-plus', 'qwen-turbo'],
-  },
-  custom: {
-    baseUrl: '',
-    models: [],
-  },
-};

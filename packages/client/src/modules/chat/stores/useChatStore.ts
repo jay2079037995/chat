@@ -199,8 +199,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { currentConversationId, replyingTo } = get();
     if (!currentConversationId || !content.trim()) return;
 
-    const { socket } = useSocketStore.getState();
-    if (!socket?.connected) return;
+    const { socket, isOnline } = useSocketStore.getState();
+
+    // 离线或未连接时加入离线队列
+    if (!socket?.connected || !isOnline) {
+      import('../../../services/offlineQueue').then(({ offlineQueue }) => {
+        offlineQueue.enqueue({
+          conversationId: currentConversationId,
+          type,
+          content: content.trim(),
+          ...metadata,
+          ...(replyingTo && { replyTo: replyingTo.id }),
+        });
+      });
+      if (replyingTo) set({ replyingTo: null });
+      return;
+    }
 
     socket.emit(
       'message:send',

@@ -22,6 +22,7 @@ import { useChatStore } from '../../../chat/stores/useChatStore';
 import { useThemeStore } from '../../../chat/stores/useThemeStore';
 import { requestNotificationPermission } from '../../../chat/utils/notification';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
+import InstallPrompt from '../../../../components/InstallPrompt';
 import type { User } from '@chat/shared';
 import styles from './index.module.less';
 
@@ -85,9 +86,10 @@ const Home: React.FC = () => {
     void startPrivateChat(selectedUser.id);
   };
 
-  /** 移动端返回按钮 */
+  /** 移动端返回按钮：清除当前会话以便再次点击同一会话时能重新进入 */
   const handleMobileBack = () => {
     setMobileView('list');
+    useChatStore.setState({ currentConversationId: null });
   };
 
   /** 渲染 Header */
@@ -104,7 +106,7 @@ const Home: React.FC = () => {
         </Button>
       ) : (
         <Text strong className={styles.brand}>
-          Chat <Text className={styles.version}>v1.8.0</Text>
+          Chat <Text className={styles.version}>v1.10.0</Text>
         </Text>
       )}
       <div className={styles.userInfo}>
@@ -203,6 +205,7 @@ const Home: React.FC = () => {
 
   return (
     <Layout className={styles.layout}>
+      <InstallPrompt />
       {renderHeader()}
       {isMobile ? renderMobileLayout() : renderDesktopLayout()}
 

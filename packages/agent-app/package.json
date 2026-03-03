@@ -16,6 +16,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@chat/shared": "workspace:*",
     "electron-store": "^6.0.0",
     "antd": "^5.22.0",
     "@ant-design/icons": "^6.1.0",

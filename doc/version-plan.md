@@ -528,3 +528,47 @@
 - [ ] InstallPrompt 组件测试
 - [ ] registerSW 测试
 - [ ] pnpm build 生成 service-worker.js + manifest.json
+
+---
+
+## v1.10.0 - 服务端机器人运行模式
+
+**目标**：创建机器人时支持选择「服务端运行」或「客户端运行」。服务端模式下无需 agent-app，服务器直接消费消息队列并调用 LLM 回复。
+
+### 共享类型
+- [ ] `BotRunMode = 'client' | 'server'` — 机器人运行模式
+- [ ] `BotStatus = 'running' | 'stopped' | 'error'` — 服务端机器人状态
+- [ ] `LLMProvider` — LLM 提供商类型（从 agent-app 提取到共享包）
+- [ ] `LLMConfig` — LLM 配置（provider/apiKey/model/systemPrompt/contextLength/custom*）
+- [ ] `ChatMessage` — LLM 对话消息类型
+- [ ] `LLM_PROVIDERS` 常量 — Provider 配置信息（baseUrl/models）
+- [ ] `Bot` 扩展 `runMode?`、`status?`、`llmConfig?` 字段
+
+### 后端
+- [ ] `CryptoUtils` — API Key AES-256-GCM 加解密 + 脱敏
+- [ ] `LLMClient` — 服务端 LLM 调用（移植自 agent-app，支持 OpenAI 兼容 + Claude）
+- [ ] `BotService` 扩展 — sendMessageByBotId、saveServerBotConfig、getServerBotConfig、setBotStatus 等
+- [ ] `ServerBotRunner` — 单 Bot 轮询循环（直接 BLPOP + LLM 调用 + Redis 对话历史持久化）
+- [ ] `ServerBotManager` — 多 Bot 生命周期管理 + 服务器重启自动恢复
+- [ ] `POST /api/bot/create` — 支持 runMode + llmConfig 参数
+- [ ] `PUT /api/bot/:id/config` — 更新服务端 Bot LLM 配置
+- [ ] `POST /api/bot/:id/start` / `POST /api/bot/:id/stop` — 启停服务端 Bot
+- [ ] `GET /api/bot/providers` — 返回可用 LLM providers 列表
+- [ ] `GET /api/bot/list` — 返回 runMode、status、llmConfig（apiKey 脱敏）
+
+### 前端
+- [ ] `ServerBotConfigForm` — 可复用 LLM 配置表单组件
+- [ ] `BotManager` 创建区域 — 新增运行模式选择 + 服务端时展开 LLM 配置表单
+- [ ] `BotManager` 列表改造 — 显示运行模式标签、状态、编辑/启停按钮
+- [ ] `botService` — 新增 updateBotConfig/startBot/stopBot/getProviders API
+
+### Agent-App 适配
+- [ ] `Provider`/`PROVIDERS`/`ChatMessage` 改为从 `@chat/shared` re-export
+
+### 测试
+- [ ] CryptoUtils 加解密测试
+- [ ] LLMClient 调用格式测试
+- [ ] ServerBotRunner + ServerBotManager 测试
+- [ ] BotManager 服务端模式 UI 测试
+- [ ] BotService 新方法测试
+- [ ] pnpm build + pnpm test 全量通过

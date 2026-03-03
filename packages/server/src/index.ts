@@ -42,6 +42,16 @@ io.use(async (socket, next) => {
 // 将 Socket.IO 引用传给 BotModule，用于机器人发消息后广播
 botModule.setIO(io);
 
+// 初始化服务端 Bot 管理器
+if (botModule.serverBotManager) {
+  botModule.serverBotManager.setIO(io);
+  void botModule.serverBotManager.recoverRunningBots().then(() => {
+    console.log('Server bot recovery completed');
+  }).catch((err) => {
+    console.error('Server bot recovery failed:', err);
+  });
+}
+
 // 服务器启动时清除上一次残留的在线状态（防止重启后 Redis 中有脏数据）
 void (async () => {
   const redis = getRedisClient();
