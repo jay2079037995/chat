@@ -221,3 +221,8 @@ pnpm lint             # 代码检查
 - [ ] v1.11.0 - 远程 Skill 系统（Electron）
 - [x] v1.12.0 - 插件化 Skill + Bot 信任机制
 - [x] v1.13.0 - DeepSeek 推理模型 + Bot Skill 定制
+- [x] v1.14.0 - LLM 调用日志 + Skill 市场
+- [x] v1.15.0 - 本地 Bot（Mastra AI 框架集成）
+- [x] v1.16.0 - Skill 系统标准化（SKILL.md）
+- [x] v1.17.0 - Skill 安装同步修复 + 文件上传增强
+- [ ] v1.18.0 - 本地 Bot 支持市场自定义 Skill

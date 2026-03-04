@@ -168,6 +168,11 @@ export class LocalBotManager {
   isActive(botId: string): boolean {
     return this.agents.has(botId);
   }
+
+  /** 获取 bot 的 LLM 配置（用于重建 Agent） */
+  getConfig(botId: string): MastraLLMConfig | undefined {
+    return this.configs.get(botId);
+  }
 }
 
 /** 简单的 Markdown 检测 */

@@ -7,6 +7,15 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { handlers, type SkillHandler } from '../skills/handlers';
+import type { SkillPackageManager } from '../skills/SkillPackageManager';
+
+/** 自定义 Skill 包管理器引用（由 main.ts 注入） */
+let packageManager: SkillPackageManager | null = null;
+
+/** 注入 SkillPackageManager（由 main.ts 在启动时调用） */
+export function setPackageManager(pm: SkillPackageManager): void {
+  packageManager = pm;
+}
 
 /** 所有 Skill handler 的描述信息 */
 const TOOL_DESCRIPTIONS: Record<string, { name: string; description: string }> = {
@@ -79,15 +88,34 @@ export interface MastraToolInfo {
   description: string;
 }
 
-/** 获取所有可用的 Mastra Tool（已包装） */
+/** 获取所有可用的 Mastra Tool（内置 + 自定义，已包装） */
 export function getAvailableMastraTools(): Record<string, ReturnType<typeof createTool>> {
   const tools: Record<string, ReturnType<typeof createTool>> = {};
+
+  // 1. 内置 Skill handler
   for (const [funcName, handler] of Object.entries(handlers)) {
     const info = TOOL_DESCRIPTIONS[funcName];
     if (info) {
       tools[funcName] = wrapHandler(funcName, handler, info.description);
     }
   }
+
+  // 2. 自定义 Skill（从 SkillPackageManager 获取）
+  if (packageManager) {
+    for (const skill of packageManager.listCustomSkills()) {
+      for (const action of skill.actions) {
+        const handler = packageManager.getHandler(action.functionName);
+        if (handler) {
+          tools[action.functionName] = wrapHandler(
+            action.functionName,
+            handler,
+            action.description || skill.description,
+          );
+        }
+      }
+    }
+  }
+
   return tools;
 }
 
@@ -105,11 +133,27 @@ export function getMastraTools(enabledIds?: string[]): Record<string, ReturnType
   return filtered;
 }
 
-/** 返回所有 Tool 信息列表（供 UI 展示） */
+/** 返回所有 Tool 信息列表（内置 + 自定义，供 UI 展示） */
 export function listMastraToolInfo(): MastraToolInfo[] {
-  return Object.entries(TOOL_DESCRIPTIONS).map(([id, info]) => ({
+  // 内置 Skill 信息
+  const list: MastraToolInfo[] = Object.entries(TOOL_DESCRIPTIONS).map(([id, info]) => ({
     id,
     name: info.name,
     description: info.description,
   }));
+
+  // 自定义 Skill 信息
+  if (packageManager) {
+    for (const skill of packageManager.listCustomSkills()) {
+      for (const action of skill.actions) {
+        list.push({
+          id: action.functionName,
+          name: action.description || action.functionName,
+          description: action.description || skill.description,
+        });
+      }
+    }
+  }
+
+  return list;
 }

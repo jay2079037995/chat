@@ -6,7 +6,8 @@
  * 支持 Mastra Tool 选择（从 Electron IPC 获取）。
  */
 import React, { useEffect, useState } from 'react';
-import { Form, Select, Input, InputNumber, Checkbox, Tooltip, Divider, Typography } from 'antd';
+import { Form, Select, Input, InputNumber, Checkbox, Tooltip, Divider, Typography, Button } from 'antd';
+import { AppstoreOutlined } from '@ant-design/icons';
 import type { MastraLLMConfig, MastraProvider } from '@chat/shared';
 import { MASTRA_PROVIDERS } from '@chat/shared';
 
@@ -22,9 +23,13 @@ interface MastraToolInfo {
 interface LocalBotConfigFormProps {
   form: ReturnType<typeof Form.useForm>[0];
   initialValues?: Partial<MastraLLMConfig>;
+  /** 打开 Skill 市场回调 */
+  onOpenMarketplace?: () => void;
+  /** 递增此值可触发 Tool 列表重新加载 */
+  refreshKey?: number;
 }
 
-const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialValues }) => {
+const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialValues, onOpenMarketplace, refreshKey }) => {
   const [tools, setTools] = useState<MastraToolInfo[]>([]);
   const [selectedTools, setSelectedTools] = useState<string[]>(['*']);
   const provider = Form.useWatch('provider', form);
@@ -38,7 +43,7 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
     }
   }, [initialValues, form]);
 
-  // 从 Electron 加载可用 Tool 列表
+  // 从 Electron 加载可用 Tool 列表（refreshKey 变化时重新加载）
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
     if (electronAPI?.listMastraTools) {
@@ -48,7 +53,7 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
         // 非 Electron 环境忽略
       });
     }
-  }, []);
+  }, [refreshKey]);
 
   const handleProviderChange = (value: MastraProvider) => {
     const info = MASTRA_PROVIDERS[value];
@@ -148,9 +153,19 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
       {tools.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <Divider style={{ margin: '8px 0' }} />
-          <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-            Tool 配置
-          </Typography.Text>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Typography.Text strong>Tool 配置</Typography.Text>
+            {onOpenMarketplace && (
+              <Button
+                type="link"
+                size="small"
+                icon={<AppstoreOutlined />}
+                onClick={onOpenMarketplace}
+              >
+                安装 Skill
+              </Button>
+            )}
+          </div>
           <Checkbox
             checked={isAllTools}
             onChange={(e) => handleSelectAllChange(e.target.checked)}

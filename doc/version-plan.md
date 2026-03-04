@@ -976,3 +976,60 @@ metadata:
 - [ ] Git 安装流程测试
 - [ ] 内置 Skill 迁移后功能测试
 - [ ] pnpm build + pnpm test 全量通过
+
+---
+
+## v1.17.0 - Skill 安装同步修复 + 文件上传增强
+
+**目标**：修复 Skill 市场安装后 Bot 配置页无法立即看到新 Skill 的问题，同时提升文件上传大小限制。
+
+### 修复内容
+- [x] **Skill 安装同步** — Skill 市场安装/卸载 Skill 后，通过 `onSkillChanged` 回调触发 `syncSkillsToServer` 同步到服务端，Bot 配置页立即可见
+- [x] **文件上传大小限制** — `MAX_FILE_SIZE` 从 10MB 提升至 1GB，解决大文件上传 413 错误
+- [x] **Skill 注册表 URL** — 修正默认注册表 URL 为正确的 GitHub 仓库地址
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/client/src/modules/chat/services/skillBridge.ts` | 抽取 `syncSkillsToServer()` 为独立导出函数 |
+| `packages/client/src/modules/chat/components/BotManager/index.tsx` | 传递 `onSkillChanged` 给 SkillMarketplace |
+| `packages/shared/src/constants/index.ts` | MAX_FILE_SIZE 10MB → 1GB |
+| `packages/electron/src/skills/SkillMarketplace.ts` | 修正注册表 URL |
+| 6 个 `package.json` | 版本号 → 1.17.0 |
+
+### 测试
+- [x] pnpm build 全部编译成功
+- [x] pnpm test 全部通过（82 suites, 561 tests）
+
+---
+
+## v1.18.0 - 本地 Bot 支持市场自定义 Skill
+
+**目标**：让本地运行的 Bot（Mastra 模式）能够调用从 Skill 市场安装的自定义 Skill，打通 SkillPackageManager → MastraToolBridge → LocalBotManager 链路。
+
+### 背景
+
+当前 `MastraToolBridge.getAvailableMastraTools()` 只包装了内置 Skill handler（硬编码的 `handlers` 对象），完全未接入 `SkillPackageManager` 的自定义 Skill。导致本地 Bot 无法使用市场安装的 Skill。
+
+### 功能清单
+
+#### Electron 端
+- [ ] `MastraToolBridge` 新增 `setPackageManager(pm)` 注入函数
+- [ ] `getAvailableMastraTools()` 合并自定义 Skill（从 SkillPackageManager 获取 handler 并包装为 Mastra Tool）
+- [ ] `listMastraToolInfo()` 合并自定义 Skill 信息
+- [ ] `LocalBotManager` 新增 `getConfig(botId)` 方法，支持重建 Agent
+- [ ] `main.ts` 注入 SkillPackageManager + Skill 安装/卸载后重建活跃 Bot 的 Tool 列表
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/electron/src/localbot/MastraToolBridge.ts` | 接入 SkillPackageManager，合并自定义 Skill tools |
+| `packages/electron/src/localbot/LocalBotManager.ts` | 新增 `getConfig(botId)` 方法 |
+| `packages/electron/src/main.ts` | 注入 SkillPackageManager + 安装后重建 Bot tools |
+| 6 个 `package.json` | 版本号 → 1.18.0 |
+
+### 测试
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过

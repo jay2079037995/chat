@@ -273,12 +273,27 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     });
 
     // Local Bot 桥接：监听 localbot:message → Electron IPC → 回传流式数据
-    socket.on('localbot:message', (data) => {
+    // 首次收到消息时自动从服务端获取配置并初始化 Mastra Agent
+    socket.on('localbot:message', async (data) => {
       const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.handleLocalBotMessage) {
-        electronAPI.handleLocalBotMessage(data.botId, data.conversationId, data.message.content).catch((err: Error) => {
-          console.error('[LocalBot] IPC handleMessage failed:', err);
-        });
+      if (!electronAPI?.handleLocalBotMessage) return;
+
+      try {
+        await electronAPI.handleLocalBotMessage(data.botId, data.conversationId, data.message.content);
+      } catch (err: any) {
+        // Bot 未初始化时，自动获取配置并初始化后重试
+        if (electronAPI.initLocalBot) {
+          try {
+            const { botService } = await import('../services/botService');
+            const config = await botService.getLocalBotConfig(data.botId);
+            if (config) {
+              await electronAPI.initLocalBot(data.botId, config);
+              await electronAPI.handleLocalBotMessage(data.botId, data.conversationId, data.message.content);
+            }
+          } catch (initErr) {
+            console.error('[LocalBot] 自动初始化失败:', initErr);
+          }
+        }
       }
     });
 

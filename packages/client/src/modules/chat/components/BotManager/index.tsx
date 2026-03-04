@@ -141,6 +141,9 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   // Skill 市场
   const [marketplaceVisible, setMarketplaceVisible] = useState(false);
 
+  // Tool 列表刷新 key（Skill 安装/卸载后递增以触发 LocalBotConfigForm 重新加载）
+  const [toolRefreshKey, setToolRefreshKey] = useState(0);
+
   // Skill 选择相关状态
   const [availableSkills, setAvailableSkills] = useState<SkillInfo[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -207,6 +210,19 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       if (token) {
         setNewToken(token);
       }
+
+      // 本地模式：创建后立即初始化 Mastra Agent
+      if (runMode === 'local' && mastraConfig) {
+        const electronAPI = (window as any).electronAPI;
+        if (electronAPI?.initLocalBot) {
+          try {
+            await electronAPI.initLocalBot(bot.id, mastraConfig);
+          } catch (initErr) {
+            console.error('[BotManager] 本地 Bot 初始化失败:', initErr);
+          }
+        }
+      }
+
       setNewBotName('');
       createForm.resetFields();
       void antMessage.success('机器人创建成功');
@@ -282,6 +298,14 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         setBots((prev) => prev.map((b) =>
           b.id === editingBot.id ? { ...b, mastraConfig: updated } : b,
         ));
+        // 重新初始化 Mastra Agent（使用完整配置含 apiKey）
+        const electronAPI = (window as any).electronAPI;
+        if (electronAPI?.initLocalBot) {
+          const fullConfig = await botService.getLocalBotConfig(editingBot.id);
+          if (fullConfig) {
+            await electronAPI.initLocalBot(editingBot.id, fullConfig);
+          }
+        }
       } else {
         // 服务端模式：更新 LLM 配置 + Skill
         const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
@@ -447,7 +471,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       {/* 本地模式 Mastra 配置 */}
       {runMode === 'local' && (
         <div className={styles.configArea}>
-          <LocalBotConfigForm form={createForm} />
+          <LocalBotConfigForm form={createForm} onOpenMarketplace={() => setMarketplaceVisible(true)} refreshKey={toolRefreshKey} />
         </div>
       )}
 
@@ -527,6 +551,8 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           <LocalBotConfigForm
             form={editForm}
             initialValues={editingBot.mastraConfig}
+            onOpenMarketplace={() => setMarketplaceVisible(true)}
+            refreshKey={toolRefreshKey}
           />
         )}
         {editingBot && editingBot.runMode === 'server' && (
@@ -563,6 +589,8 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           const { socket } = useSocketStore.getState();
           if (socket) syncSkillsToServer(socket);
           setTimeout(() => void loadAvailableSkills(), 500);
+          // 刷新本地 Bot 的 Tool 列表
+          setTimeout(() => setToolRefreshKey((k) => k + 1), 500);
         }}
       />
     </Drawer>

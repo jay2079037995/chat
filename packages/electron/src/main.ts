@@ -14,7 +14,7 @@ import { SkillRuntime } from './skills/SkillRuntime';
 import { BotTrustStore } from './skills/BotTrustStore';
 import { SkillMarketplace } from './skills/SkillMarketplace';
 import { LocalBotManager } from './localbot/LocalBotManager';
-import { listMastraToolInfo } from './localbot/MastraToolBridge';
+import { listMastraToolInfo, setPackageManager } from './localbot/MastraToolBridge';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -38,6 +38,9 @@ if (!gotSingleInstanceLock) {
   // --- Skill 系统 IPC ---
   const botTrustStore = new BotTrustStore();
   const skillRuntime = new SkillRuntime(botTrustStore);
+
+  // 注入 SkillPackageManager 到 MastraToolBridge，使本地 Bot 可用自定义 Skill
+  setPackageManager(skillRuntime.getPackageManager());
   ipcMain.handle('skill:exec', (_event, request) => skillRuntime.execute(request));
   ipcMain.handle('skill:get-logs', (_event, limit?: number) => skillRuntime.getLogs(limit));
   ipcMain.handle('skill:get-whitelist', () => skillRuntime.getWhitelist());
@@ -47,12 +50,18 @@ if (!gotSingleInstanceLock) {
   ipcMain.handle('skill:list-custom', () =>
     skillRuntime.getPackageManager().listCustomSkills(),
   );
-  ipcMain.handle('skill:install', async (_event, sourcePath: string) =>
-    skillRuntime.getPackageManager().install(sourcePath),
-  );
-  ipcMain.handle('skill:uninstall', (_event, skillName: string) =>
-    skillRuntime.getPackageManager().uninstall(skillName),
-  );
+  ipcMain.handle('skill:install', async (_event, sourcePath: string) => {
+    const result = skillRuntime.getPackageManager().install(sourcePath);
+    // 安装后重建所有活跃本地 Bot 的 Tool 列表
+    rebuildActiveLocalBots();
+    return result;
+  });
+  ipcMain.handle('skill:uninstall', (_event, skillName: string) => {
+    const result = skillRuntime.getPackageManager().uninstall(skillName);
+    // 卸载后重建所有活跃本地 Bot 的 Tool 列表
+    rebuildActiveLocalBots();
+    return result;
+  });
   ipcMain.handle('skill:select-dir', async () => {
     const { dialog } = await import('electron');
     const result = await dialog.showOpenDialog({
@@ -83,6 +92,18 @@ if (!gotSingleInstanceLock) {
 
   // --- Local Bot (Mastra) IPC ---
   const localBotManager = new LocalBotManager();
+
+  /** Skill 安装/卸载后重建所有活跃本地 Bot 的 Agent（刷新 Tool 列表） */
+  function rebuildActiveLocalBots(): void {
+    for (const botId of localBotManager.getActiveBots()) {
+      const config = localBotManager.getConfig(botId);
+      if (config) {
+        localBotManager.initBot(botId, config).catch((err) => {
+          console.error(`[main] 重建本地 Bot ${botId} 失败:`, err);
+        });
+      }
+    }
+  }
 
   // 设置回调：通过 IPC 将流式事件发送到渲染进程
   localBotManager.setCallbacks({
