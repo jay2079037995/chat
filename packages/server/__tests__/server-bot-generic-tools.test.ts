@@ -37,13 +37,14 @@ jest.mock('../src/modules/bot/LLMClient', () => ({
 }));
 
 describe('ServerBotRunner 通用工具', () => {
-  test('GENERIC_TOOL_DEFINITIONS 包含 4 个工具', () => {
-    expect(GENERIC_TOOL_DEFINITIONS).toHaveLength(4);
+  test('GENERIC_TOOL_DEFINITIONS 包含 5 个工具', () => {
+    expect(GENERIC_TOOL_DEFINITIONS).toHaveLength(5);
     const names = GENERIC_TOOL_DEFINITIONS.map((t) => t.function.name);
     expect(names).toContain('bash_exec');
     expect(names).toContain('read_file');
     expect(names).toContain('write_file');
     expect(names).toContain('list_files');
+    expect(names).toContain('present_choices');
   });
 
   test('每个工具定义有 name、description、parameters', () => {

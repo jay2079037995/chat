@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import Redis from 'ioredis';
-import type { Message, BotUpdate, LLMConfig, MastraLLMConfig, BotRunMode, BotStatus, LLMCallLog } from '@chat/shared';
+import type { Message, MessageMetadata, BotUpdate, LLMConfig, MastraLLMConfig, BotRunMode, BotStatus, LLMCallLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
@@ -220,6 +220,7 @@ export class BotService {
     conversationId: string,
     content: string,
     type: Message['type'] = 'text',
+    metadata?: MessageMetadata,
   ): Promise<Message> {
     const conv = await this.messageRepo.getConversation(conversationId);
     if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
@@ -231,6 +232,7 @@ export class BotService {
       senderId: botId,
       type,
       content: content.trim(),
+      ...(metadata ? { metadata } : {}),
       createdAt: Date.now(),
     };
 

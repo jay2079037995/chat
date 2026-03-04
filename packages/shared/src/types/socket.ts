@@ -3,7 +3,7 @@
  *
  * 前后端共享，确保 WebSocket 事件的类型安全。
  */
-import type { Message, Conversation, MessageType } from './message';
+import type { Message, Conversation, MessageType, MessageMetadata } from './message';
 import type { Group } from './group';
 import type { GenericToolExecRequest, GenericToolExecResult } from './claude-skill';
 
@@ -82,7 +82,7 @@ export interface ClientToServerEvents {
   /** 本地 Bot 流式回复片段（Electron 客户端 → 服务端） */
   'localbot:stream': (data: { botId: string; conversationId: string; messageId: string; chunk: string }) => void;
   /** 本地 Bot 流式回复完成（Electron 客户端 → 服务端） */
-  'localbot:stream:end': (data: { botId: string; conversationId: string; messageId: string; fullContent: string; messageType: MessageType }) => void;
+  'localbot:stream:end': (data: { botId: string; conversationId: string; messageId: string; fullContent: string; messageType: MessageType; metadata?: MessageMetadata }) => void;
   /** 本地 Bot 回复错误（Electron 客户端 → 服务端） */
   'localbot:error': (data: { botId: string; conversationId: string; error: string }) => void;
 }

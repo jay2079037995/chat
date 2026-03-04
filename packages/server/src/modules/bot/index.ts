@@ -521,6 +521,7 @@ export class BotModule implements ServerModule {
             senderId: data.botId,
             content: data.fullContent,
             type: (data.messageType as Message['type']) || 'text',
+            ...(data.metadata ? { metadata: data.metadata } : {}),
             createdAt: Date.now(),
           };
           const message = await messageRepo.saveMessage(msg);

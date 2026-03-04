@@ -111,14 +111,14 @@ export interface GenericToolExecResult {
 /**
  * 通用工具 LLM function calling 定义（服务端 Bot 使用）
  *
- * 固定 4 个通用工具，替代旧的动态 Skill 工具列表。
+ * 5 个通用工具：4 个文件/命令操作 + 1 个交互式选项展示。
  */
 export const GENERIC_TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
       name: 'bash_exec',
-      description: '在工作区目录中执行 Shell 命令。可用于运行脚本、安装依赖、编译代码等操作。',
+      description: '在 Bot 工作区目录中执行 Shell 命令。工作目录已设为工作区，无需 cd。可用于运行脚本、安装依赖、编译代码等操作。',
       parameters: {
         type: 'object' as const,
         properties: {
@@ -145,7 +145,7 @@ export const GENERIC_TOOL_DEFINITIONS = [
         properties: {
           path: {
             type: 'string',
-            description: '文件路径（相对于工作区或 Skill 目录）',
+            description: '文件路径（相对路径基于工作区目录解析；也可传入 Skill 目录的绝对路径来读取参考文件）',
           },
         },
         required: ['path'],
@@ -156,13 +156,13 @@ export const GENERIC_TOOL_DEFINITIONS = [
     type: 'function' as const,
     function: {
       name: 'write_file',
-      description: '将内容写入工作区目录中的文件。',
+      description: '将内容写入工作区目录中的文件。只允许写入工作区内。',
       parameters: {
         type: 'object' as const,
         properties: {
           path: {
             type: 'string',
-            description: '文件路径（相对于工作区）',
+            description: '文件路径（相对路径基于工作区目录解析，只允许写入工作区内）',
           },
           content: {
             type: 'string',
@@ -183,10 +183,41 @@ export const GENERIC_TOOL_DEFINITIONS = [
         properties: {
           path: {
             type: 'string',
-            description: '目录路径（相对于工作区或 Skill 目录），默认为根目录',
+            description: '目录路径（相对路径基于工作区目录解析，也可传入 Skill 目录路径），省略则列出工作区根目录',
           },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'present_choices',
+      description: '向用户展示可选择的选项列表或请求文本输入。用户将看到可点击的选项按钮或输入框，选择后内容会自动作为用户消息发送。当你需要用户做选择时使用此工具。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['single_select', 'text_input'],
+            description: '交互类型：single_select 为选项按钮，text_input 为文本输入框',
+          },
+          prompt: {
+            type: 'string',
+            description: '提示文字（显示在选项或输入框上方）',
+          },
+          choices: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'type=single_select 时的选项列表',
+          },
+          placeholder: {
+            type: 'string',
+            description: 'type=text_input 时的输入框占位符文字',
+          },
+        },
+        required: ['type'],
       },
     },
   },

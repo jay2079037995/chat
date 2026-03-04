@@ -1091,5 +1091,41 @@ metadata:
 - [ ] `server/__tests__/tool-dispatcher.test.ts` — 通用工具 Socket.IO 分发
 - [ ] `server/__tests__/server-bot-generic-tools.test.ts` — ServerBotRunner 通用工具流程
 - [ ] 删除旧测试（10 个文件）
+- [x] pnpm build 全部编译成功
+- [x] pnpm test 全部通过
+
+---
+
+## v1.20.0 - Skill 工作区上下文 + 交互式选项 UI
+
+**目标**：修复 Skill 执行时缺少工作区上下文的问题；为 AI 提供的选项添加交互式 UI（可点击按钮、输入框）。
+
+### 背景
+
+v1.19.0 完成 Skill 系统重构后，实际使用中发现两个问题：
+1. AI 不知道自己的工作目录，导致 `bash_exec`/`read_file` 等工具无法正确执行
+2. AI 提供选项时显示为纯文本，用户期望可交互的按钮 UI
+
+### 功能清单
+
+**Skill 工作区上下文**
+- [ ] BotSkillManager.buildSystemPromptWithSkills() 注入工作区路径和工具使用说明
+- [ ] GENERIC_TOOL_DEFINITIONS 工具描述改善（工作区语义）
+
+**交互式选项 UI（JSON metadata 方案）**
+- [ ] Message 类型新增 metadata 字段（MessageMetadata 接口）
+- [ ] 新增 present_choices 工具定义（GENERIC_TOOL_DEFINITIONS 第 5 个）
+- [ ] ServerBotRunner 拦截 present_choices，暂存 metadata
+- [ ] BotService.sendMessageByBotId 支持 metadata 参数
+- [ ] bot/index.ts localbot:stream:end 传递 metadata
+- [ ] MastraToolBridge 新增 present_choices + 回调
+- [ ] LocalBotManager metadata 传递到 onEnd
+- [ ] InteractiveOptions 组件（选项按钮）
+- [ ] InteractiveInput 组件（输入框）
+- [ ] MessageBubble 渲染 metadata 交互组件
+- [ ] ChatWindow 计算 lastBotMessageId
+
+**版本收尾**
+- [ ] 版本号 → 1.20.0
 - [ ] pnpm build 全部编译成功
 - [ ] pnpm test 全部通过

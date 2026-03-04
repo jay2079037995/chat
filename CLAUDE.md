@@ -227,3 +227,4 @@ pnpm lint             # 代码检查
 - [x] v1.17.0 - Skill 安装同步修复 + 文件上传增强
 - [x] v1.18.0 - 本地 Bot 支持市场自定义 Skill
 - [x] v1.19.0 - Skill 系统重构：Claude Agent Skills 标准
+- [x] v1.20.0 - Skill 工作区上下文 + 交互式选项 UI

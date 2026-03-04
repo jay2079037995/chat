@@ -7,7 +7,9 @@
  */
 import { Agent } from '@mastra/core/agent';
 import { createGenericMastraTools } from './MastraToolBridge';
+import type { PresentChoicesCallback } from './MastraToolBridge';
 import type { BotSkillManager } from '../claudeskill/BotSkillManager';
+import type { MessageMetadata } from '../../../shared/dist';
 
 /** Mastra AI SDK 提供商（与 @chat/shared MastraProvider 一致） */
 type MastraProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'qwen';
@@ -24,7 +26,7 @@ interface MastraLLMConfig {
 /** 流式事件回调 */
 export interface StreamCallbacks {
   onChunk: (data: { botId: string; conversationId: string; messageId: string; chunk: string }) => void;
-  onEnd: (data: { botId: string; conversationId: string; messageId: string; fullContent: string; messageType: string }) => void;
+  onEnd: (data: { botId: string; conversationId: string; messageId: string; fullContent: string; messageType: string; metadata?: MessageMetadata }) => void;
   onError: (data: { botId: string; conversationId: string; error: string }) => void;
 }
 
@@ -45,6 +47,8 @@ export class LocalBotManager {
   private callbacks: StreamCallbacks | null = null;
   /** Bot Skill 管理器 */
   private botSkillManager: BotSkillManager | null = null;
+  /** 暂存 present_choices 产生的 metadata（key: botId:convId） */
+  private pendingMetadata = new Map<string, MessageMetadata>();
 
   /** 设置流式回调（由 main.ts 注册） */
   setCallbacks(callbacks: StreamCallbacks): void {
@@ -102,8 +106,13 @@ export class LocalBotManager {
       skillDirs = await this.botSkillManager.getSkillDirs(botId);
     }
 
-    // 创建通用工具
-    const tools = createGenericMastraTools(workspacePath, skillDirs);
+    // 创建通用工具（含 present_choices 回调）
+    const onPresentChoices: PresentChoicesCallback = (metadata) => {
+      // 暂存 metadata，handleMessage 中取出
+      // key 用 botId 前缀，handleMessage 会用 botId:convId 覆盖
+      this.pendingMetadata.set(botId, metadata);
+    };
+    const tools = createGenericMastraTools(workspacePath, skillDirs, onPresentChoices);
 
     const agent = new Agent({
       name: `local-bot-${botId}`,
@@ -157,6 +166,9 @@ export class LocalBotManager {
     }
 
     try {
+      // 清除上一次的 pending metadata
+      this.pendingMetadata.delete(botId);
+
       const messages = history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
       const stream = await agent.stream(messages, { maxSteps: 5 });
 
@@ -170,9 +182,13 @@ export class LocalBotManager {
       history.push({ role: 'assistant', content: fullContent });
       convHistories.set(conversationId, history);
 
+      // 取出 present_choices 产生的 metadata
+      const metadata = this.pendingMetadata.get(botId);
+      this.pendingMetadata.delete(botId);
+
       // 检测消息类型
       const messageType = detectMarkdown(fullContent) ? 'markdown' : 'text';
-      this.callbacks?.onEnd({ botId, conversationId, messageId, fullContent, messageType });
+      this.callbacks?.onEnd({ botId, conversationId, messageId, fullContent, messageType, metadata });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error(`[LocalBot] Error processing message for ${botId}:`, errorMsg);

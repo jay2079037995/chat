@@ -219,10 +219,17 @@ export class BotSkillManager {
    */
   async buildSystemPromptWithSkills(botId: string, basePrompt: string): Promise<string> {
     const skills = await this.listSkillsWithContent(botId);
+    const workspacePath = this.getWorkspacePath(botId);
 
     if (skills.length === 0) {
       return basePrompt;
     }
+
+    // Skill 目录列表
+    const skillsDir = this.getSkillsDir(botId);
+    const skillDirsList = skills
+      .map((skill) => `  - \`${path.join(skillsDir, skill.name)}/\` (${skill.name})`)
+      .join('\n');
 
     // 拼接 Skill 指令块
     const skillBlocks = skills
@@ -236,13 +243,27 @@ export class BotSkillManager {
 
     const skillSection = [
       '',
-      '# 可用 Skills',
+      '# 工作区环境',
       '',
-      '你可以使用以下工具来执行 Skill 指令中描述的任务：',
-      '- `bash_exec`: 执行 Shell 命令',
-      '- `read_file`: 读取文件',
-      '- `write_file`: 写入文件',
-      '- `list_files`: 列出目录',
+      `你拥有一个专属的工作目录: \`${workspacePath}\``,
+      '',
+      '## 工具使用说明',
+      '',
+      '你可以使用以下工具来执行任务：',
+      '',
+      '- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。',
+      '- `read_file`: 读取文件。相对路径基于工作区目录解析。也可读取 Skill 目录中的参考文件。',
+      '- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。',
+      '- `list_files`: 列出目录。默认列出工作区根目录。也可列出 Skill 目录。',
+      '- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。',
+      '',
+      '**重要**:',
+      '- 所有相对路径都基于工作区目录解析',
+      '- 你可以直接使用相对路径（如 `output.docx`），无需拼接绝对路径',
+      '- bash_exec 的工作目录已设为工作区，直接运行命令即可',
+      `- 以下 Skill 目录可读取参考文件:\n${skillDirsList}`,
+      '',
+      '# 可用 Skills',
       '',
       '以下是你已安装的 Skills 及其指令：',
       '',

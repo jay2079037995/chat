@@ -11,6 +11,8 @@ import AudioMessage from '../AudioMessage';
 import CodeMessage from '../CodeMessage';
 import MarkdownMessage from '../MarkdownMessage';
 import FileMessage from '../FileMessage';
+import InteractiveOptions from '../InteractiveOptions';
+import InteractiveInput from '../InteractiveInput';
 import { useSocketStore } from '../../stores/useSocketStore';
 import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import styles from './index.module.less';
@@ -19,6 +21,8 @@ interface MessageBubbleProps {
   message: Message;
   isSelf: boolean;
   participantNames?: Record<string, string>;
+  /** 是否为最后一条 bot 消息（控制交互式组件是否可点击） */
+  isLastBotMessage?: boolean;
 }
 
 /** 将文本中的 @username 高亮渲染 */
@@ -109,7 +113,7 @@ const ReactionsBar: React.FC<{
   );
 };
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf, participantNames }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf, participantNames, isLastBotMessage }) => {
   // 已撤回的消息显示撤回提示
   if (message.recalled) {
     const senderName = isSelf
@@ -156,6 +160,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf, particip
       <ReplySnapshotBlock message={message} participantNames={participantNames} isSelf={isSelf} />
       {/* 消息内容 */}
       {renderContent()}
+      {/* 交互式选项 */}
+      {message.metadata?.choices && (
+        <InteractiveOptions
+          prompt={message.metadata.choices.prompt}
+          items={message.metadata.choices.items}
+          interactive={!!isLastBotMessage}
+        />
+      )}
+      {/* 交互式输入 */}
+      {message.metadata?.inputRequest && (
+        <InteractiveInput
+          label={message.metadata.inputRequest.label}
+          placeholder={message.metadata.inputRequest.placeholder}
+          interactive={!!isLastBotMessage}
+        />
+      )}
       {/* 已编辑标记 */}
       {message.edited && (
         <span className={isSelf ? styles.editedTagSelf : styles.editedTag}>(已编辑)</span>

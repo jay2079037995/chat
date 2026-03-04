@@ -640,7 +640,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
         {currentConversationId && !hasMore[currentConversationId] && currentMessages.length > 0 && (
           <div className={styles.loadMoreHint}>没有更多消息</div>
         )}
-        {currentMessages.map((msg) => {
+        {/* 计算最后一条未撤回的 bot 消息 ID */}
+        {(() => {
+          let lastBotMsgId: string | undefined;
+          for (let i = currentMessages.length - 1; i >= 0; i--) {
+            const m = currentMessages[i];
+            if (!m.recalled && botUserIds.has(m.senderId)) {
+              lastBotMsgId = m.id;
+              break;
+            }
+          }
+          return currentMessages.map((msg) => {
           const isSelf = msg.senderId === currentUser?.id;
           const isMediaType = !msg.recalled && (msg.type === 'image' || msg.type === 'code' || msg.type === 'file');
           const senderName = isSelf ? (currentUser?.username || '') : (participantNames[msg.senderId] || msg.senderId);
@@ -670,7 +680,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
                   onTouchEnd={longPress.onTouchEnd}
                   onTouchMove={longPress.onTouchMove}
                 >
-                  <MessageBubble message={msg} isSelf={isSelf} participantNames={participantNames} />
+                  <MessageBubble message={msg} isSelf={isSelf} participantNames={participantNames} isLastBotMessage={msg.id === lastBotMsgId} />
                 </div>
                 {/* 已读回执标记（仅私聊 + 自己发的消息） */}
                 {isSelf && !isGroup && !msg.recalled && (
@@ -685,7 +695,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
               </div>
             </div>
           );
-        })}
+        });
+        })()}
         {/* 流式消息（Local Bot 正在生成） */}
         {currentConversationId && streamingMessages?.[currentConversationId] && (
           <StreamingMessage

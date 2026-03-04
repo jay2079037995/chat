@@ -9,7 +9,7 @@
  */
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { LLMConfig, ChatMessage, BotStatus, LLMTool, LLMCallLog, GenericToolName } from '@chat/shared';
+import type { LLMConfig, ChatMessage, BotStatus, LLMTool, LLMCallLog, GenericToolName, MessageMetadata } from '@chat/shared';
 import { generateId, GENERIC_TOOL_DEFINITIONS } from '@chat/shared';
 import type { BotService } from './BotService';
 import type { ToolDispatcher } from './ToolDispatcher';
@@ -198,11 +198,14 @@ export class ServerBotRunner {
           const hasTools = tools && tools.length > 0;
 
           let reply: string;
+          let replyMetadata: MessageMetadata | undefined;
 
           if (hasTools && this.toolDispatcher) {
-            reply = await this.runToolCallingLoop(
+            const toolResult = await this.runToolCallingLoop(
               llmMessages, tools, conversationId, message.senderId, signal,
             );
+            reply = toolResult.content;
+            replyMetadata = toolResult.metadata;
           } else {
             const startTime = Date.now();
             try {
@@ -221,7 +224,7 @@ export class ServerBotRunner {
           const messageType = detectMarkdown(reply) ? 'markdown' : 'text';
 
           const savedMsg = await this.botService.sendMessageByBotId(
-            this.botId, conversationId, reply, messageType,
+            this.botId, conversationId, reply, messageType, replyMetadata,
           );
 
           await this.botService.saveConvHistory(this.botId, conversationId, {
@@ -270,13 +273,14 @@ export class ServerBotRunner {
     conversationId: string,
     targetUserId: string,
     signal: AbortSignal,
-  ): Promise<string> {
+  ): Promise<{ content: string; metadata?: MessageMetadata }> {
     let round = 0;
     const workMessages = [...messages];
+    let pendingMetadata: MessageMetadata | undefined;
 
     while (round < MAX_TOOL_ROUNDS) {
       if (signal.aborted || this._status !== 'running') {
-        return '（已中断）';
+        return { content: '（已中断）' };
       }
 
       const startTime = Date.now();
@@ -293,7 +297,7 @@ export class ServerBotRunner {
       }
 
       if (!result.hasToolCalls || !result.toolCalls) {
-        return result.content || '（无回复内容）';
+        return { content: result.content || '（无回复内容）', metadata: pendingMetadata };
       }
 
       workMessages.push({
@@ -308,6 +312,18 @@ export class ServerBotRunner {
           params = JSON.parse(toolCall.function.arguments);
         } catch {
           // 参数解析失败
+        }
+
+        // 拦截 present_choices：本地处理，不分发到 Electron
+        if (toolCall.function.name === 'present_choices') {
+          pendingMetadata = this.parsePresentChoices(params);
+          workMessages.push({
+            role: 'tool',
+            content: '选项已展示给用户。',
+            tool_call_id: toolCall.id,
+            name: toolCall.function.name,
+          });
+          continue;
         }
 
         const execResult = await this.toolDispatcher!.dispatch(
@@ -339,11 +355,31 @@ export class ServerBotRunner {
       await this.saveLLMLog(conversationId, workMessages, undefined, {
         content: finalResult.content, finishReason: finalResult.finishReason,
       }, undefined, Date.now() - finalStart, round);
-      return finalResult.content || '（已完成所有操作）';
+      return { content: finalResult.content || '（已完成所有操作）', metadata: pendingMetadata };
     } catch (llmErr: any) {
       await this.saveLLMLog(conversationId, workMessages, undefined, undefined, llmErr.message, Date.now() - finalStart, round);
       throw llmErr;
     }
+  }
+
+  /** 解析 present_choices 参数为 MessageMetadata */
+  private parsePresentChoices(params: Record<string, unknown>): MessageMetadata {
+    const type = params.type as string;
+    if (type === 'text_input') {
+      return {
+        inputRequest: {
+          label: (params.prompt as string) || '请输入',
+          placeholder: params.placeholder as string | undefined,
+        },
+      };
+    }
+    // 默认 single_select
+    return {
+      choices: {
+        prompt: params.prompt as string | undefined,
+        items: (params.choices as string[]) || [],
+      },
+    };
   }
 
   /** 保存 LLM 调用日志 */

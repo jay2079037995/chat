@@ -8,6 +8,20 @@ export interface ReplySnapshot {
   type: MessageType;
 }
 
+/** 消息元数据（可选，用于交互式内容） */
+export interface MessageMetadata {
+  /** 交互式选项（AI 提供的可点击选项） */
+  choices?: {
+    prompt?: string;
+    items: string[];
+  };
+  /** 交互式文本输入请求 */
+  inputRequest?: {
+    label: string;
+    placeholder?: string;
+  };
+}
+
 /** 聊天消息实体 */
 export interface Message {
   /** 消息唯一标识 */
@@ -48,6 +62,8 @@ export interface Message {
     senderId: string;
     senderName: string;
   };
+  /** 消息元数据（交互式选项等） */
+  metadata?: MessageMetadata;
   /** 发送时间戳 */
   createdAt: number;
 }
