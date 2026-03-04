@@ -14,6 +14,8 @@ export class ServerBotManager {
   private runners = new Map<string, ServerBotRunner>();
   private io: SocketIOServer | null = null;
   private toolDispatcher?: ToolDispatcher;
+  /** Skill 指令缓存（bot 未启动时也保留，供 HTTP 端点使用） */
+  private skillInstructionsCache = new Map<string, string>();
 
   constructor(private botService: BotService) {}
 
@@ -29,23 +31,40 @@ export class ServerBotManager {
 
   /** 设置 Bot 的 Skill 指令（由 Electron 通过 Socket.IO 推送） */
   setSkillInstructions(botId: string, instructions: string): void {
+    this.skillInstructionsCache.set(botId, instructions);
     const runner = this.runners.get(botId);
     if (runner) {
       runner.setSkillInstructions(instructions);
     }
   }
 
+  /** 获取 Bot 的 Skill 指令（供 HTTP 流式端点使用） */
+  getSkillInstructions(botId: string): string {
+    const runner = this.runners.get(botId);
+    return runner?.skillInstructions || this.skillInstructionsCache.get(botId) || '';
+  }
+
   /** 启动一个服务端 Bot */
-  async startBot(botId: string, llmConfig: LLMConfig): Promise<void> {
+  async startBot(botId: string, llmConfig: LLMConfig, targetUserId?: string): Promise<void> {
     // 已在运行则先停止
     if (this.runners.has(botId)) {
       await this.stopBot(botId);
     }
 
+    // 查询 bot owner 用于工具分发
+    const ownerUserId = targetUserId || await this.botService.getBotOwnerId(botId);
+
     const runner = new ServerBotRunner(
       botId, llmConfig, this.botService, this.io,
-      this.toolDispatcher,
+      this.toolDispatcher, ownerUserId || undefined,
     );
+
+    // 恢复缓存的 Skill 指令
+    const cached = this.skillInstructionsCache.get(botId);
+    if (cached) {
+      runner.setSkillInstructions(cached);
+    }
+
     this.runners.set(botId, runner);
     await runner.start();
   }

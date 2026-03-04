@@ -1,19 +1,21 @@
 /**
  * 服务端机器人运行器
  *
- * 直接使用 Redis BLPOP 监听消息队列，调用 LLM 生成回复。
+ * 直接使用 Redis BLPOP 监听消息队列，调用 AI SDK generateText 生成回复。
  * 对话历史持久化到 Redis，服务器重启后不丢失上下文。
  * 通用工具（bash_exec/read_file/write_file/list_files）通过
- * ToolDispatcher 分发到 Electron 端执行。
+ * ToolDispatcher 分发到 Electron 端执行（由 AI SDK maxSteps 自动循环）。
  * Skill 指令通过 skillInstructions 注入到系统提示词。
  */
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { LLMConfig, ChatMessage, BotStatus, LLMTool, LLMCallLog, GenericToolName, MessageMetadata } from '@chat/shared';
-import { generateId, GENERIC_TOOL_DEFINITIONS } from '@chat/shared';
+import { generateText } from 'ai';
+import type { LLMConfig, ChatMessage, BotStatus, LLMCallLog, MessageMetadata } from '@chat/shared';
+import { generateId } from '@chat/shared';
 import type { BotService } from './BotService';
 import type { ToolDispatcher } from './ToolDispatcher';
-import { callLLM, callLLMWithTools, detectMarkdown } from './LLMClient';
+import { createModel } from './ModelFactory';
+import { createServerTools } from './ServerToolBridge';
 import { config } from '../../config';
 
 /** 最大 tool calling 轮次，防止无限循环 */
@@ -33,6 +35,12 @@ function parseSlashCommand(content: string): { command: string; args: string } |
   };
 }
 
+/** 简单的 Markdown 检测 */
+function detectMarkdown(text: string): boolean {
+  const mdPatterns = [/^#{1,6}\s/m, /```[\s\S]*?```/, /\*\*[^*]+\*\*/, /^\s*[-*]\s/m, /^\s*\d+\.\s/m, /\[.+\]\(.+\)/];
+  return mdPatterns.some((p) => p.test(text));
+}
+
 export class ServerBotRunner {
   private blockingRedis: Redis | null = null;
   private abortController: AbortController | null = null;
@@ -42,7 +50,7 @@ export class ServerBotRunner {
   private consecutiveErrors = 0;
 
   /** Skill 指令文本（由 Electron 推送，注入到系统提示词） */
-  private skillInstructions = '';
+  skillInstructions = '';
 
   constructor(
     private botId: string,
@@ -50,11 +58,18 @@ export class ServerBotRunner {
     private botService: BotService,
     private io: SocketIOServer | null,
     private toolDispatcher?: ToolDispatcher,
+    /** Bot owner 的 userId，用于工具分发到 Electron */
+    private targetUserId?: string,
   ) {}
 
   /** 设置 Skill 指令（由 ServerBotManager 在 Electron 推送时调用） */
   setSkillInstructions(instructions: string): void {
     this.skillInstructions = instructions;
+  }
+
+  /** 设置 Bot owner userId（用于工具分发） */
+  setTargetUserId(userId: string): void {
+    this.targetUserId = userId;
   }
 
   /** 启动轮询 */
@@ -181,43 +196,10 @@ export class ServerBotRunner {
             this.botId, conversationId, this.llmConfig.contextLength,
           );
 
-          const llmMessages: ChatMessage[] = [
-            { role: 'system', content: this.buildSystemPrompt() },
-            ...recentHistory.map((m) => ({
-              role: m.role as ChatMessage['role'],
-              content: m.content,
-            })),
-          ];
-
-          // 推理模型不支持 function calling，跳过 tools
-          const isReasoner = this.llmConfig.model === 'deepseek-reasoner';
-          // 使用固定的 4 个通用工具定义
-          const tools: LLMTool[] | undefined = (!isReasoner && this.toolDispatcher)
-            ? GENERIC_TOOL_DEFINITIONS as unknown as LLMTool[]
-            : undefined;
-          const hasTools = tools && tools.length > 0;
-
-          let reply: string;
-          let replyMetadata: MessageMetadata | undefined;
-
-          if (hasTools && this.toolDispatcher) {
-            const toolResult = await this.runToolCallingLoop(
-              llmMessages, tools, conversationId, message.senderId, signal,
-            );
-            reply = toolResult.content;
-            replyMetadata = toolResult.metadata;
-          } else {
-            const startTime = Date.now();
-            try {
-              reply = await callLLM(this.llmConfig, llmMessages);
-              await this.saveLLMLog(conversationId, llmMessages, undefined, {
-                content: reply, finishReason: 'stop',
-              }, undefined, Date.now() - startTime);
-            } catch (llmErr: any) {
-              await this.saveLLMLog(conversationId, llmMessages, undefined, undefined, llmErr.message, Date.now() - startTime);
-              throw llmErr;
-            }
-          }
+          // 调用 AI SDK 生成回复
+          const { content: reply, metadata: replyMetadata } = await this.runAIGenerate(
+            conversationId, recentHistory, message.senderId,
+          );
 
           if (signal.aborted || this._status !== 'running') break;
 
@@ -266,131 +248,72 @@ export class ServerBotRunner {
     }
   }
 
-  /** 带 function calling 的 LLM 调用循环 */
-  private async runToolCallingLoop(
-    messages: ChatMessage[],
-    tools: LLMTool[],
+  /**
+   * 使用 AI SDK generateText 生成回复
+   *
+   * maxSteps 参数让 AI SDK 自动处理 tool calling 循环。
+   */
+  private async runAIGenerate(
     conversationId: string,
-    targetUserId: string,
-    signal: AbortSignal,
+    history: Array<{ role: string; content: string }>,
+    fallbackTargetUserId: string,
   ): Promise<{ content: string; metadata?: MessageMetadata }> {
-    let round = 0;
-    const workMessages = [...messages];
     let pendingMetadata: MessageMetadata | undefined;
 
-    while (round < MAX_TOOL_ROUNDS) {
-      if (signal.aborted || this._status !== 'running') {
-        return { content: '（已中断）' };
-      }
+    const startTime = Date.now();
 
-      const startTime = Date.now();
-      let result: import('./LLMClient').LLMCallResult;
-      try {
-        result = await callLLMWithTools(this.llmConfig, workMessages, tools);
-        await this.saveLLMLog(conversationId, workMessages, tools, {
-          content: result.content, toolCalls: result.toolCalls,
-          finishReason: result.finishReason, reasoningContent: result.reasoningContent,
-        }, undefined, Date.now() - startTime, round);
-      } catch (llmErr: any) {
-        await this.saveLLMLog(conversationId, workMessages, tools, undefined, llmErr.message, Date.now() - startTime, round);
-        throw llmErr;
-      }
+    try {
+      const model = await createModel(this.llmConfig);
+      const systemPrompt = this.buildSystemPrompt();
 
-      if (!result.hasToolCalls || !result.toolCalls) {
-        return { content: result.content || '（无回复内容）', metadata: pendingMetadata };
-      }
+      // 推理模型不支持 function calling
+      const isReasoner = this.llmConfig.model === 'deepseek-reasoner';
+      const useTools = !isReasoner && this.toolDispatcher;
 
-      workMessages.push({
-        role: 'assistant',
-        content: result.content || '',
-        tool_calls: result.toolCalls,
+      const tools = useTools
+        ? createServerTools({
+            dispatcher: this.toolDispatcher!,
+            targetUserId: this.targetUserId || fallbackTargetUserId,
+            botId: this.botId,
+            conversationId,
+            onPresentChoices: (m) => { pendingMetadata = m; },
+          })
+        : undefined;
+
+      const result = await generateText({
+        model,
+        system: systemPrompt,
+        messages: history.map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+        tools,
+        maxSteps: useTools ? MAX_TOOL_ROUNDS : 1,
       });
 
-      for (const toolCall of result.toolCalls) {
-        let params: Record<string, unknown> = {};
-        try {
-          params = JSON.parse(toolCall.function.arguments);
-        } catch {
-          // 参数解析失败
-        }
+      const content = result.text || '（无回复内容）';
 
-        // 拦截 present_choices：本地处理，不分发到 Electron
-        if (toolCall.function.name === 'present_choices') {
-          pendingMetadata = this.parsePresentChoices(params);
-          workMessages.push({
-            role: 'tool',
-            content: '选项已展示给用户。',
-            tool_call_id: toolCall.id,
-            name: toolCall.function.name,
-          });
-          continue;
-        }
+      // 保存 LLM 调用日志
+      await this.saveLLMLog(conversationId, history, !!tools, {
+        content,
+        finishReason: result.finishReason || 'stop',
+      }, undefined, Date.now() - startTime);
 
-        const execResult = await this.toolDispatcher!.dispatch(
-          targetUserId,
-          toolCall.function.name as GenericToolName,
-          params,
-          this.botId,
-          conversationId,
-        );
-
-        const resultContent = execResult.success
-          ? JSON.stringify(execResult.data ?? '操作成功')
-          : `错误: ${execResult.error || '未知错误'}`;
-
-        workMessages.push({
-          role: 'tool',
-          content: resultContent,
-          tool_call_id: toolCall.id,
-          name: toolCall.function.name,
-        });
-      }
-
-      round++;
+      return { content, metadata: pendingMetadata };
+    } catch (err: any) {
+      await this.saveLLMLog(conversationId, history, false, undefined, err.message, Date.now() - startTime);
+      throw err;
     }
-
-    const finalStart = Date.now();
-    try {
-      const finalResult = await callLLMWithTools(this.llmConfig, workMessages);
-      await this.saveLLMLog(conversationId, workMessages, undefined, {
-        content: finalResult.content, finishReason: finalResult.finishReason,
-      }, undefined, Date.now() - finalStart, round);
-      return { content: finalResult.content || '（已完成所有操作）', metadata: pendingMetadata };
-    } catch (llmErr: any) {
-      await this.saveLLMLog(conversationId, workMessages, undefined, undefined, llmErr.message, Date.now() - finalStart, round);
-      throw llmErr;
-    }
-  }
-
-  /** 解析 present_choices 参数为 MessageMetadata */
-  private parsePresentChoices(params: Record<string, unknown>): MessageMetadata {
-    const type = params.type as string;
-    if (type === 'text_input') {
-      return {
-        inputRequest: {
-          label: (params.prompt as string) || '请输入',
-          placeholder: params.placeholder as string | undefined,
-        },
-      };
-    }
-    // 默认 single_select
-    return {
-      choices: {
-        prompt: params.prompt as string | undefined,
-        items: (params.choices as string[]) || [],
-      },
-    };
   }
 
   /** 保存 LLM 调用日志 */
   private async saveLLMLog(
     conversationId: string,
-    messages: ChatMessage[],
-    tools: LLMTool[] | undefined,
+    messages: Array<{ role: string; content: string }>,
+    hasTools: boolean,
     response: LLMCallLog['response'] | undefined,
     error: string | undefined,
     durationMs: number,
-    toolRound?: number,
   ): Promise<void> {
     try {
       const log: LLMCallLog = {
@@ -405,15 +328,17 @@ export class ServerBotRunner {
             role: m.role,
             content: m.content.length > 2000 ? m.content.slice(0, 2000) + '…' : m.content,
           })),
-          tools: tools?.map((t) => ({
-            name: t.function.name,
-            description: t.function.description,
-          })),
+          tools: hasTools ? [
+            { name: 'bash_exec', description: 'Shell 命令' },
+            { name: 'read_file', description: '读取文件' },
+            { name: 'write_file', description: '写入文件' },
+            { name: 'list_files', description: '列出文件' },
+            { name: 'present_choices', description: '展示选项' },
+          ] : undefined,
         },
         response,
         error,
         durationMs,
-        toolRound,
       };
       await this.botService.saveLLMCallLog(log);
     } catch {

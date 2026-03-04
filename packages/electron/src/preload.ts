@@ -45,21 +45,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 执行通用工具（服务端 Bot 远程调用） */
   execGenericTool: (request: unknown): Promise<unknown> =>
     ipcRenderer.invoke('tool:exec', request),
-  // --- Local Bot (Mastra) IPC ---
-  /** 初始化本地 Bot */
-  initLocalBot: (botId: string, config: unknown): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('localbot:init', botId, config),
-  /** 处理本地 Bot 消息 */
-  handleLocalBotMessage: (botId: string, conversationId: string, content: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('localbot:handle-message', botId, conversationId, content),
-  /** 移除本地 Bot */
-  removeLocalBot: (botId: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('localbot:remove', botId),
-  /** 获取活跃 Bot 列表 */
-  getActiveLocalBots: (): Promise<string[]> =>
-    ipcRenderer.invoke('localbot:active-bots'),
-  /** 监听本地 Bot 流式事件（从主进程转发） */
-  onLocalBotEmit: (callback: (event: string, data: unknown) => void): void => {
-    ipcRenderer.on('localbot:emit', (_ipcEvent, event: string, data: unknown) => callback(event, data));
+  // --- 本地 Bot 工作目录 ---
+  /** 获取 Bot 工作目录路径 */
+  getWorkspacePath: (botId: string): Promise<string> =>
+    ipcRenderer.invoke('localbot:get-workspace-path', botId),
+  /** 打开 Bot 工作目录 */
+  openWorkspace: (botId: string): Promise<void> =>
+    ipcRenderer.invoke('localbot:open-workspace', botId),
+  /** 监听 Skill 指令更新（Electron → 渲染进程 → Socket.IO → Server） */
+  onSkillInstructionsUpdate: (callback: (data: { botId: string; instructions: string }) => void): void => {
+    ipcRenderer.on('bot:skill-instructions-update', (_ipcEvent, data: { botId: string; instructions: string }) => callback(data));
   },
 });

@@ -16,7 +16,7 @@ import {
 import {
   PlusOutlined, DeleteOutlined, RobotOutlined,
   EditOutlined, PlayCircleOutlined, PauseCircleOutlined,
-  FileTextOutlined, AppstoreOutlined,
+  FileTextOutlined, AppstoreOutlined, FolderOpenOutlined,
 } from '@ant-design/icons';
 import type { Bot, LLMConfig, MastraLLMConfig, BotRunMode } from '@chat/shared';
 import { botService } from '../../services/botService';
@@ -48,6 +48,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
 
   // 编辑配置 Modal
   const [editingBot, setEditingBot] = useState<Bot | null>(null);
+  const [workspacePath, setWorkspacePath] = useState<string>('');
 
   // 日志查看器
   const [logBot, setLogBot] = useState<Bot | null>(null);
@@ -117,18 +118,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         setNewToken(token);
       }
 
-      // 本地模式：创建后立即初始化 Mastra Agent
-      if (runMode === 'local' && mastraConfig) {
-        const electronAPI = (window as any).electronAPI;
-        if (electronAPI?.initLocalBot) {
-          try {
-            await electronAPI.initLocalBot(bot.id, mastraConfig);
-          } catch (initErr) {
-            console.error('[BotManager] 本地 Bot 初始化失败:', initErr);
-          }
-        }
-      }
-
       setNewBotName('');
       createForm.resetFields();
       void antMessage.success('机器人创建成功');
@@ -166,9 +155,17 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     }
   };
 
-  const handleEditConfig = (bot: Bot) => {
+  const handleEditConfig = async (bot: Bot) => {
     setEditingBot(bot);
     editForm.resetFields();
+    // 本地模式：异步加载工作目录路径
+    if (bot.runMode === 'local') {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.getWorkspacePath) {
+        const path = await electronAPI.getWorkspacePath(bot.id);
+        setWorkspacePath(path || '');
+      }
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -182,14 +179,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         setBots((prev) => prev.map((b) =>
           b.id === editingBot.id ? { ...b, mastraConfig: updated } : b,
         ));
-        // 重新初始化 Mastra Agent（使用完整配置含 apiKey）
-        const electronAPI = (window as any).electronAPI;
-        if (electronAPI?.initLocalBot) {
-          const fullConfig = await botService.getLocalBotConfig(editingBot.id);
-          if (fullConfig) {
-            await electronAPI.initLocalBot(editingBot.id, fullConfig);
-          }
-        }
       } else {
         // 服务端模式：更新 LLM 配置
         const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
@@ -434,10 +423,27 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         destroyOnClose
       >
         {editingBot && editingBot.runMode === 'local' && (
-          <LocalBotConfigForm
-            form={editForm}
-            initialValues={editingBot.mastraConfig}
-          />
+          <>
+            <LocalBotConfigForm
+              form={editForm}
+              initialValues={editingBot.mastraConfig}
+            />
+            {isElectron && (
+              <div style={{ marginTop: 12, padding: '8px 12px', background: '#f5f5f5', borderRadius: 6 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>工作目录</Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <Text ellipsis style={{ flex: 1, fontSize: 13 }}>{workspacePath || '加载中...'}</Text>
+                  <Button
+                    size="small"
+                    icon={<FolderOpenOutlined />}
+                    onClick={() => (window as any).electronAPI?.openWorkspace(editingBot.id)}
+                  >
+                    打开
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {editingBot && editingBot.runMode === 'server' && (
           <ServerBotConfigForm

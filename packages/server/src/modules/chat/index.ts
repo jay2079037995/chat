@@ -478,20 +478,8 @@ export class ChatModule implements ServerModule {
                 const isPrivate = conv.type === 'private';
                 const isMentioned = message.mentions?.includes(pid);
                 if (isPrivate || isMentioned) {
-                  const runMode = await botService.getBotRunMode(pid);
-                  if (runMode === 'local') {
-                    // 本地 bot：通知 bot owner 的 Electron 客户端
-                    const ownerId = participant.botOwnerId;
-                    if (ownerId && ioRef) {
-                      ioRef.to(`user:${ownerId}`).emit('localbot:message', {
-                        botId: pid,
-                        conversationId: data.conversationId,
-                        message,
-                      });
-                    }
-                  } else {
-                    await botService.enqueueUpdate(pid, message, data.conversationId);
-                  }
+                  // 所有 bot（server/local）统一入队，由 ServerBotRunner 或 HTTP endpoint 处理
+                  await botService.enqueueUpdate(pid, message, data.conversationId);
                 }
               }
             }

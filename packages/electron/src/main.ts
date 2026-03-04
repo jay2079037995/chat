@@ -13,7 +13,6 @@ import { isDebugEnabled } from './debugFileWatcher';
 import { BotSkillManager } from './claudeskill/BotSkillManager';
 import { PluginSearchClient } from './claudeskill/PluginSearchClient';
 import { GenericToolExecutor } from './claudeskill/GenericToolExecutor';
-import { LocalBotManager } from './localbot/LocalBotManager';
 import type { PluginEntry, GenericToolExecRequest } from '../../shared/dist';
 
 // 防止 Windows 下多实例启动
@@ -47,22 +46,22 @@ if (!gotSingleInstanceLock) {
 
   ipcMain.handle('bot-skill:install', async (_event, botId: string, sourcePath: string) => {
     const result = await botSkillManager.installFromLocal(botId, sourcePath);
-    // 安装后重建该 Bot 的 Agent（刷新 Skill 指令和工具）
-    await rebuildLocalBot(botId);
+    // 安装后推送更新的 Skill 指令到 Server
+    await pushSkillInstructions(botId);
     return result;
   });
 
   ipcMain.handle('bot-skill:install-url', async (_event, botId: string, entry: PluginEntry) => {
     const result = await botSkillManager.installFromUrl(botId, entry);
-    // 安装后重建该 Bot 的 Agent
-    await rebuildLocalBot(botId);
+    // 安装后推送更新的 Skill 指令到 Server
+    await pushSkillInstructions(botId);
     return result;
   });
 
   ipcMain.handle('bot-skill:uninstall', async (_event, botId: string, skillName: string) => {
     const result = await botSkillManager.uninstall(botId, skillName);
-    // 卸载后重建该 Bot 的 Agent
-    await rebuildLocalBot(botId);
+    // 卸载后推送更新的 Skill 指令到 Server
+    await pushSkillInstructions(botId);
     return result;
   });
 
@@ -93,59 +92,30 @@ if (!gotSingleInstanceLock) {
     return genericToolExecutor.execute(request, workspacePath, skillDirs);
   });
 
-  // --- Local Bot (Mastra) IPC ---
-  const localBotManager = new LocalBotManager();
-
-  // 注入 BotSkillManager
-  localBotManager.setBotSkillManager(botSkillManager);
-
-  /** Skill 安装/卸载后重建指定 Bot 的 Agent */
-  async function rebuildLocalBot(botId: string): Promise<void> {
-    if (localBotManager.isActive(botId)) {
-      const config = localBotManager.getConfig(botId);
-      if (config) {
-        try {
-          await localBotManager.initBot(botId, config);
-        } catch (err) {
-          console.error(`[main] 重建本地 Bot ${botId} 失败:`, err);
-        }
+  /** Skill 安装/卸载后将更新的 Skill 指令推送到渲染进程（由渲染进程转发到 Server） */
+  async function pushSkillInstructions(botId: string): Promise<void> {
+    try {
+      const instructions = await botSkillManager.getSkillInstructions(botId);
+      const win = getMainWindow();
+      if (win) {
+        win.webContents.send('bot:skill-instructions-update', { botId, instructions });
       }
+    } catch (err) {
+      console.error(`[main] 推送 Skill 指令失败 (${botId}):`, err);
     }
   }
 
-  // 设置回调：通过 IPC 将流式事件发送到渲染进程
-  localBotManager.setCallbacks({
-    onChunk: (data) => {
-      const win = getMainWindow();
-      if (win) win.webContents.send('localbot:emit', 'localbot:stream', data);
-    },
-    onEnd: (data) => {
-      const win = getMainWindow();
-      if (win) win.webContents.send('localbot:emit', 'localbot:stream:end', data);
-    },
-    onError: (data) => {
-      const win = getMainWindow();
-      if (win) win.webContents.send('localbot:emit', 'localbot:error', data);
-    },
+  // --- 工作目录 IPC ---
+  ipcMain.handle('localbot:get-workspace-path', (_event, botId: string) => {
+    return botSkillManager.getWorkspacePath(botId);
   });
 
-  ipcMain.handle('localbot:init', async (_event, botId: string, config: any) => {
-    await localBotManager.initBot(botId, config);
-    return { success: true };
-  });
-
-  ipcMain.handle('localbot:handle-message', async (_event, botId: string, conversationId: string, content: string) => {
-    await localBotManager.handleMessage(botId, conversationId, content);
-    return { success: true };
-  });
-
-  ipcMain.handle('localbot:remove', (_event, botId: string) => {
-    localBotManager.removeBot(botId);
-    return { success: true };
-  });
-
-  ipcMain.handle('localbot:active-bots', () => {
-    return localBotManager.getActiveBots();
+  ipcMain.handle('localbot:open-workspace', async (_event, botId: string) => {
+    const path = botSkillManager.getWorkspacePath(botId);
+    if (path) {
+      const { shell } = await import('electron');
+      await shell.openPath(path);
+    }
   });
 
   app.whenReady().then(() => {

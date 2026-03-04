@@ -4,11 +4,14 @@ import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
-import type { BotRunMode, LLMConfig, MastraLLMConfig, Message } from '@chat/shared';
+import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata } from '@chat/shared';
 import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
+import { streamText } from 'ai';
 import { BotService } from './BotService';
 import { ServerBotManager } from './ServerBotManager';
 import { ToolDispatcher } from './ToolDispatcher';
+import { createModel } from './ModelFactory';
+import { createServerTools } from './ServerToolBridge';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 
 /**
@@ -475,6 +478,119 @@ export class BotModule implements ServerModule {
       }
     });
 
+    // POST /api/bot/chat — AI SDK 流式聊天（需 session）
+    router.post('/chat', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const { messages, conversationId, botId } = req.body;
+        if (!messages || !conversationId || !botId) {
+          res.status(400).json({ error: '缺少必要参数 (messages, conversationId, botId)' });
+          return;
+        }
+
+        // 验证 bot 存在
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+
+        // 加载 bot 配置
+        const runMode = await botService.getBotRunMode(botId);
+        let llmConfig: LLMConfig | MastraLLMConfig | null = null;
+        if (runMode === 'local') {
+          llmConfig = await botService.getMastraConfig(botId);
+        } else if (runMode === 'server') {
+          llmConfig = await botService.getServerBotConfig(botId);
+        }
+        if (!llmConfig) {
+          res.status(400).json({ error: 'Bot 配置不存在' });
+          return;
+        }
+
+        // 保存用户消息到 DB
+        const lastUserMsg = messages[messages.length - 1];
+        if (lastUserMsg && lastUserMsg.role === 'user') {
+          const msg: Message = {
+            id: generateId(),
+            conversationId,
+            senderId: req.userId!,
+            content: lastUserMsg.content,
+            type: 'text',
+            createdAt: Date.now(),
+          };
+          await messageRepo.saveMessage(msg);
+          if (this.io) {
+            this.io.to(conversationId).emit('message:receive', msg);
+          }
+        }
+
+        // 构建系统提示词（含 skill 指令）
+        const skillInstructions = serverBotManager?.getSkillInstructions(botId) || '';
+        const basePrompt = llmConfig.systemPrompt || '';
+        const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '');
+
+        // 创建 model + tools
+        const model = await createModel(llmConfig);
+        let pendingMetadata: MessageMetadata | undefined;
+        const targetUserId = bot.botOwnerId || '';
+        const tools = targetUserId && toolDispatcher ? createServerTools({
+          dispatcher: toolDispatcher,
+          targetUserId,
+          botId,
+          conversationId,
+          onPresentChoices: (m) => { pendingMetadata = m; },
+        }) : undefined;
+
+        // streamText
+        const result = streamText({
+          model,
+          system: systemPrompt || undefined,
+          messages: messages.map((m: { role: string; content: string }) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+          tools,
+          maxSteps: tools ? 5 : 1,
+          onFinish: async ({ text }) => {
+            if (!text) return;
+            // 保存 bot 回复到 DB
+            const isMarkdown = /[#*`\[\]|>]/.test(text) && text.length > 20;
+            const botMsg: Message = {
+              id: generateId(),
+              conversationId,
+              senderId: botId,
+              content: text,
+              type: isMarkdown ? 'markdown' : 'text',
+              ...(pendingMetadata ? { metadata: pendingMetadata } : {}),
+              createdAt: Date.now(),
+            };
+            await messageRepo.saveMessage(botMsg);
+            if (this.io) {
+              this.io.to(conversationId).emit('message:receive', botMsg);
+            }
+
+            // 保存对话历史到 Redis（供非流式触发使用）
+            if (lastUserMsg) {
+              await botService.saveConvHistory(botId, conversationId, {
+                role: 'user', content: lastUserMsg.content,
+              });
+            }
+            await botService.saveConvHistory(botId, conversationId, {
+              role: 'assistant', content: text,
+            });
+          },
+        });
+
+        // 返回 SSE 流
+        result.pipeDataStreamToResponse(res);
+      } catch (err) {
+        console.error('[BotChat] Streaming error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: '流式聊天失败' });
+        }
+      }
+    });
+
     // GET /api/bot/providers — 获取可用 LLM providers 及模型列表
     router.get('/providers', (_req, res) => {
       res.json({ providers: LLM_PROVIDERS });
@@ -485,7 +601,7 @@ export class BotModule implements ServerModule {
       res.json({ providers: MASTRA_PROVIDERS });
     });
 
-    // Socket handler：监听 tool:result + bot:skill-instructions + local bot 流式中继事件
+    // Socket handler：监听 tool:result + bot:skill-instructions
     const toolDispatcher = this.toolDispatcher;
     const serverBotManager = this.serverBotManager;
     const socketHandler = (io: TypedIO, socket: import('../../core/types').TypedSocket) => {
@@ -498,63 +614,6 @@ export class BotModule implements ServerModule {
       socket.on('bot:skill-instructions', (data: { botId: string; instructions: string }) => {
         if (serverBotManager) {
           serverBotManager.setSkillInstructions(data.botId, data.instructions);
-        }
-      });
-
-      // Local Bot 流式中继：Electron → Server → 会话 room
-      socket.on('localbot:stream', (data) => {
-        io.to(data.conversationId).emit('message:stream', {
-          messageId: data.messageId,
-          botId: data.botId,
-          conversationId: data.conversationId,
-          chunk: data.chunk,
-          done: false,
-        });
-      });
-
-      // Local Bot 流结束：保存完整消息到 DB 并广播
-      socket.on('localbot:stream:end', async (data) => {
-        try {
-          const msg: Message = {
-            id: generateId(),
-            conversationId: data.conversationId,
-            senderId: data.botId,
-            content: data.fullContent,
-            type: (data.messageType as Message['type']) || 'text',
-            ...(data.metadata ? { metadata: data.metadata } : {}),
-            createdAt: Date.now(),
-          };
-          const message = await messageRepo.saveMessage(msg);
-          // 广播最终完整消息
-          io.to(data.conversationId).emit('message:receive', message);
-          // 发送 done 信号
-          io.to(data.conversationId).emit('message:stream', {
-            messageId: data.messageId,
-            botId: data.botId,
-            conversationId: data.conversationId,
-            chunk: '',
-            done: true,
-          });
-        } catch (err) {
-          console.error('[LocalBot] Failed to save stream-end message:', err);
-        }
-      });
-
-      // Local Bot 错误处理
-      socket.on('localbot:error', async (data) => {
-        try {
-          const msg: Message = {
-            id: generateId(),
-            conversationId: data.conversationId,
-            senderId: data.botId,
-            content: `⚠️ Bot 错误: ${data.error}`,
-            type: 'text',
-            createdAt: Date.now(),
-          };
-          const message = await messageRepo.saveMessage(msg);
-          io.to(data.conversationId).emit('message:receive', message);
-        } catch (err) {
-          console.error('[LocalBot] Failed to save error message:', err);
         }
       });
     };

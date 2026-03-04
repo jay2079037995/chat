@@ -1129,3 +1129,91 @@ v1.19.0 完成 Skill 系统重构后，实际使用中发现两个问题：
 - [ ] 版本号 → 1.20.0
 - [ ] pnpm build 全部编译成功
 - [ ] pnpm test 全部通过
+
+---
+
+## v1.21.0 - Mastra 统一运行时 + AI SDK 流式界面
+
+**目标**：统一服务端和本地 Bot 的运行时为 AI SDK；客户端流式显示改用 `useChat` hook（HTTP SSE）；本地 Bot 编辑页面显示工作目录路径和打开按钮。
+
+### 背景
+
+当前服务端 Bot 使用手写 `LLMClient.ts`（原始 HTTP 请求），本地 Bot 使用 Mastra Agent（基于 AI SDK），两者不统一。客户端通过 Socket.IO 自定义流式协议显示 Bot 回复，存在延迟和复杂度问题。
+
+### 架构变更
+
+```
+Before:
+  Server Bot:  Redis BLPOP → LLMClient (raw HTTP) → manual tool loop → sendMessage
+  Local Bot:   Electron Mastra Agent → IPC → Socket.IO relay → Server save
+  Client:      Socket.IO streaming → StreamingMessage component
+
+After:
+  Server Bot:  Redis BLPOP → AI SDK generateText (maxSteps) → sendMessage  (非流式触发)
+  Both Bots:   HTTP POST /api/bot/chat → streamText → SSE response          (流式触发)
+  Local Bot:   Agent 移至 Server，Electron 仅保留工具执行
+  Client:      useChat hook → HTTP SSE → 自动流式显示
+  Tools:       Server → ToolDispatcher → Socket.IO → Electron (不变)
+```
+
+### 功能清单
+
+**依赖安装**
+- [ ] server: ai, @ai-sdk/openai, @ai-sdk/anthropic, @ai-sdk/google, zod
+- [ ] client: ai, @ai-sdk/react
+
+**Server — ModelFactory + ServerToolBridge**
+- [ ] 新建 ModelFactory.ts — 统一创建 AI SDK LanguageModel（支持所有 LLMConfig + MastraLLMConfig providers）
+- [ ] 新建 ServerToolBridge.ts — 将 GENERIC_TOOL_DEFINITIONS 转换为 AI SDK tool() 格式，execute 调用 ToolDispatcher
+
+**Server — 重构 ServerBotRunner**
+- [ ] 替换 LLMClient 为 AI SDK generateText + maxSteps 自动 tool 循环
+- [ ] 移除手动 tool calling loop
+- [ ] 保留 Redis BLPOP 轮询（群聊 @Bot 触发路径）
+
+**Server — HTTP 流式端点**
+- [ ] 新增 POST /api/bot/chat — streamText + toDataStreamResponse (SSE)
+- [ ] 支持 server 和 local 两种 bot 模式
+- [ ] onFinish 保存消息到 DB + Socket.IO 广播
+- [ ] ServerBotManager 新增 getSkillInstructions 公开方法
+
+**Client — useChat 集成**
+- [ ] 新建 useBotChat hook（封装 @ai-sdk/react useChat）
+- [ ] ChatWindow 检测 Bot 对话，使用 useBotChat 替代 Socket.IO streaming
+- [ ] Bot 对话消息发送改用 useChat.handleSubmit
+- [ ] 非 Bot 对话保留现有逻辑
+
+**Local Bot 服务端迁移**
+- [ ] Local Bot Agent 从 Electron 移到 Server（HTTP 端点已支持）
+- [ ] 简化 Electron LocalBotManager（移除 Agent 创建，保留工具执行）
+- [ ] BotManager 移除 electronAPI.initLocalBot 调用
+- [ ] 移除 localbot:stream / localbot:stream:end / localbot:error Socket 事件
+
+**工作目录显示**
+- [ ] Electron IPC: localbot:get-workspace-path + localbot:open-workspace
+- [ ] preload.ts 暴露新 API
+- [ ] BotManager 编辑 Modal 显示工作目录路径 + "打开" 按钮
+
+**版本收尾**
+- [ ] 版本号 → 1.21.0
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/server/package.json` | 新增 ai + @ai-sdk/* + zod |
+| `packages/client/package.json` | 新增 ai + @ai-sdk/react |
+| `packages/server/src/modules/bot/ModelFactory.ts` | **新建** AI SDK 模型工厂 |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | **新建** AI SDK 工具桥接 |
+| `packages/server/src/modules/bot/ServerBotRunner.ts` | 替换 LLMClient → AI SDK |
+| `packages/server/src/modules/bot/ServerBotManager.ts` | 新增 getSkillInstructions |
+| `packages/server/src/modules/bot/index.ts` | 新增 POST /api/bot/chat，移除 localbot socket handlers |
+| `packages/client/src/modules/chat/hooks/useBotChat.ts` | **新建** useChat 封装 |
+| `packages/client/.../ChatWindow/index.tsx` | Bot 对话使用 useBotChat |
+| `packages/client/.../BotManager/index.tsx` | 移除 Electron Agent 初始化 + 工作目录 UI |
+| `packages/electron/src/localbot/LocalBotManager.ts` | 简化：移除 Agent 创建 |
+| `packages/electron/src/main.ts` | 移除 localbot Agent IPC + 新增 workspace IPC |
+| `packages/electron/src/preload.ts` | 暴露 workspace IPC |
+| `packages/shared/src/types/socket.ts` | 移除 localbot:stream 相关事件 |

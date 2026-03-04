@@ -265,49 +265,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       initToolBridge(socket);
     });
 
-    // Local Bot 流式消息
-    socket.on('message:stream', (data) => {
-      import('./useChatStore').then(({ useChatStore }) => {
-        useChatStore.getState().handleStreamChunk(data);
-      });
-    });
-
-    // Local Bot 桥接：监听 localbot:message → Electron IPC → 回传流式数据
-    // 首次收到消息时自动从服务端获取配置并初始化 Mastra Agent
-    socket.on('localbot:message', async (data) => {
-      const electronAPI = (window as any).electronAPI;
-      if (!electronAPI?.handleLocalBotMessage) return;
-
-      try {
-        await electronAPI.handleLocalBotMessage(data.botId, data.conversationId, data.message.content);
-      } catch (err: any) {
-        // Bot 未初始化时，自动获取配置并初始化后重试
-        if (electronAPI.initLocalBot) {
-          try {
-            const { botService } = await import('../services/botService');
-            const config = await botService.getLocalBotConfig(data.botId);
-            if (config) {
-              await electronAPI.initLocalBot(data.botId, config);
-              await electronAPI.handleLocalBotMessage(data.botId, data.conversationId, data.message.content);
-            }
-          } catch (initErr) {
-            console.error('[LocalBot] 自动初始化失败:', initErr);
-          }
-        }
-      }
-    });
-
-    // Electron IPC → Socket.IO 回传（流式事件中继）
+    // Electron Skill 指令更新 → 转发到 Server
     const electronAPI = (window as any).electronAPI;
-    if (electronAPI?.onLocalBotEmit) {
-      electronAPI.onLocalBotEmit((event: string, data: any) => {
-        if (event === 'localbot:stream') {
-          socket.emit('localbot:stream', data);
-        } else if (event === 'localbot:stream:end') {
-          socket.emit('localbot:stream:end', data);
-        } else if (event === 'localbot:error') {
-          socket.emit('localbot:error', data);
-        }
+    if (electronAPI?.onSkillInstructionsUpdate) {
+      electronAPI.onSkillInstructionsUpdate((data: { botId: string; instructions: string }) => {
+        socket.emit('bot:skill-instructions', data);
       });
     }
 

@@ -5,7 +5,7 @@
  * 支持文字、图片、音频、代码、Markdown、文件等消息类型。
  * v1.3.0 新增：右键菜单（撤回/编辑/回复/reactions）、引用回复、编辑弹窗。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select, Upload, Progress, Spin, Modal, message as antMessage } from 'antd';
 import { SendOutlined, TeamOutlined, CheckOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import type { Message, MessageType } from '@chat/shared';
@@ -16,6 +16,7 @@ import { useAuthStore } from '../../../auth/stores/useAuthStore';
 import { chatService } from '../../services/chatService';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
 import { useLongPress } from '../../../../hooks/useLongPress';
+import { useBotChat } from '../../hooks/useBotChat';
 import MessageBubble from '../MessageBubble';
 import MessageToolbar from '../MessageToolbar';
 import GroupMemberPanel from '../GroupMemberPanel';
@@ -121,6 +122,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
   const otherName = participantNames[otherParticipantId] || otherParticipantId;
   const isOnline = botUserIds.has(otherParticipantId) || onlineUsers.has(otherParticipantId);
 
+  // Bot 对话检测：1:1 私聊 + 对方是 Bot
+  const isBotChat = useMemo(() => {
+    if (!currentConv || currentConv.type !== 'private') return false;
+    return botUserIds.has(otherParticipantId);
+  }, [currentConv, otherParticipantId, botUserIds]);
+
+  const botChat = useBotChat({
+    botId: otherParticipantId,
+    conversationId: currentConversationId || '',
+    initialMessages: isBotChat ? currentMessages : [],
+    currentUserId: currentUser?.id || '',
+    enabled: isBotChat,
+  });
+
   // 群聊信息
   const groupName = isGroup && currentConversationId ? groupNames[currentConversationId] || '群聊' : '';
   const memberCount = currentConv?.participants.length || 0;
@@ -129,7 +144,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
     if (typeof messageEndRef.current?.scrollIntoView === 'function') {
       messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [currentMessages.length]);
+  }, [currentMessages.length, botChat.messages.length]);
 
   // 切换会话时清除引用状态
   useEffect(() => {
@@ -176,9 +191,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
     };
   }, [currentConversationId]);
 
+  // Bot 对话使用 useChat 的 input，非 Bot 使用本地 state
+  const effectiveInput = isBotChat ? botChat.input : inputValue;
+  const setEffectiveInput = isBotChat
+    ? (v: string) => botChat.setInput(v)
+    : setInputValue;
+
   /** 处理输入变化时的 typing 状态 */
   const handleInputChange = (value: string) => {
-    setInputValue(value);
+    setEffectiveInput(value);
 
     if (!currentConversationId) return;
     const { socket } = useSocketStore.getState();
@@ -232,19 +253,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
 
   /** 发送文字 / 代码 / Markdown 消息 */
   const handleSend = () => {
-    if (!inputValue.trim()) return;
+    if (!effectiveInput.trim()) return;
 
     stopTyping();
 
-    if (messageType === 'code') {
-      sendMessage(inputValue, 'code', { codeLanguage });
-    } else if (messageType === 'markdown') {
-      sendMessage(inputValue, 'markdown');
-    } else {
-      sendMessage(inputValue);
+    // Bot 对话：通过 useChat 发送（HTTP SSE 流式）
+    if (isBotChat) {
+      botChat.handleSubmit(new Event('submit') as any);
+      if (messageType !== 'text') setMessageType('text');
+      return;
     }
 
-    setInputValue('');
+    if (messageType === 'code') {
+      sendMessage(effectiveInput, 'code', { codeLanguage });
+    } else if (messageType === 'markdown') {
+      sendMessage(effectiveInput, 'markdown');
+    } else {
+      sendMessage(effectiveInput);
+    }
+
+    setEffectiveInput('');
     if (messageType !== 'text') setMessageType('text');
   };
 
@@ -504,7 +532,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
             />
             <TextArea
               className={styles.textInput}
-              value={inputValue}
+              value={effectiveInput}
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="输入代码..."
@@ -518,7 +546,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
         return (
           <TextArea
             className={styles.textInput}
-            value={inputValue}
+            value={effectiveInput}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入 Markdown..."
@@ -546,7 +574,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
       default:
         return isGroup ? (
           <MentionInput
-            value={inputValue}
+            value={effectiveInput}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             members={mentionMembers}
@@ -555,7 +583,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
         ) : (
           <TextArea
             className={styles.textInput}
-            value={inputValue}
+            value={effectiveInput}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入消息..."
@@ -640,8 +668,52 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
         {currentConversationId && !hasMore[currentConversationId] && currentMessages.length > 0 && (
           <div className={styles.loadMoreHint}>没有更多消息</div>
         )}
-        {/* 计算最后一条未撤回的 bot 消息 ID */}
-        {(() => {
+        {/* Bot 对话：使用 useChat 消息 */}
+        {isBotChat && botChat.messages.map((msg) => {
+          const isSelf = msg.role === 'user';
+          const senderName = isSelf ? (currentUser?.username || '') : (participantNames[otherParticipantId] || otherParticipantId);
+          const isLast = msg === botChat.messages[botChat.messages.length - 1];
+          // 将 useChat 消息转换为 Message 格式用于 MessageBubble
+          const fakeMsg: Message = {
+            id: msg.id,
+            conversationId: currentConversationId!,
+            senderId: isSelf ? (currentUser?.id || '') : otherParticipantId,
+            content: msg.content,
+            type: (!isSelf && /[#*`\[\]|>]/.test(msg.content) && msg.content.length > 20) ? 'markdown' : 'text',
+            createdAt: msg.createdAt?.getTime() || Date.now(),
+          };
+          return (
+            <div key={msg.id}>
+              <div
+                className={`${styles.messageMeta} ${
+                  isSelf ? styles.messageMetaSelf : styles.messageMetaOther
+                }`}
+              >
+                <span className={styles.senderName}>{senderName}</span>
+              </div>
+              <div
+                className={`${styles.messageItem} ${
+                  isSelf ? styles.messageItemSelf : styles.messageItemOther
+                }`}
+              >
+                <div
+                  className={`${styles.bubble} ${
+                    isSelf ? styles.bubbleSelf : styles.bubbleOther
+                  }`}
+                >
+                  <MessageBubble
+                    message={fakeMsg}
+                    isSelf={isSelf}
+                    participantNames={participantNames}
+                    isLastBotMessage={!isSelf && isLast}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {/* 非 Bot 对话：使用 store 消息 */}
+        {!isBotChat && (() => {
           let lastBotMsgId: string | undefined;
           for (let i = currentMessages.length - 1; i >= 0; i--) {
             const m = currentMessages[i];
@@ -697,8 +769,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
           );
         });
         })()}
-        {/* 流式消息（Local Bot 正在生成） */}
-        {currentConversationId && streamingMessages?.[currentConversationId] && (
+        {/* 流式消息（非 Bot 对话的 Socket.IO 流式显示） */}
+        {!isBotChat && currentConversationId && streamingMessages?.[currentConversationId] && (
           <StreamingMessage
             content={streamingMessages[currentConversationId].content}
           />
@@ -711,7 +783,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
         <MessageToolbar
           activeType={messageType}
           onTypeChange={setMessageType}
-          onEmojiSelect={(emoji) => setInputValue((v) => v + emoji)}
+          onEmojiSelect={(emoji) => setEffectiveInput(effectiveInput + emoji)}
           isMobile={isMobile}
         />
 
@@ -734,7 +806,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
               type="primary"
               icon={<SendOutlined />}
               onClick={handleSend}
-              disabled={!inputValue.trim()}
+              disabled={!effectiveInput.trim() || (isBotChat && botChat.status === 'streaming')}
             >
               发送
             </Button>

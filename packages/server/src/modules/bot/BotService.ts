@@ -99,6 +99,12 @@ export class BotService {
     return this.userRepo.getBotsByOwner(ownerId);
   }
 
+  /** 获取 Bot 的 owner userId */
+  async getBotOwnerId(botId: string): Promise<string | null> {
+    const bot = await this.userRepo.findById(botId);
+    return bot?.botOwnerId || null;
+  }
+
   /** 删除机器人（需校验所有权） */
   async deleteBot(botId: string, requesterId: string) {
     const bot = await this.userRepo.findById(botId);
