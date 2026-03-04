@@ -106,7 +106,7 @@ const Home: React.FC = () => {
         </Button>
       ) : (
         <Text strong className={styles.brand}>
-          Chat <Text className={styles.version}>v1.15.0</Text>
+          Chat <Text className={styles.version}>v1.17.0</Text>
         </Text>
       )}
       <div className={styles.userInfo}>

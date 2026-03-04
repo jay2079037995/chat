@@ -19,6 +19,8 @@ import {
 } from '@ant-design/icons';
 import type { Bot, LLMConfig, MastraLLMConfig, BotRunMode } from '@chat/shared';
 import { botService } from '../../services/botService';
+import { syncSkillsToServer } from '../../services/skillBridge';
+import { useSocketStore } from '../../stores/useSocketStore';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
 import ServerBotConfigForm from './ServerBotConfigForm';
 import LocalBotConfigForm from './LocalBotConfigForm';
@@ -557,6 +559,11 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       <SkillMarketplace
         visible={marketplaceVisible}
         onClose={() => setMarketplaceVisible(false)}
+        onSkillChanged={() => {
+          const { socket } = useSocketStore.getState();
+          if (socket) syncSkillsToServer(socket);
+          setTimeout(() => void loadAvailableSkills(), 500);
+        }}
       />
     </Drawer>
   );
