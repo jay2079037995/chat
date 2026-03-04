@@ -260,9 +260,9 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
-    // Skill 执行请求 → 转发到 Electron IPC
-    import('../services/skillBridge').then(({ initSkillBridge }) => {
-      initSkillBridge(socket);
+    // 通用工具执行请求 → 转发到 Electron IPC
+    import('../services/toolBridge').then(({ initToolBridge }) => {
+      initToolBridge(socket);
     });
 
     // Local Bot 流式消息

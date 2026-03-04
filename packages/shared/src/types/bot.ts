@@ -17,8 +17,6 @@ export interface MastraLLMConfig {
   model: string;
   systemPrompt: string;
   contextLength: number;
-  /** 启用的 Mastra 工具 ID 列表（['*'] 表示全部） */
-  enabledTools?: string[];
 }
 
 /** LLM 服务提供商 */
@@ -64,8 +62,6 @@ export interface Bot {
   runMode?: BotRunMode;
   status?: BotStatus;
   llmConfig?: Omit<LLMConfig, 'apiKey'> & { apiKey: string };
-  /** Bot 允许使用的 Skill 函数名列表（['*'] 或空表示全部） */
-  allowedSkills?: string[];
   /** Mastra LLM 配置（仅 local 模式） */
   mastraConfig?: Omit<MastraLLMConfig, 'apiKey'> & { apiKey: string };
 }
@@ -88,16 +84,6 @@ export interface BotUpdate {
   updateId: number;
   message: Message;
   conversationId: string;
-}
-
-/** Bot 信任配置（Electron 端持久化） */
-export interface BotTrustConfig {
-  /** Bot ID */
-  botId: string;
-  /** Bot 用户名（显示用） */
-  botUsername: string;
-  /** 是否受信任 */
-  trusted: boolean;
 }
 
 /** LLM 调用日志（Server Bot 每次 API 调用的完整记录） */

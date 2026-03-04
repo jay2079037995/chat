@@ -3,9 +3,11 @@
  *
  * 在 Electron 主进程中管理 Mastra Agent 实例。
  * 每个本地 Bot 对应一个 Agent，支持流式输出。
+ * Skill 指令注入到系统提示词，通过通用工具执行。
  */
 import { Agent } from '@mastra/core/agent';
-import { getMastraTools } from './MastraToolBridge';
+import { createGenericMastraTools } from './MastraToolBridge';
+import type { BotSkillManager } from '../claudeskill/BotSkillManager';
 
 /** Mastra AI SDK 提供商（与 @chat/shared MastraProvider 一致） */
 type MastraProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'qwen';
@@ -17,7 +19,6 @@ interface MastraLLMConfig {
   model: string;
   systemPrompt: string;
   contextLength: number;
-  enabledTools?: string[];
 }
 
 /** 流式事件回调 */
@@ -42,10 +43,17 @@ export class LocalBotManager {
   private histories = new Map<string, Map<string, ConversationMessage[]>>();
   /** 流式回调 */
   private callbacks: StreamCallbacks | null = null;
+  /** Bot Skill 管理器 */
+  private botSkillManager: BotSkillManager | null = null;
 
   /** 设置流式回调（由 main.ts 注册） */
   setCallbacks(callbacks: StreamCallbacks): void {
     this.callbacks = callbacks;
+  }
+
+  /** 设置 BotSkillManager（由 main.ts 注入） */
+  setBotSkillManager(manager: BotSkillManager): void {
+    this.botSkillManager = manager;
   }
 
   /** 根据 provider 创建 AI SDK model */
@@ -82,11 +90,24 @@ export class LocalBotManager {
     this.removeBot(botId);
 
     const model = await this.getModel(config.provider, config.model, config.apiKey);
-    const tools = getMastraTools(config.enabledTools);
+
+    // 构建包含 Skill 指令的系统提示词
+    let instructions = config.systemPrompt || '你是一个有用的助手。';
+    let workspacePath = '';
+    let skillDirs: string[] = [];
+
+    if (this.botSkillManager) {
+      instructions = await this.botSkillManager.buildSystemPromptWithSkills(botId, instructions);
+      workspacePath = this.botSkillManager.getWorkspacePath(botId);
+      skillDirs = await this.botSkillManager.getSkillDirs(botId);
+    }
+
+    // 创建通用工具
+    const tools = createGenericMastraTools(workspacePath, skillDirs);
 
     const agent = new Agent({
       name: `local-bot-${botId}`,
-      instructions: config.systemPrompt || '你是一个有用的助手。',
+      instructions,
       model,
       tools,
     });

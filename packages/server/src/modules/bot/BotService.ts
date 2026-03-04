@@ -118,8 +118,6 @@ export class BotService {
       }
       // 清理 LLM 调用日志
       await redis.del(BOT_LLM_LOGS_KEY(botId));
-      // 清理 Skill 权限
-      await redis.del(`bot_skills:${botId}`);
     } else if (runMode === 'local') {
       await redis.del(BOT_MASTRA_CONFIG_KEY(botId));
       await redis.srem(LOCAL_BOTS_KEY, botId);
@@ -372,23 +370,6 @@ export class BotService {
     await redis.del(BOT_CONV_HISTORY_KEY(botId, convId));
   }
 
-  /** 获取 Bot 允许使用的 Skill 函数列表（默认 ['*'] 表示全部允许） */
-  async getBotAllowedSkills(botId: string): Promise<string[]> {
-    const redis = getRedisClient();
-    const members = await redis.smembers(`bot_skills:${botId}`);
-    return members.length > 0 ? members : ['*'];
-  }
-
-  /** 设置 Bot 允许使用的 Skill 函数列表 */
-  async setBotAllowedSkills(botId: string, skills: string[]): Promise<void> {
-    const redis = getRedisClient();
-    const key = `bot_skills:${botId}`;
-    await redis.del(key);
-    if (skills.length > 0) {
-      await redis.sadd(key, ...skills);
-    }
-  }
-
   // ========================
   // LLM 调用日志
   // ========================
@@ -438,7 +419,6 @@ export class BotService {
       model: mastraConfig.model,
       systemPrompt: mastraConfig.systemPrompt,
       contextLength: String(mastraConfig.contextLength),
-      enabledTools: JSON.stringify(mastraConfig.enabledTools || ['*']),
     });
   }
 
@@ -454,7 +434,6 @@ export class BotService {
       model: data.model,
       systemPrompt: data.systemPrompt,
       contextLength: parseInt(data.contextLength, 10) || 10,
-      enabledTools: JSON.parse(data.enabledTools || '["*"]'),
     };
   }
 
@@ -471,7 +450,6 @@ export class BotService {
       model: data.model,
       systemPrompt: data.systemPrompt,
       contextLength: parseInt(data.contextLength, 10) || 10,
-      enabledTools: JSON.parse(data.enabledTools || '["*"]'),
     };
   }
 

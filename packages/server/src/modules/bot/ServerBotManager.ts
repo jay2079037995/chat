@@ -7,15 +7,13 @@
 import type { Server as SocketIOServer } from 'socket.io';
 import type { LLMConfig } from '@chat/shared';
 import type { BotService } from './BotService';
-import type { SkillRegistry } from '../skill/SkillRegistry';
-import type { SkillDispatcher } from './SkillDispatcher';
+import type { ToolDispatcher } from './ToolDispatcher';
 import { ServerBotRunner } from './ServerBotRunner';
 
 export class ServerBotManager {
   private runners = new Map<string, ServerBotRunner>();
   private io: SocketIOServer | null = null;
-  private skillRegistry?: SkillRegistry;
-  private skillDispatcher?: SkillDispatcher;
+  private toolDispatcher?: ToolDispatcher;
 
   constructor(private botService: BotService) {}
 
@@ -24,10 +22,17 @@ export class ServerBotManager {
     this.io = io;
   }
 
-  /** 延迟注入 Skill 系统依赖 */
-  setSkillDependencies(registry: SkillRegistry, dispatcher: SkillDispatcher): void {
-    this.skillRegistry = registry;
-    this.skillDispatcher = dispatcher;
+  /** 延迟注入 ToolDispatcher */
+  setToolDispatcher(dispatcher: ToolDispatcher): void {
+    this.toolDispatcher = dispatcher;
+  }
+
+  /** 设置 Bot 的 Skill 指令（由 Electron 通过 Socket.IO 推送） */
+  setSkillInstructions(botId: string, instructions: string): void {
+    const runner = this.runners.get(botId);
+    if (runner) {
+      runner.setSkillInstructions(instructions);
+    }
   }
 
   /** 启动一个服务端 Bot */
@@ -37,12 +42,9 @@ export class ServerBotManager {
       await this.stopBot(botId);
     }
 
-    // 加载 Bot 允许的 Skill 列表
-    const allowedSkills = await this.botService.getBotAllowedSkills(botId);
-
     const runner = new ServerBotRunner(
       botId, llmConfig, this.botService, this.io,
-      this.skillRegistry, this.skillDispatcher, allowedSkills,
+      this.toolDispatcher,
     );
     this.runners.set(botId, runner);
     await runner.start();
@@ -77,14 +79,6 @@ export class ServerBotManager {
     const runner = this.runners.get(botId);
     if (runner) {
       runner.updateConfig(llmConfig);
-    }
-  }
-
-  /** 热更新 Bot 允许的 Skill 列表 */
-  updateBotSkills(botId: string, skills: string[]): void {
-    const runner = this.runners.get(botId);
-    if (runner) {
-      runner.updateAllowedSkills(skills);
     }
   }
 

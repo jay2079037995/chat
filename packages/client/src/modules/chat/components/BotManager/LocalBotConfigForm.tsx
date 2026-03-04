@@ -3,57 +3,27 @@
  *
  * 创建和编辑本地机器人时使用。
  * Provider 切换时自动填充默认模型。
- * 支持 Mastra Tool 选择（从 Electron IPC 获取）。
  */
-import React, { useEffect, useState } from 'react';
-import { Form, Select, Input, InputNumber, Checkbox, Tooltip, Divider, Typography, Button } from 'antd';
-import { AppstoreOutlined } from '@ant-design/icons';
+import React, { useEffect } from 'react';
+import { Form, Select, Input, InputNumber } from 'antd';
 import type { MastraLLMConfig, MastraProvider } from '@chat/shared';
 import { MASTRA_PROVIDERS } from '@chat/shared';
 
 const { TextArea } = Input;
 
-/** Mastra Tool 信息 */
-interface MastraToolInfo {
-  id: string;
-  name: string;
-  description: string;
-}
-
 interface LocalBotConfigFormProps {
   form: ReturnType<typeof Form.useForm>[0];
   initialValues?: Partial<MastraLLMConfig>;
-  /** 打开 Skill 市场回调 */
-  onOpenMarketplace?: () => void;
-  /** 递增此值可触发 Tool 列表重新加载 */
-  refreshKey?: number;
 }
 
-const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialValues, onOpenMarketplace, refreshKey }) => {
-  const [tools, setTools] = useState<MastraToolInfo[]>([]);
-  const [selectedTools, setSelectedTools] = useState<string[]>(['*']);
+const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialValues }) => {
   const provider = Form.useWatch('provider', form);
 
   useEffect(() => {
     if (initialValues) {
       form.setFieldsValue(initialValues);
-      if (initialValues.enabledTools) {
-        setSelectedTools(initialValues.enabledTools);
-      }
     }
   }, [initialValues, form]);
-
-  // 从 Electron 加载可用 Tool 列表（refreshKey 变化时重新加载）
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    if (electronAPI?.listMastraTools) {
-      electronAPI.listMastraTools().then((list: MastraToolInfo[]) => {
-        setTools(list);
-      }).catch(() => {
-        // 非 Electron 环境忽略
-      });
-    }
-  }, [refreshKey]);
 
   const handleProviderChange = (value: MastraProvider) => {
     const info = MASTRA_PROVIDERS[value];
@@ -62,21 +32,6 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
     } else {
       form.setFieldValue('model', '');
     }
-  };
-
-  const isAllTools = selectedTools.includes('*');
-  const allToolIds = tools.map((t) => t.id);
-
-  const handleSelectAllChange = (checked: boolean) => {
-    const newValue = checked ? ['*'] : [...allToolIds];
-    setSelectedTools(newValue);
-    form.setFieldValue('enabledTools', newValue);
-  };
-
-  const handleToolChange = (checkedValues: string[]) => {
-    const newValue = checkedValues.length === allToolIds.length ? ['*'] : checkedValues;
-    setSelectedTools(newValue);
-    form.setFieldValue('enabledTools', newValue);
   };
 
   return (
@@ -88,7 +43,6 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
         model: MASTRA_PROVIDERS.openai.models[0],
         systemPrompt: '你是一个有用的助手。',
         contextLength: 4096,
-        enabledTools: ['*'],
         ...initialValues,
       }}
       size="small"
@@ -143,51 +97,6 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
       >
         <InputNumber min={512} max={128000} step={512} style={{ width: '100%' }} />
       </Form.Item>
-
-      {/* 隐藏字段存储 enabledTools */}
-      <Form.Item name="enabledTools" hidden>
-        <Input />
-      </Form.Item>
-
-      {/* Mastra Tool 选择 */}
-      {tools.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <Divider style={{ margin: '8px 0' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Typography.Text strong>Tool 配置</Typography.Text>
-            {onOpenMarketplace && (
-              <Button
-                type="link"
-                size="small"
-                icon={<AppstoreOutlined />}
-                onClick={onOpenMarketplace}
-              >
-                安装 Skill
-              </Button>
-            )}
-          </div>
-          <Checkbox
-            checked={isAllTools}
-            onChange={(e) => handleSelectAllChange(e.target.checked)}
-            style={{ marginBottom: 8 }}
-          >
-            全部启用
-          </Checkbox>
-          {!isAllTools && (
-            <Checkbox.Group
-              value={selectedTools}
-              onChange={(values) => handleToolChange(values as string[])}
-              style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 24 }}
-            >
-              {tools.map((tool) => (
-                <Tooltip key={tool.id} title={tool.description} placement="right">
-                  <Checkbox value={tool.id}>{tool.name}</Checkbox>
-                </Tooltip>
-              ))}
-            </Checkbox.Group>
-          )}
-        </div>
-      )}
     </Form>
   );
 };

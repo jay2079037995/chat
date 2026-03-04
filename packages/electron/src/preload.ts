@@ -18,58 +18,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDebugStatus: (callback: (enabled: boolean) => void): void => {
     ipcRenderer.on('debug:status', (_event, enabled: boolean) => callback(enabled));
   },
-  // --- Skill 系统 IPC ---
-  /** 执行 Skill 操作 */
-  execSkill: (request: { requestId: string; functionName: string; params: Record<string, unknown>; botId: string; conversationId: string }): Promise<{ requestId: string; success: boolean; data?: unknown; error?: string }> =>
-    ipcRenderer.invoke('skill:exec', request),
-  /** 获取 Skill 审计日志 */
-  getSkillLogs: (limit?: number): Promise<unknown[]> =>
-    ipcRenderer.invoke('skill:get-logs', limit),
-  /** 获取 Skill 白名单 */
-  getSkillWhitelist: (): Promise<string[]> =>
-    ipcRenderer.invoke('skill:get-whitelist'),
-  /** 设置 Skill 白名单 */
-  setSkillWhitelist: (list: string[]): Promise<void> =>
-    ipcRenderer.invoke('skill:set-whitelist', list),
-  // --- 自定义 Skill 管理 ---
-  /** 列出已安装的自定义 Skill */
-  listCustomSkills: (): Promise<unknown[]> =>
-    ipcRenderer.invoke('skill:list-custom'),
-  /** 安装自定义 Skill 包（传入源目录路径） */
-  installSkill: (sourcePath: string): Promise<unknown> =>
-    ipcRenderer.invoke('skill:install', sourcePath),
-  /** 卸载自定义 Skill */
-  uninstallSkill: (skillName: string): Promise<boolean> =>
-    ipcRenderer.invoke('skill:uninstall', skillName),
-  /** 选择 Skill 包目录（打开文件选择对话框） */
+  // --- Bot Skill 管理 ---
+  /** 列出 Bot 已安装的 Skill */
+  listBotSkills: (botId: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('bot-skill:list', botId),
+  /** 从本地目录安装 Skill */
+  installBotSkill: (botId: string, sourcePath: string): Promise<unknown> =>
+    ipcRenderer.invoke('bot-skill:install', botId, sourcePath),
+  /** 从在线 URL 安装 Skill */
+  installBotSkillFromUrl: (botId: string, entry: unknown): Promise<unknown> =>
+    ipcRenderer.invoke('bot-skill:install-url', botId, entry),
+  /** 卸载 Skill */
+  uninstallBotSkill: (botId: string, skillName: string): Promise<boolean> =>
+    ipcRenderer.invoke('bot-skill:uninstall', botId, skillName),
+  /** 获取 Skill 完整内容 */
+  getBotSkillContent: (botId: string, skillName: string): Promise<unknown> =>
+    ipcRenderer.invoke('bot-skill:get-content', botId, skillName),
+  /** 选择 Skill 目录（打开文件选择对话框） */
   selectSkillDir: (): Promise<string | null> =>
-    ipcRenderer.invoke('skill:select-dir'),
-  // --- Skill 市场 ---
-  /** 获取注册表 URL 列表 */
-  getSkillRegistries: (): Promise<string[]> =>
-    ipcRenderer.invoke('skill:get-registries'),
-  /** 设置注册表 URL 列表 */
-  setSkillRegistries: (urls: string[]): Promise<void> =>
-    ipcRenderer.invoke('skill:set-registries', urls),
-  /** 拉取在线 Skill 列表 */
-  fetchMarketplaceSkills: (): Promise<unknown[]> =>
-    ipcRenderer.invoke('skill:fetch-marketplace'),
-  /** 下载并安装 Skill 包 */
-  downloadAndInstallSkill: (entry: unknown): Promise<unknown> =>
-    ipcRenderer.invoke('skill:download-install', entry),
-  /** 从 Git 仓库安装 Skill */
-  installSkillFromGit: (gitUrl: string, subDir?: string): Promise<unknown> =>
-    ipcRenderer.invoke('skill:install-from-git', gitUrl, subDir),
-  // --- Bot 信任管理 ---
-  /** 获取所有 Bot 信任配置 */
-  getBotTrustList: (): Promise<unknown[]> =>
-    ipcRenderer.invoke('bot-trust:list'),
-  /** 设置 Bot 信任状态 */
-  setBotTrust: (botId: string, botUsername: string, trusted: boolean): Promise<void> =>
-    ipcRenderer.invoke('bot-trust:set', botId, botUsername, trusted),
-  /** 移除 Bot 信任配置 */
-  removeBotTrust: (botId: string): Promise<void> =>
-    ipcRenderer.invoke('bot-trust:remove', botId),
+    ipcRenderer.invoke('bot-skill:select-dir'),
+  // --- 在线 Skill 搜索 ---
+  /** 搜索在线 Skill（claude-plugins.dev） */
+  searchPlugins: (query: string, limit?: number, offset?: number): Promise<unknown> =>
+    ipcRenderer.invoke('plugin:search', query, limit, offset),
+  // --- 通用工具执行 ---
+  /** 执行通用工具（服务端 Bot 远程调用） */
+  execGenericTool: (request: unknown): Promise<unknown> =>
+    ipcRenderer.invoke('tool:exec', request),
   // --- Local Bot (Mastra) IPC ---
   /** 初始化本地 Bot */
   initLocalBot: (botId: string, config: unknown): Promise<{ success: boolean }> =>
@@ -80,9 +55,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 移除本地 Bot */
   removeLocalBot: (botId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('localbot:remove', botId),
-  /** 列出可用 Mastra Tool */
-  listMastraTools: (): Promise<Array<{ id: string; name: string; description: string }>> =>
-    ipcRenderer.invoke('localbot:list-tools'),
   /** 获取活跃 Bot 列表 */
   getActiveLocalBots: (): Promise<string[]> =>
     ipcRenderer.invoke('localbot:active-bots'),

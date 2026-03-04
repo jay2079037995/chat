@@ -10,11 +10,11 @@ import { createMainWindow, getMainWindow } from './windowManager';
 import { buildMenu } from './menuBuilder';
 import { createTray, destroyTray } from './trayManager';
 import { isDebugEnabled } from './debugFileWatcher';
-import { SkillRuntime } from './skills/SkillRuntime';
-import { BotTrustStore } from './skills/BotTrustStore';
-import { SkillMarketplace } from './skills/SkillMarketplace';
+import { BotSkillManager } from './claudeskill/BotSkillManager';
+import { PluginSearchClient } from './claudeskill/PluginSearchClient';
+import { GenericToolExecutor } from './claudeskill/GenericToolExecutor';
 import { LocalBotManager } from './localbot/LocalBotManager';
-import { listMastraToolInfo, setPackageManager } from './localbot/MastraToolBridge';
+import type { PluginEntry, GenericToolExecRequest } from '../../shared/dist';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -35,72 +35,80 @@ if (!gotSingleInstanceLock) {
   // 注册调试状态 IPC
   ipcMain.handle('debug:get-status', () => isDebugEnabled());
 
-  // --- Skill 系统 IPC ---
-  const botTrustStore = new BotTrustStore();
-  const skillRuntime = new SkillRuntime(botTrustStore);
+  // --- Claude Skill 系统 ---
+  const botSkillManager = new BotSkillManager();
+  const pluginSearchClient = new PluginSearchClient();
+  const genericToolExecutor = new GenericToolExecutor();
 
-  // 注入 SkillPackageManager 到 MastraToolBridge，使本地 Bot 可用自定义 Skill
-  setPackageManager(skillRuntime.getPackageManager());
-  ipcMain.handle('skill:exec', (_event, request) => skillRuntime.execute(request));
-  ipcMain.handle('skill:get-logs', (_event, limit?: number) => skillRuntime.getLogs(limit));
-  ipcMain.handle('skill:get-whitelist', () => skillRuntime.getWhitelist());
-  ipcMain.handle('skill:set-whitelist', (_event, list: string[]) => skillRuntime.setWhitelist(list));
-
-  // --- 自定义 Skill 管理 IPC ---
-  ipcMain.handle('skill:list-custom', () =>
-    skillRuntime.getPackageManager().listCustomSkills(),
+  // --- Bot Skill 管理 IPC ---
+  ipcMain.handle('bot-skill:list', (_event, botId: string) =>
+    botSkillManager.listSkills(botId),
   );
-  ipcMain.handle('skill:install', async (_event, sourcePath: string) => {
-    const result = skillRuntime.getPackageManager().install(sourcePath);
-    // 安装后重建所有活跃本地 Bot 的 Tool 列表
-    rebuildActiveLocalBots();
+
+  ipcMain.handle('bot-skill:install', async (_event, botId: string, sourcePath: string) => {
+    const result = await botSkillManager.installFromLocal(botId, sourcePath);
+    // 安装后重建该 Bot 的 Agent（刷新 Skill 指令和工具）
+    await rebuildLocalBot(botId);
     return result;
   });
-  ipcMain.handle('skill:uninstall', (_event, skillName: string) => {
-    const result = skillRuntime.getPackageManager().uninstall(skillName);
-    // 卸载后重建所有活跃本地 Bot 的 Tool 列表
-    rebuildActiveLocalBots();
+
+  ipcMain.handle('bot-skill:install-url', async (_event, botId: string, entry: PluginEntry) => {
+    const result = await botSkillManager.installFromUrl(botId, entry);
+    // 安装后重建该 Bot 的 Agent
+    await rebuildLocalBot(botId);
     return result;
   });
-  ipcMain.handle('skill:select-dir', async () => {
+
+  ipcMain.handle('bot-skill:uninstall', async (_event, botId: string, skillName: string) => {
+    const result = await botSkillManager.uninstall(botId, skillName);
+    // 卸载后重建该 Bot 的 Agent
+    await rebuildLocalBot(botId);
+    return result;
+  });
+
+  ipcMain.handle('bot-skill:get-content', (_event, botId: string, skillName: string) =>
+    botSkillManager.getSkillContent(botId, skillName),
+  );
+
+  ipcMain.handle('bot-skill:select-dir', async () => {
     const { dialog } = await import('electron');
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
-      title: '选择 Skill 包目录',
+      title: '选择 Skill 目录',
       message: '请选择包含 SKILL.md 的目录',
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
 
-  // --- Skill 市场 IPC ---
-  const skillMarketplace = new SkillMarketplace(skillRuntime.getPackageManager());
-  ipcMain.handle('skill:get-registries', () => skillMarketplace.getRegistries());
-  ipcMain.handle('skill:set-registries', (_event, urls: string[]) => skillMarketplace.setRegistries(urls));
-  ipcMain.handle('skill:fetch-marketplace', () => skillMarketplace.fetchAllSkills());
-  ipcMain.handle('skill:download-install', (_event, entry: any) => skillMarketplace.downloadAndInstall(entry));
-  ipcMain.handle('skill:install-from-git', (_event, gitUrl: string, subDir?: string) => skillMarketplace.installFromGit(gitUrl, subDir));
+  // --- 在线 Skill 搜索 IPC ---
+  ipcMain.handle('plugin:search', (_event, query: string, limit?: number, offset?: number) =>
+    pluginSearchClient.search(query, limit, offset),
+  );
 
-  // --- Bot 信任管理 IPC ---
-  ipcMain.handle('bot-trust:list', () => botTrustStore.listTrustConfigs());
-  ipcMain.handle('bot-trust:set', (_event, botId: string, botUsername: string, trusted: boolean) => {
-    botTrustStore.setTrust(botId, botUsername, trusted);
-  });
-  ipcMain.handle('bot-trust:remove', (_event, botId: string) => {
-    botTrustStore.removeTrust(botId);
+  // --- 通用工具执行 IPC ---
+  ipcMain.handle('tool:exec', async (_event, request: GenericToolExecRequest) => {
+    const workspacePath = botSkillManager.getWorkspacePath(request.botId);
+    const skillDirs = await botSkillManager.getSkillDirs(request.botId);
+    return genericToolExecutor.execute(request, workspacePath, skillDirs);
   });
 
   // --- Local Bot (Mastra) IPC ---
   const localBotManager = new LocalBotManager();
 
-  /** Skill 安装/卸载后重建所有活跃本地 Bot 的 Agent（刷新 Tool 列表） */
-  function rebuildActiveLocalBots(): void {
-    for (const botId of localBotManager.getActiveBots()) {
+  // 注入 BotSkillManager
+  localBotManager.setBotSkillManager(botSkillManager);
+
+  /** Skill 安装/卸载后重建指定 Bot 的 Agent */
+  async function rebuildLocalBot(botId: string): Promise<void> {
+    if (localBotManager.isActive(botId)) {
       const config = localBotManager.getConfig(botId);
       if (config) {
-        localBotManager.initBot(botId, config).catch((err) => {
+        try {
+          await localBotManager.initBot(botId, config);
+        } catch (err) {
           console.error(`[main] 重建本地 Bot ${botId} 失败:`, err);
-        });
+        }
       }
     }
   }
@@ -134,10 +142,6 @@ if (!gotSingleInstanceLock) {
   ipcMain.handle('localbot:remove', (_event, botId: string) => {
     localBotManager.removeBot(botId);
     return { success: true };
-  });
-
-  ipcMain.handle('localbot:list-tools', () => {
-    return listMastraToolInfo();
   });
 
   ipcMain.handle('localbot:active-bots', () => {

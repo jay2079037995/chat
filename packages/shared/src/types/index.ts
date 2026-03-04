@@ -4,3 +4,4 @@ export * from './group';
 export * from './socket';
 export * from './bot';
 export * from './skill';
+export * from './claude-skill';

@@ -1033,3 +1033,63 @@ metadata:
 ### 测试
 - [ ] pnpm build 全部编译成功
 - [ ] pnpm test 全部通过
+
+---
+
+## v1.19.0 - Skill 系统重构：Claude Agent Skills 标准
+
+**目标**：移除所有内置 Skill 和全局 Skill 市场，重构为 Claude Agent Skills 标准。每个 Bot（本地 + 服务端）拥有独立的 Skill 列表，Skill 通过 AI 读取指令 + 通用工具（bash/read/write）执行，替代原有的 handler 函数 → function calling 模式。
+
+### 背景
+
+当前 Skill 系统使用 26 个硬编码的 macOS handler（AppleScript/Shell），以 handler 函数 → function calling 的方式工作。需要重构为：
+- **范式变化**：Skill = handler 函数 → Skill = AI 指令（SKILL.md）+ 通用工具
+- **Skill 来源**：本地目录安装 + claude-plugins.dev 在线搜索安装
+- **存储模型**：每个 Bot 独立副本，互不影响
+
+### 功能清单
+
+#### 共享层
+- [ ] 新建 `claude-skill.ts` — ClaudeSkillMeta、ClaudeSkill、PluginEntry、PluginSearchResult、GenericToolExecRequest/Result 类型
+- [ ] `socket.ts` — `skill:exec` → `tool:exec`，`skill:result` → `tool:result`，移除 `skill:sync`，新增 `bot:request-skills` / `bot:skill-instructions`
+- [ ] `bot.ts` — 移除 `Bot.allowedSkills`、`MastraLLMConfig.enabledTools`
+- [ ] `skill.ts` — 清理旧类型，仅保留 LLMTool / LLMToolCall
+
+#### Electron 端
+- [ ] 新建 `claudeskill/ClaudeSkillParser.ts` — 解析 SKILL.md YAML frontmatter，返回 ClaudeSkill
+- [ ] 新建 `claudeskill/BotSkillManager.ts` — Per-bot Skill 存储管理（安装/卸载/列表/读取/系统提示词拼接）
+- [ ] 新建 `claudeskill/PluginSearchClient.ts` — 封装 claude-plugins.dev API 搜索
+- [ ] 新建 `claudeskill/GenericToolExecutor.ts` — 沙箱化通用工具执行（bash_exec/read_file/write_file/list_files）
+- [ ] `MastraToolBridge.ts` — 完全重写，26 个 handler 包装 → 4 个通用 Mastra Tool
+- [ ] `LocalBotManager.ts` — initBot() 改为注入 Skill 指令到系统提示词 + 通用工具
+- [ ] `main.ts` — IPC 重写：移除 18 个 skill/trust handler，新增 bot-skill / plugin / tool IPC
+- [ ] `preload.ts` — API 更新：移除旧 skill/trust API，新增 botSkill / plugin / tool API
+- [ ] 删除 `skills/` 整个目录（handlers/、SkillRuntime、SkillPackageManager、SkillMarketplace、BotTrustStore、PermissionManager、AuditLogger、SkillMdParser）
+
+#### 服务端
+- [ ] 删除 `modules/skill/` 整个目录
+- [ ] 新建 `bot/ToolDispatcher.ts` — 替代 SkillDispatcher，事件改为 tool:exec / tool:result
+- [ ] `ServerBotRunner.ts` — 移除 SkillRegistry 依赖，工具列表改为固定 4 个通用工具定义，Skill 指令注入系统提示词
+- [ ] `ServerBotManager.ts` — 移除 setSkillDependencies()，新增 skillInstructionsCache
+- [ ] `BotService.ts` — 移除 getBotAllowedSkills() / setBotAllowedSkills()
+- [ ] `bot/index.ts` — 移除 SkillDispatcher / skill 路由，新增 ToolDispatcher / tool:result / bot:skill-instructions handler
+- [ ] `app.ts` — 移除 SkillModule 注册
+
+#### 前端
+- [ ] 新建 `BotSkillManager.tsx` — Bot 私有 Skill 管理弹窗（已安装列表 + 在线搜索 + 安装/卸载）
+- [ ] `LocalBotConfigForm.tsx` — 移除 tool checkbox / enabledTools，新增「管理 Skill」按钮
+- [ ] `BotManager/index.tsx` — 移除全局 SkillSelector / SkillMarketplace，服务端 Bot 也增加 Skill 管理入口
+- [ ] 新建 `toolBridge.ts` — 替代 skillBridge，监听 tool:exec / bot:request-skills
+- [ ] `botService.ts` — 移除 getAvailableSkills() / setBotSkills()
+- [ ] 删除 `SkillMarketplace.tsx` + `SkillMarketplace.module.less` + 旧 `skillBridge.ts`
+
+### 测试
+- [ ] `electron/__tests__/claude-skill-parser.test.ts` — SKILL.md frontmatter 解析
+- [ ] `electron/__tests__/bot-skill-manager.test.ts` — Per-bot 安装/卸载/列表/读取
+- [ ] `electron/__tests__/generic-tool-executor.test.ts` — 通用工具执行 + 路径沙箱校验
+- [ ] `electron/__tests__/plugin-search-client.test.ts` — claude-plugins.dev API mock
+- [ ] `server/__tests__/tool-dispatcher.test.ts` — 通用工具 Socket.IO 分发
+- [ ] `server/__tests__/server-bot-generic-tools.test.ts` — ServerBotRunner 通用工具流程
+- [ ] 删除旧测试（10 个文件）
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过

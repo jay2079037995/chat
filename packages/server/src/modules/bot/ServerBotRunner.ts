@@ -3,18 +3,16 @@
  *
  * 直接使用 Redis BLPOP 监听消息队列，调用 LLM 生成回复。
  * 对话历史持久化到 Redis，服务器重启后不丢失上下文。
- * 移植自 agent-app AgentManager.runLoop，关键区别：
- *  - 直接 Redis BLPOP（不走 HTTP 长轮询）
- *  - 内部调用 BotService（不需要 token）
- *  - 对话历史 Redis 持久化
+ * 通用工具（bash_exec/read_file/write_file/list_files）通过
+ * ToolDispatcher 分发到 Electron 端执行。
+ * Skill 指令通过 skillInstructions 注入到系统提示词。
  */
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { LLMConfig, ChatMessage, BotStatus, LLMTool, LLMCallLog } from '@chat/shared';
-import { generateId } from '@chat/shared';
+import type { LLMConfig, ChatMessage, BotStatus, LLMTool, LLMCallLog, GenericToolName } from '@chat/shared';
+import { generateId, GENERIC_TOOL_DEFINITIONS } from '@chat/shared';
 import type { BotService } from './BotService';
-import type { SkillRegistry } from '../skill/SkillRegistry';
-import type { SkillDispatcher } from './SkillDispatcher';
+import type { ToolDispatcher } from './ToolDispatcher';
 import { callLLM, callLLMWithTools, detectMarkdown } from './LLMClient';
 import { config } from '../../config';
 
@@ -43,19 +41,20 @@ export class ServerBotRunner {
   private messagesProcessed = 0;
   private consecutiveErrors = 0;
 
-  /** Bot 允许使用的 Skill 函数名列表（['*'] 或空数组表示全部） */
-  private allowedSkills?: string[];
+  /** Skill 指令文本（由 Electron 推送，注入到系统提示词） */
+  private skillInstructions = '';
 
   constructor(
     private botId: string,
     private llmConfig: LLMConfig,
     private botService: BotService,
     private io: SocketIOServer | null,
-    private skillRegistry?: SkillRegistry,
-    private skillDispatcher?: SkillDispatcher,
-    allowedSkills?: string[],
-  ) {
-    this.allowedSkills = allowedSkills;
+    private toolDispatcher?: ToolDispatcher,
+  ) {}
+
+  /** 设置 Skill 指令（由 ServerBotManager 在 Electron 推送时调用） */
+  setSkillInstructions(instructions: string): void {
+    this.skillInstructions = instructions;
   }
 
   /** 启动轮询 */
@@ -93,7 +92,6 @@ export class ServerBotRunner {
     this.abortController = null;
 
     if (this.blockingRedis) {
-      // disconnect 立即关闭连接，中断 BLPOP
       this.blockingRedis.disconnect();
       this.blockingRedis = null;
     }
@@ -106,11 +104,6 @@ export class ServerBotRunner {
     this.llmConfig = { ...this.llmConfig, ...partial };
   }
 
-  /** 热更新允许的 Skill 列表 */
-  updateAllowedSkills(skills: string[]): void {
-    this.allowedSkills = skills;
-  }
-
   /** 获取运行状态 */
   getStatus(): { status: BotStatus; lastError?: string; messagesProcessed: number } {
     return {
@@ -118,6 +111,13 @@ export class ServerBotRunner {
       lastError: this.lastError,
       messagesProcessed: this.messagesProcessed,
     };
+  }
+
+  /** 构建包含 Skill 指令的系统提示词 */
+  private buildSystemPrompt(): string {
+    const base = this.llmConfig.systemPrompt || 'You are a helpful assistant.';
+    if (!this.skillInstructions) return base;
+    return base + this.skillInstructions;
   }
 
   /** 核心轮询循环 */
@@ -128,13 +128,11 @@ export class ServerBotRunner {
       try {
         if (!this.blockingRedis) break;
 
-        // BLPOP 等待消息（30 秒超时）
         const result = await this.blockingRedis.blpop(BOT_UPDATES_KEY(this.botId), 30);
 
         if (signal.aborted || this._status !== 'running') break;
         if (!result) continue;
 
-        // BLPOP 返回 [key, value]
         const update = JSON.parse(result[1]);
         const { message, conversationId } = update;
 
@@ -160,7 +158,6 @@ export class ServerBotRunner {
           );
 
           if (convHistory.length === 0) {
-            // 从消息记录预填对话历史
             try {
               const historyData = await this.botService.getHistoryByBotId(
                 this.botId, conversationId, this.llmConfig.contextLength * 2,
@@ -176,18 +173,16 @@ export class ServerBotRunner {
             }
           }
 
-          // 保存用户消息到对话历史
           await this.botService.saveConvHistory(this.botId, conversationId, {
             role: 'user', content: message.content,
           });
 
-          // 构建 LLM 请求消息
           const recentHistory = await this.botService.getConvHistory(
             this.botId, conversationId, this.llmConfig.contextLength,
           );
 
           const llmMessages: ChatMessage[] = [
-            { role: 'system', content: this.llmConfig.systemPrompt || 'You are a helpful assistant.' },
+            { role: 'system', content: this.buildSystemPrompt() },
             ...recentHistory.map((m) => ({
               role: m.role as ChatMessage['role'],
               content: m.content,
@@ -196,33 +191,19 @@ export class ServerBotRunner {
 
           // 推理模型不支持 function calling，跳过 tools
           const isReasoner = this.llmConfig.model === 'deepseek-reasoner';
-          // 将 Skill 名称列表解析为 function 名称列表（白名单）
-          let allowedFunctions: string[] | undefined;
-          if (this.allowedSkills && !this.allowedSkills.includes('*') && this.allowedSkills.length > 0 && this.skillRegistry) {
-            allowedFunctions = [];
-            for (const skillName of this.allowedSkills) {
-              const skill = this.skillRegistry.getSkill(skillName);
-              if (skill) {
-                for (const action of skill.actions) {
-                  allowedFunctions.push(action.functionName);
-                }
-              }
-            }
-          }
-          const tools: LLMTool[] | undefined = (!isReasoner && this.skillRegistry)
-            ? this.skillRegistry.generateTools({ platform: 'mac', allowedFunctions })
+          // 使用固定的 4 个通用工具定义
+          const tools: LLMTool[] | undefined = (!isReasoner && this.toolDispatcher)
+            ? GENERIC_TOOL_DEFINITIONS as unknown as LLMTool[]
             : undefined;
           const hasTools = tools && tools.length > 0;
 
           let reply: string;
 
-          if (hasTools && this.skillDispatcher) {
-            // 带 function calling 的调用循环
+          if (hasTools && this.toolDispatcher) {
             reply = await this.runToolCallingLoop(
               llmMessages, tools, conversationId, message.senderId, signal,
             );
           } else {
-            // 无 Skill 支持，直接文本调用（向后兼容）
             const startTime = Date.now();
             try {
               reply = await callLLM(this.llmConfig, llmMessages);
@@ -237,20 +218,16 @@ export class ServerBotRunner {
 
           if (signal.aborted || this._status !== 'running') break;
 
-          // Markdown 检测
           const messageType = detectMarkdown(reply) ? 'markdown' : 'text';
 
-          // 发送回复
           const savedMsg = await this.botService.sendMessageByBotId(
             this.botId, conversationId, reply, messageType,
           );
 
-          // 保存 assistant 消息到对话历史
           await this.botService.saveConvHistory(this.botId, conversationId, {
             role: 'assistant', content: reply,
           });
 
-          // Socket.IO 广播
           this.broadcastMessage(savedMsg, conversationId);
 
           this.messagesProcessed++;
@@ -259,19 +236,16 @@ export class ServerBotRunner {
           this.consecutiveErrors++;
           this.lastError = err.message;
 
-          // 连续失败 5 次，设为 error 状态
           if (this.consecutiveErrors >= 5) {
             this._status = 'error';
             await this.botService.setBotStatus(this.botId, 'error', '连续失败 5 次');
             return;
           }
 
-          // 指数退避
           const delay = Math.min(1000 * Math.pow(2, this.consecutiveErrors), 30000);
           await this.sleep(delay, signal);
         }
       } catch (err: any) {
-        // BLPOP 或外层异常
         if (signal.aborted || this._status !== 'running') break;
 
         this.consecutiveErrors++;
@@ -289,12 +263,7 @@ export class ServerBotRunner {
     }
   }
 
-  /**
-   * 带 function calling 的 LLM 调用循环
-   *
-   * 流程：调用 LLM → 如果返回 tool_calls → 分发到 Electron 执行 →
-   * 将结果反馈给 LLM → 重复直到 LLM 返回文本回复或达到最大轮次。
-   */
+  /** 带 function calling 的 LLM 调用循环 */
   private async runToolCallingLoop(
     messages: ChatMessage[],
     tools: LLMTool[],
@@ -303,7 +272,6 @@ export class ServerBotRunner {
     signal: AbortSignal,
   ): Promise<string> {
     let round = 0;
-    // 工作副本，追加 tool 交互消息
     const workMessages = [...messages];
 
     while (round < MAX_TOOL_ROUNDS) {
@@ -325,18 +293,15 @@ export class ServerBotRunner {
       }
 
       if (!result.hasToolCalls || !result.toolCalls) {
-        // LLM 返回了最终文本回复
         return result.content || '（无回复内容）';
       }
 
-      // 将 assistant 消息（含 tool_calls）追加到对话
       workMessages.push({
         role: 'assistant',
         content: result.content || '',
         tool_calls: result.toolCalls,
       });
 
-      // 逐个分发 tool_call 到 Electron 端执行
       for (const toolCall of result.toolCalls) {
         let params: Record<string, unknown> = {};
         try {
@@ -345,15 +310,14 @@ export class ServerBotRunner {
           // 参数解析失败
         }
 
-        const execResult = await this.skillDispatcher!.dispatch(
+        const execResult = await this.toolDispatcher!.dispatch(
           targetUserId,
-          toolCall.function.name,
+          toolCall.function.name as GenericToolName,
           params,
           this.botId,
           conversationId,
         );
 
-        // 将 tool 执行结果追加到对话
         const resultContent = execResult.success
           ? JSON.stringify(execResult.data ?? '操作成功')
           : `错误: ${execResult.error || '未知错误'}`;
@@ -369,7 +333,6 @@ export class ServerBotRunner {
       round++;
     }
 
-    // 达到最大轮次，做最后一次不带 tools 的调用让 LLM 总结
     const finalStart = Date.now();
     try {
       const finalResult = await callLLMWithTools(this.llmConfig, workMessages);
@@ -383,7 +346,7 @@ export class ServerBotRunner {
     }
   }
 
-  /** 保存 LLM 调用日志（失败不影响主流程） */
+  /** 保存 LLM 调用日志 */
   private async saveLLMLog(
     conversationId: string,
     messages: ChatMessage[],
@@ -402,7 +365,6 @@ export class ServerBotRunner {
         request: {
           provider: this.llmConfig.provider,
           model: this.llmConfig.model,
-          // 截断每条 message.content 到 2000 字符
           messages: messages.map((m) => ({
             role: m.role,
             content: m.content.length > 2000 ? m.content.slice(0, 2000) + '…' : m.content,
@@ -446,7 +408,6 @@ export class ServerBotRunner {
         return `当前模型: ${this.llmConfig.provider} / ${this.llmConfig.model}`;
 
       case '/reset':
-        // 异步清理，不阻塞命令回复
         void this.botService.clearConvHistory(this.botId, conversationId);
         return '当前会话历史已清除';
 
@@ -465,8 +426,6 @@ export class ServerBotRunner {
   /** Socket.IO 广播消息 */
   private broadcastMessage(message: any, conversationId: string): void {
     if (!this.io) return;
-    // 房间名与 ChatModule 一致：直接使用 conversationId（无前缀）
-    // 事件名与 ChatModule 一致：message:receive
     this.io.to(conversationId).emit('message:receive', message);
   }
 

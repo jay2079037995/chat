@@ -8,7 +8,7 @@ import type { BotRunMode, LLMConfig, MastraLLMConfig, Message } from '@chat/shar
 import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
 import { BotService } from './BotService';
 import { ServerBotManager } from './ServerBotManager';
-import { SkillDispatcher } from './SkillDispatcher';
+import { ToolDispatcher } from './ToolDispatcher';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 
 /**
@@ -27,8 +27,8 @@ export class BotModule implements ServerModule {
   /** 服务端 Bot 管理器 */
   serverBotManager: ServerBotManager | null = null;
 
-  /** Skill 分发器（供 index.ts 注入和 Socket handler 使用） */
-  readonly skillDispatcher = new SkillDispatcher();
+  /** 通用工具分发器（供 Socket handler 使用） */
+  readonly toolDispatcher = new ToolDispatcher();
 
   setIO(io: TypedIO) {
     this.io = io;
@@ -135,8 +135,7 @@ export class BotModule implements ServerModule {
             if (runMode === 'server') {
               const { status, error } = await botService.getBotStatus(b.id);
               const llmConfig = await botService.getServerBotConfigMasked(b.id);
-              const allowedSkills = await botService.getBotAllowedSkills(b.id);
-              return { ...base, status, statusError: error, llmConfig, allowedSkills };
+              return { ...base, status, statusError: error, llmConfig };
             }
 
             if (runMode === 'local') {
@@ -372,45 +371,6 @@ export class BotModule implements ServerModule {
       }
     });
 
-    // PUT /api/bot/:id/skills — 设置 Bot 允许的 Skill 列表（需 session + 所有权）
-    router.put('/:id/skills', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
-      try {
-        const botId = req.params.id as string;
-        const bot = await userRepo.findById(botId);
-        if (!bot || !bot.isBot) {
-          res.status(404).json({ error: '机器人不存在' });
-          return;
-        }
-        if (bot.botOwnerId !== req.userId) {
-          res.status(403).json({ error: '无权操作该机器人' });
-          return;
-        }
-
-        const runMode = await botService.getBotRunMode(botId);
-        if (runMode !== 'server') {
-          res.status(400).json({ error: '仅服务端模式机器人支持此操作' });
-          return;
-        }
-
-        const { skills } = req.body as { skills: string[] };
-        if (!Array.isArray(skills)) {
-          res.status(400).json({ error: 'skills 必须是字符串数组' });
-          return;
-        }
-
-        await botService.setBotAllowedSkills(botId, skills);
-
-        // 热更新运行中 Runner 的 allowedSkills
-        if (this.serverBotManager) {
-          this.serverBotManager.updateBotSkills(botId, skills);
-        }
-
-        res.json({ allowedSkills: skills });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
     // POST /api/bot/:id/start — 启动服务端 Bot（需 session + 所有权）
     router.post('/:id/start', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
@@ -525,11 +485,20 @@ export class BotModule implements ServerModule {
       res.json({ providers: MASTRA_PROVIDERS });
     });
 
-    // Socket handler：监听 skill:result + local bot 流式中继事件
-    const skillDispatcher = this.skillDispatcher;
+    // Socket handler：监听 tool:result + bot:skill-instructions + local bot 流式中继事件
+    const toolDispatcher = this.toolDispatcher;
+    const serverBotManager = this.serverBotManager;
     const socketHandler = (io: TypedIO, socket: import('../../core/types').TypedSocket) => {
-      socket.on('skill:result', (result) => {
-        skillDispatcher.handleResult(result);
+      // 通用工具执行结果（Electron → Server）
+      socket.on('tool:result', (result) => {
+        toolDispatcher.handleResult(result);
+      });
+
+      // Skill 指令推送（Electron → Server）
+      socket.on('bot:skill-instructions', (data: { botId: string; instructions: string }) => {
+        if (serverBotManager) {
+          serverBotManager.setSkillInstructions(data.botId, data.instructions);
+        }
       });
 
       // Local Bot 流式中继：Electron → Server → 会话 room

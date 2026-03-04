@@ -5,12 +5,13 @@
  * - 客户端模式：创建后获取 token，通过 agent-app 运行
  * - 服务端模式：创建时配置 LLM，服务器自动运行
  * - 本地模式：通过 Mastra 在 Electron 本地运行
+ *
+ * 每个 Bot 拥有独立的 Skill 列表，通过 BotSkillManager 管理。
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Drawer, Button, Input, List, Typography, Popconfirm,
   message as antMessage, Alert, Radio, Tag, Badge, Modal, Form, Space,
-  Checkbox, Divider, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, RobotOutlined,
@@ -19,24 +20,15 @@ import {
 } from '@ant-design/icons';
 import type { Bot, LLMConfig, MastraLLMConfig, BotRunMode } from '@chat/shared';
 import { botService } from '../../services/botService';
-import { syncSkillsToServer } from '../../services/skillBridge';
-import { useSocketStore } from '../../stores/useSocketStore';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
 import ServerBotConfigForm from './ServerBotConfigForm';
 import LocalBotConfigForm from './LocalBotConfigForm';
 import BotLogViewer from './BotLogViewer';
-import SkillMarketplace from './SkillMarketplace';
+import BotSkillManager from './BotSkillManager';
 import styles from './index.module.less';
 
 /** 检测是否在 Electron 环境 */
 const isElectron = !!(window as any).electronAPI?.isElectron;
-
-/** Skill 信息（从 /api/skill/list 获取） */
-interface SkillInfo {
-  name: string;
-  displayName: string;
-  description: string;
-}
 
 const { Text, Paragraph } = Typography;
 
@@ -44,84 +36,6 @@ interface BotManagerProps {
   visible: boolean;
   onClose: () => void;
 }
-
-/** Skill 选择器子组件 */
-const SkillSelector: React.FC<{
-  availableSkills: SkillInfo[];
-  selectedSkills: string[];
-  onChange: (skills: string[]) => void;
-  loading: boolean;
-  disabled: boolean;
-  form: ReturnType<typeof Form.useForm>[0];
-}> = ({ availableSkills, selectedSkills, onChange, loading, disabled, form }) => {
-  const model = Form.useWatch('model', form);
-  const isReasoner = model === 'deepseek-reasoner';
-  const isAll = selectedSkills.includes('*');
-
-  /** 所有 Skill 名称列表 */
-  const allSkillNames = availableSkills.map((s) => s.name);
-
-  /** 切换全选/自定义 */
-  const handleSelectAllChange = (checked: boolean) => {
-    if (checked) {
-      onChange(['*']);
-    } else {
-      // 取消全选时默认选中所有
-      onChange([...allSkillNames]);
-    }
-  };
-
-  /** 单个 Skill 变更 */
-  const handleSkillChange = (checkedValues: string[]) => {
-    if (checkedValues.length === allSkillNames.length) {
-      onChange(['*']);
-    } else {
-      onChange(checkedValues);
-    }
-  };
-
-  return (
-    <div style={{ marginTop: 8 }}>
-      <Divider style={{ margin: '8px 0' }} />
-      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-        Skill 配置
-      </Typography.Text>
-      {isReasoner ? (
-        <Alert
-          type="info"
-          message="该模型不支持 Skill 调用"
-          description="deepseek-reasoner 是推理模型，不支持 function calling，Skill 功能将被禁用。"
-          showIcon
-          style={{ marginBottom: 8 }}
-        />
-      ) : (
-        <>
-          <Checkbox
-            checked={isAll}
-            onChange={(e) => handleSelectAllChange(e.target.checked)}
-            disabled={disabled || loading}
-            style={{ marginBottom: 8 }}
-          >
-            全部启用
-          </Checkbox>
-          {!isAll && (
-            <Checkbox.Group
-              value={selectedSkills}
-              onChange={(values) => handleSkillChange(values as string[])}
-              style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 24 }}
-            >
-              {availableSkills.map((skill) => (
-                <Tooltip key={skill.name} title={skill.description} placement="right">
-                  <Checkbox value={skill.name}>{skill.displayName}</Checkbox>
-                </Tooltip>
-              ))}
-            </Checkbox.Group>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
 
 const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   const isMobile = useIsMobile();
@@ -138,16 +52,8 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   // 日志查看器
   const [logBot, setLogBot] = useState<Bot | null>(null);
 
-  // Skill 市场
-  const [marketplaceVisible, setMarketplaceVisible] = useState(false);
-
-  // Tool 列表刷新 key（Skill 安装/卸载后递增以触发 LocalBotConfigForm 重新加载）
-  const [toolRefreshKey, setToolRefreshKey] = useState(0);
-
-  // Skill 选择相关状态
-  const [availableSkills, setAvailableSkills] = useState<SkillInfo[]>([]);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [skillsLoading, setSkillsLoading] = useState(false);
+  // Skill 管理（per-bot）
+  const [skillBotId, setSkillBotId] = useState<string | null>(null);
 
   // LLM 配置表单
   const [createForm] = Form.useForm();
@@ -260,31 +166,9 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     }
   };
 
-  /** 加载可用 Skill 列表 */
-  const loadAvailableSkills = useCallback(async () => {
-    setSkillsLoading(true);
-    try {
-      const skills = await botService.getAvailableSkills();
-      setAvailableSkills(skills);
-    } catch {
-      // Skill 列表加载失败不影响配置编辑
-    } finally {
-      setSkillsLoading(false);
-    }
-  }, []);
-
   const handleEditConfig = (bot: Bot) => {
     setEditingBot(bot);
     editForm.resetFields();
-    // 初始化已选 Skill（['*'] 或空表示全选）
-    const allowed = bot.allowedSkills;
-    if (!allowed || allowed.length === 0 || allowed.includes('*')) {
-      setSelectedSkills(['*']);
-    } else {
-      setSelectedSkills(allowed);
-    }
-    // 加载可用 Skill 列表
-    void loadAvailableSkills();
   };
 
   const handleSaveConfig = async () => {
@@ -307,13 +191,10 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           }
         }
       } else {
-        // 服务端模式：更新 LLM 配置 + Skill
+        // 服务端模式：更新 LLM 配置
         const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
-        const isReasoner = values.model === 'deepseek-reasoner';
-        const skillsToSave = isReasoner ? ['*'] : selectedSkills;
-        const { allowedSkills: savedSkills } = await botService.setBotSkills(editingBot.id, skillsToSave);
         setBots((prev) => prev.map((b) =>
-          b.id === editingBot.id ? { ...b, llmConfig: updated, allowedSkills: savedSkills } : b,
+          b.id === editingBot.id ? { ...b, llmConfig: updated } : b,
         ));
       }
 
@@ -334,6 +215,20 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
 
   const renderBotActions = (bot: Bot) => {
     const actions = [];
+
+    // Skill 管理（所有模式，仅 Electron）
+    if (isElectron && (bot.runMode === 'server' || bot.runMode === 'local')) {
+      actions.push(
+        <Button
+          key="skills"
+          type="text"
+          icon={<AppstoreOutlined />}
+          size="small"
+          onClick={() => setSkillBotId(bot.id)}
+          title="管理 Skill"
+        />,
+      );
+    }
 
     if (bot.runMode === 'server') {
       actions.push(
@@ -428,15 +323,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       open={visible}
       onClose={onClose}
       width={isMobile ? '100%' : 480}
-      extra={
-        <Button
-          icon={<AppstoreOutlined />}
-          size="small"
-          onClick={() => setMarketplaceVisible(true)}
-        >
-          Skill 市场
-        </Button>
-      }
     >
       {/* 创建区域 */}
       <div className={styles.createArea}>
@@ -471,7 +357,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       {/* 本地模式 Mastra 配置 */}
       {runMode === 'local' && (
         <div className={styles.configArea}>
-          <LocalBotConfigForm form={createForm} onOpenMarketplace={() => setMarketplaceVisible(true)} refreshKey={toolRefreshKey} />
+          <LocalBotConfigForm form={createForm} />
         </div>
       )}
 
@@ -551,25 +437,13 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           <LocalBotConfigForm
             form={editForm}
             initialValues={editingBot.mastraConfig}
-            onOpenMarketplace={() => setMarketplaceVisible(true)}
-            refreshKey={toolRefreshKey}
           />
         )}
         {editingBot && editingBot.runMode === 'server' && (
-          <>
-            <ServerBotConfigForm
-              form={editForm}
-              initialValues={editingBot.llmConfig}
-            />
-            <SkillSelector
-              availableSkills={availableSkills}
-              selectedSkills={selectedSkills}
-              onChange={setSelectedSkills}
-              loading={skillsLoading}
-              disabled={editForm.getFieldValue('model') === 'deepseek-reasoner'}
-              form={editForm}
-            />
-          </>
+          <ServerBotConfigForm
+            form={editForm}
+            initialValues={editingBot.llmConfig}
+          />
         )}
       </Modal>
 
@@ -581,17 +455,11 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         botName={logBot?.username || ''}
       />
 
-      {/* Skill 市场 */}
-      <SkillMarketplace
-        visible={marketplaceVisible}
-        onClose={() => setMarketplaceVisible(false)}
-        onSkillChanged={() => {
-          const { socket } = useSocketStore.getState();
-          if (socket) syncSkillsToServer(socket);
-          setTimeout(() => void loadAvailableSkills(), 500);
-          // 刷新本地 Bot 的 Tool 列表
-          setTimeout(() => setToolRefreshKey((k) => k + 1), 500);
-        }}
+      {/* Per-Bot Skill 管理 */}
+      <BotSkillManager
+        visible={!!skillBotId}
+        onClose={() => setSkillBotId(null)}
+        botId={skillBotId || ''}
       />
     </Drawer>
   );

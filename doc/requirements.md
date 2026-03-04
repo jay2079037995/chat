@@ -292,74 +292,41 @@ chat/
 - 创建后自动运行，列表可编辑配置、暂停/恢复
 - 服务器启动时自动恢复运行中的 Bot
 
-### 4.8 远程 Skill 系统（v1.11.0）
+### 4.8 Skill 系统（v1.19.0 重构后）
 
 #### 4.8.1 概述
-- 服务端 Bot 通过标准化 Skill 协议远程控制用户的 Electron 桌面端
-- Bot 的 LLM 使用 function calling 决策调用哪个 Skill
-- 指令通过 Socket.IO 下发到 Electron 客户端本地执行
-- 执行能力集中在 Electron 端（完整 Node.js 环境 + 系统 API）
+- 采用 Claude Agent Skills 标准（SKILL.md）
+- Skill = AI 指令文件 + 通用工具（bash_exec/read_file/write_file/list_files）
+- 每个 Bot（本地 + 服务端）拥有独立的 Skill 列表，互不影响
+- 无全局 Skill 市场，无内置 Skill
 
-#### 4.8.2 Skill 标准协议
-- 统一的 Skill 接口定义（name/description/parameters/platform/permissions）
-- Skill 参数使用 JSON Schema 描述，与 LLM function calling 天然匹配
-- 支持异步执行和超时控制
+#### 4.8.2 Skill 格式（SKILL.md 标准）
+- YAML frontmatter：name、description、version、author、tags
+- Markdown 正文：AI 读取的指令内容
+- 可选附带 scripts/、references/、assets/ 子目录
+- AI 读取指令后通过通用工具执行任务
 
-#### 4.8.3 内置 Skill（Mac 平台）
-- 备忘录（Notes.app）：列出/搜索/读取/创建/更新/删除笔记
-- 日历（Calendar.app）：查看/创建/删除日程
-- 提醒事项（Reminders.app）：增删改查
-- 文件操作（Finder）：搜索/打开/移动/复制/压缩
-- 相册（Photos.app）：列出相册/搜索/导出照片
-- 剪贴板：读写剪贴板内容
-- Shell 命令：执行任意终端命令
-- 浏览器：打开 URL、获取当前标签页信息
-- 系统信息：CPU/内存/磁盘/网络状态
-- 系统通知：发送桌面通知
+#### 4.8.3 Skill 来源
+- 本地目录安装：通过文件选择对话框选择 Skill 目录，复制到 per-bot 存储
+- 在线搜索安装：通过 claude-plugins.dev API 搜索并安装 Skill
+- 每个 Bot 独立存储副本：`userData/bots/{botId}/skills/{skill-name}/`
 
-#### 4.8.4 安全机制
-- 权限分级：read（自动执行）、write（单次确认）、execute（单次确认）、dangerous（逐次确认 + 命令预览）
-- Skill 白名单：用户可配置允许/禁止的 Skill
-- 审计日志：所有 Skill 执行记录可查
-- Bot 权限绑定：每个 Bot 可配置允许使用的 Skill 子集
+#### 4.8.4 通用工具
+- bash_exec：在 bot workspace 沙箱中执行 Shell 命令
+- read_file：读取 workspace 或 skill 目录内的文件
+- write_file：写入 workspace 内的文件
+- list_files：列出 workspace 或 skill 目录内的文件
+- 安全机制：路径必须在 workspace 或 skill 目录内
 
-### 4.9 插件化 Skill + Bot 信任机制（v1.12.0）
+#### 4.8.5 执行模式
+- 本地 Bot（Mastra）：Skill 指令注入系统提示词，通用工具作为 Mastra Tool 本地执行
+- 服务端 Bot：Skill 指令注入系统提示词，通用工具通过 Socket.IO 中继到 Electron 执行
 
-#### 4.9.1 可装卸 Skill
-- Skill 系统从内置硬编码升级为可插拔架构
-- 内置 Skill 可单独启用/禁用（不可卸载），启用状态 Redis 持久化
-- 支持安装/卸载自定义 Skill 包（manifest.json + handler.js）
-- 自定义 Skill 包存放在 Electron 端 userData/skills/ 目录
-- Electron 连接时通过 skill:sync 事件将自定义 Skill 元数据同步到服务端
-- 服务端 SkillRegistry 支持动态注册/注销，generateTools() 自动过滤已禁用 Skill
+### 4.9 DeepSeek 推理模型（v1.13.0）
 
-#### 4.9.2 自定义 Skill 包格式
-- 每个包是一个目录，包含 manifest.json 和 handler.js
-- manifest.json：SkillDefinition 格式（name/displayName/description/platform/permission/actions）
-- handler.js：CommonJS 模块，导出以 functionName 为键的异步函数
-- 安装：通过 Electron 文件选择对话框选择包目录，自动复制到 userData/skills/
-- 卸载：删除 userData/skills/ 下对应目录，服务端自动注销
-
-#### 4.9.3 Bot 级信任机制
-- 每个 Bot 可标记为「受信任」或「不受信任」
-- 受信任 Bot 的所有 Skill 调用（包括 dangerous 级别）自动放行，不弹确认框
-- 不受信任 Bot 保持 v1.11.0 原有权限行为
-- 信任状态通过 electron-store 持久化，重启不丢失
-- 通过 IPC 提供信任管理 API（列出/设置/移除）
-
-### 4.10 DeepSeek 推理模型 + Bot Skill 定制（v1.13.0）
-
-#### 4.10.1 deepseek-reasoner 模型接入
+#### 4.9.1 deepseek-reasoner 模型接入
 - 在 DeepSeek provider 下新增 deepseek-reasoner（R1 推理模型）
 - deepseek-reasoner 的 API 差异：不支持 function calling、temperature 参数无效、响应含 reasoning_content 思维链字段
 - 多轮对话不传 reasoning_content（否则 API 返回 400 错误）
 - 回复展示：思考过程和最终回答全部展示，用分隔线区分
 - 推理模型自动跳过 Skill/tools 调用
-
-#### 4.10.2 Bot Skill 定制
-- 用户可通过编辑 UI 为每个 server bot 选择可用的 Skill 子集
-- 默认全选所有 Skill（['*'] 表示全部允许）
-- Bot 运行时仅向 LLM 传入选中的 Skill 作为 tools
-- 使用 deepseek-reasoner 模型时 Skill 选择区域自动禁用并提示
-- Bot Skill 配置通过 Redis SET 持久化（`bot_skills:{botId}`）
-- 支持运行中热更新 Skill 配置

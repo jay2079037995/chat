@@ -52,18 +52,6 @@ export const botService = {
     return res.data.providers;
   },
 
-  /** 获取所有可用 Skill 列表 */
-  async getAvailableSkills(): Promise<Array<{ name: string; displayName: string; description: string }>> {
-    const res = await api.get<{ skills: Array<{ name: string; displayName: string; description: string }> }>('/skill/list');
-    return res.data.skills;
-  },
-
-  /** 设置 Bot 允许的 Skill 列表 */
-  async setBotSkills(botId: string, skills: string[]): Promise<{ allowedSkills: string[] }> {
-    const res = await api.put<{ allowedSkills: string[] }>(`/bot/${botId}/skills`, { skills });
-    return res.data;
-  },
-
   /** 获取 Bot LLM 调用日志 */
   async getBotLogs(botId: string, offset: number = 0, limit: number = 20): Promise<{ logs: LLMCallLog[]; total: number }> {
     const res = await api.get<{ logs: LLMCallLog[]; total: number }>(`/bot/${botId}/logs`, {

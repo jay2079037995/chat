@@ -5,7 +5,7 @@
  */
 import type { Message, Conversation, MessageType } from './message';
 import type { Group } from './group';
-import type { SkillExecRequest, SkillExecResult, SkillSyncRequest, SkillSyncResult } from './skill';
+import type { GenericToolExecRequest, GenericToolExecResult } from './claude-skill';
 
 /** 服务端 → 客户端 事件 */
 export interface ServerToClientEvents {
@@ -45,8 +45,10 @@ export interface ServerToClientEvents {
   'message:pinned': (data: { conversationId: string; messageId: string; pinned: boolean; pinnedBy: string }) => void;
   /** 某条消息中 @提及 了当前用户 */
   'mention:notify': (data: { message: Message; conversationId: string; senderName: string }) => void;
-  /** 远程 Skill 执行请求（Bot → 用户 Electron 客户端） */
-  'skill:exec': (request: SkillExecRequest) => void;
+  /** 通用工具执行请求（服务端 Bot → 用户 Electron 客户端） */
+  'tool:exec': (request: GenericToolExecRequest) => void;
+  /** 请求 Bot 的 Skill 指令内容（服务端 → Electron 客户端） */
+  'bot:request-skills': (data: { botId: string }) => void;
   /** 本地 Bot 收到消息通知（服务端 → Bot 拥有者客户端） */
   'localbot:message': (data: { botId: string; conversationId: string; message: Message }) => void;
   /** 本地 Bot 流式回复中继（服务端 → 会话中的客户端） */
@@ -73,10 +75,10 @@ export interface ClientToServerEvents {
   'message:pin': (data: { messageId: string; conversationId: string }, callback: (result: { success: boolean; error?: string; pinned?: boolean }) => void) => void;
   /** 加入会话房间（订阅该会话的实时消息） */
   'conversation:join': (conversationId: string) => void;
-  /** 远程 Skill 执行结果（Electron 客户端 → 服务端） */
-  'skill:result': (result: SkillExecResult) => void;
-  /** 同步自定义 Skill 元数据（Electron → 服务端） */
-  'skill:sync': (data: SkillSyncRequest, callback: (result: SkillSyncResult) => void) => void;
+  /** 通用工具执行结果（Electron 客户端 → 服务端） */
+  'tool:result': (result: GenericToolExecResult) => void;
+  /** 推送 Bot 的 Skill 指令内容（Electron 客户端 → 服务端） */
+  'bot:skill-instructions': (data: { botId: string; instructions: string }) => void;
   /** 本地 Bot 流式回复片段（Electron 客户端 → 服务端） */
   'localbot:stream': (data: { botId: string; conversationId: string; messageId: string; chunk: string }) => void;
   /** 本地 Bot 流式回复完成（Electron 客户端 → 服务端） */
