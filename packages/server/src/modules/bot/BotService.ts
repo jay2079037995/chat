@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import Redis from 'ioredis';
-import type { Message, BotUpdate, LLMConfig, BotRunMode, BotStatus, LLMCallLog } from '@chat/shared';
+import type { Message, BotUpdate, LLMConfig, MastraLLMConfig, BotRunMode, BotStatus, LLMCallLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
@@ -13,7 +13,9 @@ const BOT_UPDATE_SEQ_KEY = (botId: string) => `bot_update_seq:${botId}`;
 const BOT_CONFIG_KEY = (botId: string) => `bot_config:${botId}`;
 const BOT_CONV_HISTORY_KEY = (botId: string, convId: string) => `bot_conv_history:${botId}:${convId}`;
 const BOT_LLM_LOGS_KEY = (botId: string) => `bot_llm_logs:${botId}`;
+const BOT_MASTRA_CONFIG_KEY = (botId: string) => `bot_mastra_config:${botId}`;
 const SERVER_BOTS_KEY = 'server_bots';
+const LOCAL_BOTS_KEY = 'local_bots';
 
 /** 每个 Bot 最多保留的日志条数 */
 const MAX_LLM_LOGS = 100;
@@ -48,6 +50,7 @@ export class BotService {
     username: string,
     runMode: BotRunMode = 'client',
     llmConfig?: LLMConfig,
+    mastraConfig?: MastraLLMConfig,
   ) {
     // 机器人用户名必须以 bot 结尾
     if (!username.toLowerCase().endsWith('bot')) {
@@ -57,6 +60,11 @@ export class BotService {
     // 服务端模式必须提供 LLM 配置
     if (runMode === 'server' && !llmConfig) {
       throw new Error('SERVER_MODE_REQUIRES_LLM_CONFIG');
+    }
+
+    // 本地模式必须提供 Mastra 配置
+    if (runMode === 'local' && !mastraConfig) {
+      throw new Error('LOCAL_MODE_REQUIRES_MASTRA_CONFIG');
     }
 
     // 检查用户名是否已存在
@@ -78,6 +86,11 @@ export class BotService {
       await this.setBotStatus(id, 'stopped');
     }
 
+    if (runMode === 'local' && mastraConfig) {
+      await this.saveMastraConfig(id, mastraConfig);
+      await redis.sadd(LOCAL_BOTS_KEY, id);
+    }
+
     return { ...user, token, runMode };
   }
 
@@ -92,7 +105,7 @@ export class BotService {
     if (!bot || !bot.isBot) throw new Error('BOT_NOT_FOUND');
     if (bot.botOwnerId !== requesterId) throw new Error('FORBIDDEN');
 
-    // 清理服务端模式相关数据
+    // 清理模式相关数据
     const redis = getRedisClient();
     const runMode = await this.getBotRunMode(botId);
     if (runMode === 'server') {
@@ -107,6 +120,9 @@ export class BotService {
       await redis.del(BOT_LLM_LOGS_KEY(botId));
       // 清理 Skill 权限
       await redis.del(`bot_skills:${botId}`);
+    } else if (runMode === 'local') {
+      await redis.del(BOT_MASTRA_CONFIG_KEY(botId));
+      await redis.srem(LOCAL_BOTS_KEY, botId);
     }
 
     await this.userRepo.deleteBot(botId);
@@ -406,6 +422,73 @@ export class BotService {
   async clearLLMCallLogs(botId: string): Promise<void> {
     const redis = getRedisClient();
     await redis.del(BOT_LLM_LOGS_KEY(botId));
+  }
+
+  // ========================
+  // 本地 Bot Mastra 配置
+  // ========================
+
+  /** 保存本地 Bot Mastra 配置（apiKey 加密存储） */
+  async saveMastraConfig(botId: string, mastraConfig: MastraLLMConfig): Promise<void> {
+    const redis = getRedisClient();
+    const encrypted = encryptApiKey(mastraConfig.apiKey);
+    await redis.hset(BOT_MASTRA_CONFIG_KEY(botId), {
+      provider: mastraConfig.provider,
+      encryptedApiKey: encrypted,
+      model: mastraConfig.model,
+      systemPrompt: mastraConfig.systemPrompt,
+      contextLength: String(mastraConfig.contextLength),
+      enabledTools: JSON.stringify(mastraConfig.enabledTools || ['*']),
+    });
+  }
+
+  /** 获取本地 Bot Mastra 配置（解密 apiKey） */
+  async getMastraConfig(botId: string): Promise<MastraLLMConfig | null> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(BOT_MASTRA_CONFIG_KEY(botId));
+    if (!data || !data.provider) return null;
+
+    return {
+      provider: data.provider as MastraLLMConfig['provider'],
+      apiKey: decryptApiKey(data.encryptedApiKey),
+      model: data.model,
+      systemPrompt: data.systemPrompt,
+      contextLength: parseInt(data.contextLength, 10) || 10,
+      enabledTools: JSON.parse(data.enabledTools || '["*"]'),
+    };
+  }
+
+  /** 获取脱敏的 Mastra 配置（给前端展示） */
+  async getMastraConfigMasked(botId: string): Promise<(Omit<MastraLLMConfig, 'apiKey'> & { apiKey: string }) | null> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(BOT_MASTRA_CONFIG_KEY(botId));
+    if (!data || !data.provider) return null;
+
+    const realKey = decryptApiKey(data.encryptedApiKey);
+    return {
+      provider: data.provider as MastraLLMConfig['provider'],
+      apiKey: maskApiKey(realKey),
+      model: data.model,
+      systemPrompt: data.systemPrompt,
+      contextLength: parseInt(data.contextLength, 10) || 10,
+      enabledTools: JSON.parse(data.enabledTools || '["*"]'),
+    };
+  }
+
+  /** 获取某用户拥有的所有本地 Bot 配置（供 Electron 启动时批量拉取） */
+  async getLocalBotConfigs(ownerId: string): Promise<Array<{ botId: string; config: MastraLLMConfig }>> {
+    const bots = await this.userRepo.getBotsByOwner(ownerId);
+    const results: Array<{ botId: string; config: MastraLLMConfig }> = [];
+    for (const bot of bots) {
+      const runMode = await this.getBotRunMode(bot.id);
+      if (runMode === 'local') {
+        const config = await this.getMastraConfig(bot.id);
+        if (config) {
+          results.push({ botId: bot.id, config });
+        }
+      }
+    }
+    return results;
   }
 
   /** 关闭专用 Redis 连接（用于测试清理和优雅关机） */

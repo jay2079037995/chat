@@ -52,6 +52,8 @@ interface ChatState {
   tagFilter: string;
   /** 是否显示归档列表 */
   showArchived: boolean;
+  /** 流式消息状态：convId → { messageId, content, botId } */
+  streamingMessages: Record<string, { messageId: string; content: string; botId: string }>;
 
   /** 加载用户的会话列表 */
   loadConversations: () => Promise<void>;
@@ -105,6 +107,8 @@ interface ChatState {
   setTagFilter: (tag: string) => void;
   /** 切换归档列表显示 */
   setShowArchived: (show: boolean) => void;
+  /** 处理流式消息 chunk */
+  handleStreamChunk: (data: { messageId: string; botId: string; conversationId: string; chunk: string; done: boolean }) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -117,6 +121,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loading: false,
   hasMore: {},
   loadingMore: false,
+  streamingMessages: {},
   replyingTo: null,
   lastReadMap: {},
   typingUsers: {},
@@ -539,4 +544,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setTagFilter: (tag: string) => set({ tagFilter: tag }),
 
   setShowArchived: (show: boolean) => set({ showArchived: show }),
+
+  handleStreamChunk: (data) => {
+    const { messageId, botId, conversationId, chunk, done } = data;
+    if (done) {
+      // 流结束，清除 streaming 状态
+      set((state) => {
+        const updated = { ...state.streamingMessages };
+        delete updated[conversationId];
+        return { streamingMessages: updated };
+      });
+    } else {
+      // 累积 chunk
+      set((state) => {
+        const existing = state.streamingMessages[conversationId];
+        const newContent = (existing?.content || '') + chunk;
+        return {
+          streamingMessages: {
+            ...state.streamingMessages,
+            [conversationId]: { messageId, content: newContent, botId },
+          },
+        };
+      });
+    }
+  },
 }));

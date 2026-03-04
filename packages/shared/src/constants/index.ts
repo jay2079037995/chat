@@ -1,7 +1,7 @@
 /**
  * 全局常量 —— 前后端共享的业务限制和配置
  */
-import type { LLMProvider, ProviderInfo } from '../types/bot';
+import type { LLMProvider, MastraProvider, ProviderInfo } from '../types/bot';
 
 /** 所有 LLM Provider 配置 */
 export const LLM_PROVIDERS: Record<LLMProvider, ProviderInfo> = {
@@ -29,6 +29,15 @@ export const LLM_PROVIDERS: Record<LLMProvider, ProviderInfo> = {
     baseUrl: '',
     models: [],
   },
+};
+
+/** Mastra AI SDK Provider 配置（本地 Bot 使用） */
+export const MASTRA_PROVIDERS: Record<MastraProvider, { displayName: string; models: string[] }> = {
+  openai: { displayName: 'OpenAI', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'] },
+  anthropic: { displayName: 'Anthropic', models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'] },
+  google: { displayName: 'Google', models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite'] },
+  deepseek: { displayName: 'DeepSeek', models: ['deepseek-chat', 'deepseek-reasoner'] },
+  qwen: { displayName: '通义千问', models: ['qwen-plus', 'qwen-turbo'] },
 };
 
 /** 单条消息最大字符数 */

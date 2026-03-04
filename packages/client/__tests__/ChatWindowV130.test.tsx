@@ -42,6 +42,7 @@ jest.mock('../src/modules/chat/stores/useChatStore', () => ({
       participantAvatars: {},
       pinnedMessages: [],
       loadPinnedMessages: jest.fn(),
+      streamingMessages: {},
     }),
 }));
 

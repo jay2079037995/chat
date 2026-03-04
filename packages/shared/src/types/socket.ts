@@ -3,7 +3,7 @@
  *
  * 前后端共享，确保 WebSocket 事件的类型安全。
  */
-import type { Message, Conversation } from './message';
+import type { Message, Conversation, MessageType } from './message';
 import type { Group } from './group';
 import type { SkillExecRequest, SkillExecResult, SkillSyncRequest, SkillSyncResult } from './skill';
 
@@ -47,6 +47,10 @@ export interface ServerToClientEvents {
   'mention:notify': (data: { message: Message; conversationId: string; senderName: string }) => void;
   /** 远程 Skill 执行请求（Bot → 用户 Electron 客户端） */
   'skill:exec': (request: SkillExecRequest) => void;
+  /** 本地 Bot 收到消息通知（服务端 → Bot 拥有者客户端） */
+  'localbot:message': (data: { botId: string; conversationId: string; message: Message }) => void;
+  /** 本地 Bot 流式回复中继（服务端 → 会话中的客户端） */
+  'message:stream': (data: { messageId: string; botId: string; conversationId: string; chunk: string; done: boolean }) => void;
 }
 
 /** 客户端 → 服务端 事件 */
@@ -73,4 +77,10 @@ export interface ClientToServerEvents {
   'skill:result': (result: SkillExecResult) => void;
   /** 同步自定义 Skill 元数据（Electron → 服务端） */
   'skill:sync': (data: SkillSyncRequest, callback: (result: SkillSyncResult) => void) => void;
+  /** 本地 Bot 流式回复片段（Electron 客户端 → 服务端） */
+  'localbot:stream': (data: { botId: string; conversationId: string; messageId: string; chunk: string }) => void;
+  /** 本地 Bot 流式回复完成（Electron 客户端 → 服务端） */
+  'localbot:stream:end': (data: { botId: string; conversationId: string; messageId: string; fullContent: string; messageType: MessageType }) => void;
+  /** 本地 Bot 回复错误（Electron 客户端 → 服务端） */
+  'localbot:error': (data: { botId: string; conversationId: string; error: string }) => void;
 }

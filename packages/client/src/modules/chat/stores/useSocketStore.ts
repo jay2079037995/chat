@@ -265,6 +265,37 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       initSkillBridge(socket);
     });
 
+    // Local Bot 流式消息
+    socket.on('message:stream', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        useChatStore.getState().handleStreamChunk(data);
+      });
+    });
+
+    // Local Bot 桥接：监听 localbot:message → Electron IPC → 回传流式数据
+    socket.on('localbot:message', (data) => {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.handleLocalBotMessage) {
+        electronAPI.handleLocalBotMessage(data.botId, data.conversationId, data.message.content).catch((err: Error) => {
+          console.error('[LocalBot] IPC handleMessage failed:', err);
+        });
+      }
+    });
+
+    // Electron IPC → Socket.IO 回传（流式事件中继）
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.onLocalBotEmit) {
+      electronAPI.onLocalBotEmit((event: string, data: any) => {
+        if (event === 'localbot:stream') {
+          socket.emit('localbot:stream', data);
+        } else if (event === 'localbot:stream:end') {
+          socket.emit('localbot:stream:end', data);
+        } else if (event === 'localbot:error') {
+          socket.emit('localbot:error', data);
+        }
+      });
+    }
+
     // 群组事件：群组已解散 → 移除会话（逻辑同 group:kicked）
     socket.on('group:dissolved', (data) => {
       import('./useChatStore').then(({ useChatStore }) => {

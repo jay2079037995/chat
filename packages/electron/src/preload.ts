@@ -67,4 +67,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 移除 Bot 信任配置 */
   removeBotTrust: (botId: string): Promise<void> =>
     ipcRenderer.invoke('bot-trust:remove', botId),
+  // --- Local Bot (Mastra) IPC ---
+  /** 初始化本地 Bot */
+  initLocalBot: (botId: string, config: unknown): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('localbot:init', botId, config),
+  /** 处理本地 Bot 消息 */
+  handleLocalBotMessage: (botId: string, conversationId: string, content: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('localbot:handle-message', botId, conversationId, content),
+  /** 移除本地 Bot */
+  removeLocalBot: (botId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('localbot:remove', botId),
+  /** 列出可用 Mastra Tool */
+  listMastraTools: (): Promise<Array<{ id: string; name: string; description: string }>> =>
+    ipcRenderer.invoke('localbot:list-tools'),
+  /** 获取活跃 Bot 列表 */
+  getActiveLocalBots: (): Promise<string[]> =>
+    ipcRenderer.invoke('localbot:active-bots'),
+  /** 监听本地 Bot 流式事件（从主进程转发） */
+  onLocalBotEmit: (callback: (event: string, data: unknown) => void): void => {
+    ipcRenderer.on('localbot:emit', (_ipcEvent, event: string, data: unknown) => callback(event, data));
+  },
 });

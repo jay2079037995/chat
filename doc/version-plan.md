@@ -790,3 +790,91 @@ deepseek-reasoner 与 deepseek-chat 的 API 差异：不支持 function calling 
 | `packages/electron/src/main.ts` | 市场 IPC 处理器 |
 | `packages/electron/src/preload.ts` | 暴露市场 API |
 | `packages/client/src/modules/chat/components/BotManager/index.tsx` | Skill 选择 UI |
+
+---
+
+## v1.15.0 - 本地 Bot（Mastra AI 框架集成）
+
+**目标**：新增 `local` 运行模式，将 Mastra AI 框架嵌入 Electron 主进程，支持本地运行智能 Bot，具备流式输出和 Mastra 原生 Tool 系统。
+
+### 核心设计
+
+- 模型体系：完全使用 Mastra / Vercel AI SDK（@ai-sdk/openai、@ai-sdk/anthropic、@ai-sdk/google 等）
+- API Key：同步到服务器（加密存 Redis，复用现有加密机制）
+- Tool 系统：完全支持 Mastra `createTool()`，将现有 Skill handlers 桥接为 Mastra Tool
+- 输出方式：流式（`agent.stream()`），打字机效果
+
+### 数据流
+
+```
+用户发消息 → Server Socket.IO → 保存 DB
+  → 检测 local bot → emit 'localbot:message' 到 bot owner 的 user room
+  → Electron renderer → IPC → main process LocalBotManager
+  → Mastra Agent.stream() → 流式 chunk → IPC → renderer → Socket.IO
+  → Server 中继 'message:stream' 到会话 room → Client 打字机渲染
+  → 流结束 → Server 保存完整消息到 DB
+```
+
+### 功能清单
+
+#### 共享层
+- [ ] `BotRunMode` 增加 `'local'`
+- [ ] 新增 `MastraProvider` 类型（openai / anthropic / google / deepseek / qwen）
+- [ ] 新增 `MastraLLMConfig` 接口（provider, apiKey, model, systemPrompt, contextLength, enabledTools）
+- [ ] 新增 Socket.IO 事件（localbot:message, message:stream, localbot:stream, localbot:stream:end, localbot:error）
+- [ ] 新增 `MASTRA_PROVIDERS` 常量（各厂商 displayName + models 列表）
+
+#### 服务端
+- [ ] BotService 新增 Mastra 配置 CRUD 方法（saveMastraConfig, getMastraConfig, getMastraConfigMasked）
+- [ ] BotService 新增 `getLocalBotConfigs(ownerId)` 批量获取
+- [ ] `deleteBot` 清理 `bot_mastra_config:` key
+- [ ] 创建路由支持 `runMode='local'` + `mastraConfig`
+- [ ] 新增 `GET /:id/config` 返回完整解密配置
+- [ ] `PUT /:id/config` 扩展支持 mastraConfig
+- [ ] Socket handler：`localbot:stream` 中继、`localbot:stream:end` 保存、`localbot:error` 错误消息
+- [ ] ChatModule 消息路由：local bot 通过 Socket.IO 通知 Electron 而非 Redis enqueue
+
+#### Electron 端
+- [ ] **新建** `LocalBotManager` — Mastra Agent 生命周期管理
+- [ ] **新建** `MastraToolBridge` — 现有 Skill handlers → Mastra createTool() 桥接
+- [ ] main.ts 新增 IPC handlers（init, handle-message, remove, list-tools）
+- [ ] preload.ts 暴露 localbot API
+- [ ] 新增依赖：@mastra/core, @ai-sdk/openai, @ai-sdk/anthropic, @ai-sdk/google, zod
+
+#### 前端
+- [ ] BotManager 创建表单增加"本地运行"选项（非 Electron 禁用）
+- [ ] **新建** `LocalBotConfigForm` — Mastra Provider/Model/Key/Prompt/Tools 配置表单
+- [ ] **新建** `StreamingMessage` 组件 — 流式消息打字机气泡
+- [ ] useChatStore 新增 streamingMessages 状态 + handleStreamChunk
+- [ ] useSocketStore 监听 message:stream 事件
+- [ ] ChatWindow 渲染 StreamingMessage
+- [ ] initLocalBotBridge — Socket.IO ↔ Electron IPC 桥接
+
+### 测试
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/bot.ts` | 增加 local 模式、MastraProvider、MastraLLMConfig |
+| `packages/shared/src/types/socket.ts` | 增加 localbot/streaming Socket 事件 |
+| `packages/shared/src/constants/index.ts` | 增加 MASTRA_PROVIDERS |
+| `packages/server/src/modules/bot/BotService.ts` | Mastra 配置 CRUD、deleteBot 清理 |
+| `packages/server/src/modules/bot/index.ts` | local 模式路由、流式中继 Socket |
+| `packages/server/src/modules/chat/index.ts` | local bot 消息通知 |
+| `packages/electron/src/localbot/LocalBotManager.ts` | **新建** Mastra Agent 管理 |
+| `packages/electron/src/localbot/MastraToolBridge.ts` | **新建** Skill → Tool 桥接 |
+| `packages/electron/src/main.ts` | LocalBotManager 初始化、IPC |
+| `packages/electron/src/preload.ts` | 暴露 localbot API |
+| `packages/electron/package.json` | 新增 @mastra/core, @ai-sdk/* |
+| `packages/client/.../BotManager/index.tsx` | 增加 local 模式 UI |
+| `packages/client/.../BotManager/LocalBotConfigForm.tsx` | **新建** Mastra 配置表单 |
+| `packages/client/.../StreamingMessage/index.tsx` | **新建** 打字机组件 |
+| `packages/client/.../StreamingMessage/index.module.less` | **新建** 样式 |
+| `packages/client/.../services/botService.ts` | 新增 local bot API |
+| `packages/client/.../stores/useChatStore.ts` | streaming 状态 |
+| `packages/client/.../stores/useSocketStore.ts` | message:stream 监听 |
+| `packages/client/.../ChatWindow/index.tsx` | 渲染 StreamingMessage |
+| `packages/client/.../services/skillBridge.ts` | initLocalBotBridge |

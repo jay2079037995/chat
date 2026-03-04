@@ -1,7 +1,8 @@
 /**
  * 机器人服务 —— 封装所有与 /api/bot 相关的 HTTP 请求
  */
-import type { Bot, BotRunMode, LLMConfig, ProviderInfo, LLMProvider, LLMCallLog } from '@chat/shared';
+import type { Bot, BotRunMode, LLMConfig, MastraLLMConfig, ProviderInfo, LLMProvider, LLMCallLog } from '@chat/shared';
+import type { MastraProvider } from '@chat/shared';
 import { api } from '../../../services/api';
 
 export const botService = {
@@ -10,9 +11,10 @@ export const botService = {
     username: string,
     runMode: BotRunMode = 'client',
     llmConfig?: LLMConfig,
+    mastraConfig?: MastraLLMConfig,
   ): Promise<{ bot: Bot; token?: string }> {
     const res = await api.post<{ bot: Bot; token?: string }>('/bot/create', {
-      username, runMode, llmConfig,
+      username, runMode, llmConfig, mastraConfig,
     });
     return res.data;
   },
@@ -73,5 +75,23 @@ export const botService = {
   /** 清空 Bot LLM 调用日志 */
   async clearBotLogs(botId: string): Promise<void> {
     await api.delete(`/bot/${botId}/logs`);
+  },
+
+  /** 获取本地 Bot 完整配置（含解密 API Key） */
+  async getLocalBotConfig(id: string): Promise<MastraLLMConfig | null> {
+    const res = await api.get<{ mastraConfig: MastraLLMConfig | null }>(`/bot/${id}/config`);
+    return res.data.mastraConfig;
+  },
+
+  /** 更新本地 Bot Mastra 配置 */
+  async updateLocalBotConfig(id: string, config: MastraLLMConfig): Promise<{ mastraConfig: MastraLLMConfig }> {
+    const res = await api.put<{ mastraConfig: MastraLLMConfig }>(`/bot/${id}/config`, config);
+    return res.data;
+  },
+
+  /** 获取可用 Mastra providers */
+  async getMastraProviders(): Promise<Record<MastraProvider, ProviderInfo>> {
+    const res = await api.get<{ providers: Record<MastraProvider, ProviderInfo> }>('/bot/mastra-providers');
+    return res.data.providers;
   },
 };

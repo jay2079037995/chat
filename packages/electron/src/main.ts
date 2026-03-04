@@ -13,6 +13,8 @@ import { isDebugEnabled } from './debugFileWatcher';
 import { SkillRuntime } from './skills/SkillRuntime';
 import { BotTrustStore } from './skills/BotTrustStore';
 import { SkillMarketplace } from './skills/SkillMarketplace';
+import { LocalBotManager } from './localbot/LocalBotManager';
+import { listMastraToolInfo } from './localbot/MastraToolBridge';
 
 // 防止 Windows 下多实例启动
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -76,6 +78,48 @@ if (!gotSingleInstanceLock) {
   });
   ipcMain.handle('bot-trust:remove', (_event, botId: string) => {
     botTrustStore.removeTrust(botId);
+  });
+
+  // --- Local Bot (Mastra) IPC ---
+  const localBotManager = new LocalBotManager();
+
+  // 设置回调：通过 IPC 将流式事件发送到渲染进程
+  localBotManager.setCallbacks({
+    onChunk: (data) => {
+      const win = getMainWindow();
+      if (win) win.webContents.send('localbot:emit', 'localbot:stream', data);
+    },
+    onEnd: (data) => {
+      const win = getMainWindow();
+      if (win) win.webContents.send('localbot:emit', 'localbot:stream:end', data);
+    },
+    onError: (data) => {
+      const win = getMainWindow();
+      if (win) win.webContents.send('localbot:emit', 'localbot:error', data);
+    },
+  });
+
+  ipcMain.handle('localbot:init', async (_event, botId: string, config: any) => {
+    await localBotManager.initBot(botId, config);
+    return { success: true };
+  });
+
+  ipcMain.handle('localbot:handle-message', async (_event, botId: string, conversationId: string, content: string) => {
+    await localBotManager.handleMessage(botId, conversationId, content);
+    return { success: true };
+  });
+
+  ipcMain.handle('localbot:remove', (_event, botId: string) => {
+    localBotManager.removeBot(botId);
+    return { success: true };
+  });
+
+  ipcMain.handle('localbot:list-tools', () => {
+    return listMastraToolInfo();
+  });
+
+  ipcMain.handle('localbot:active-bots', () => {
+    return localBotManager.getActiveBots();
   });
 
   app.whenReady().then(() => {

@@ -4,8 +4,8 @@ import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
-import type { BotRunMode, LLMConfig } from '@chat/shared';
-import { LLM_PROVIDERS } from '@chat/shared';
+import type { BotRunMode, LLMConfig, MastraLLMConfig, Message } from '@chat/shared';
+import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
 import { BotService } from './BotService';
 import { ServerBotManager } from './ServerBotManager';
 import { SkillDispatcher } from './SkillDispatcher';
@@ -58,8 +58,16 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        const mode: BotRunMode = runMode === 'server' ? 'server' : 'client';
-        const result = await botService.createBot(req.userId!, username.trim(), mode, llmConfig);
+        const mode: BotRunMode = runMode === 'server' ? 'server' : runMode === 'local' ? 'local' : 'client';
+
+        // local 模式需要 mastraConfig
+        const { mastraConfig } = req.body;
+        if (mode === 'local' && !mastraConfig) {
+          res.status(400).json({ error: '本地模式需要提供 Mastra 配置' });
+          return;
+        }
+
+        const result = await botService.createBot(req.userId!, username.trim(), mode, llmConfig, mastraConfig);
 
         // 服务端模式：自动启动 Bot
         if (mode === 'server' && llmConfig && this.serverBotManager) {
@@ -68,6 +76,10 @@ export class BotModule implements ServerModule {
 
         const maskedConfig = mode === 'server'
           ? await botService.getServerBotConfigMasked(result.id)
+          : undefined;
+
+        const maskedMastraConfig = mode === 'local'
+          ? await botService.getMastraConfigMasked(result.id)
           : undefined;
 
         res.json({
@@ -79,6 +91,7 @@ export class BotModule implements ServerModule {
             runMode: mode,
             status: mode === 'server' ? 'running' : undefined,
             llmConfig: maskedConfig,
+            mastraConfig: maskedMastraConfig,
           },
           token: mode === 'client' ? result.token : undefined,
         });
@@ -94,6 +107,10 @@ export class BotModule implements ServerModule {
         }
         if (error.message === 'SERVER_MODE_REQUIRES_LLM_CONFIG') {
           res.status(400).json({ error: '服务端模式需要提供 LLM 配置' });
+          return;
+        }
+        if (error.message === 'LOCAL_MODE_REQUIRES_MASTRA_CONFIG') {
+          res.status(400).json({ error: '本地模式需要提供 Mastra 配置' });
           return;
         }
         res.status(500).json({ error: '服务器内部错误' });
@@ -120,6 +137,11 @@ export class BotModule implements ServerModule {
               const llmConfig = await botService.getServerBotConfigMasked(b.id);
               const allowedSkills = await botService.getBotAllowedSkills(b.id);
               return { ...base, status, statusError: error, llmConfig, allowedSkills };
+            }
+
+            if (runMode === 'local') {
+              const mastraConfig = await botService.getMastraConfigMasked(b.id);
+              return { ...base, mastraConfig };
             }
 
             return base;
@@ -250,7 +272,39 @@ export class BotModule implements ServerModule {
       }
     });
 
-    // PUT /api/bot/:id/config — 更新服务端 Bot LLM 配置（需 session + 所有权）
+    // GET /api/bot/:id/config — 获取 Bot 完整配置（需 session + 所有权，仅 local 模式）
+    router.get('/:id/config', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const botId = req.params.id as string;
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+        if (bot.botOwnerId !== req.userId) {
+          res.status(403).json({ error: '无权操作该机器人' });
+          return;
+        }
+
+        const runMode = await botService.getBotRunMode(botId);
+        if (runMode === 'local') {
+          const mastraConfig = await botService.getMastraConfig(botId);
+          res.json({ mastraConfig });
+          return;
+        }
+        if (runMode === 'server') {
+          const llmConfig = await botService.getServerBotConfig(botId);
+          res.json({ llmConfig });
+          return;
+        }
+
+        res.status(400).json({ error: '该模式不支持配置查询' });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // PUT /api/bot/:id/config — 更新 Bot 配置（需 session + 所有权）
     router.put('/:id/config', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const botId = req.params.id as string;
@@ -265,8 +319,30 @@ export class BotModule implements ServerModule {
         }
 
         const runMode = await botService.getBotRunMode(botId);
+
+        // 本地模式：更新 Mastra 配置
+        if (runMode === 'local') {
+          const mastraConfig = req.body as MastraLLMConfig;
+          if (!mastraConfig.provider || !mastraConfig.apiKey || !mastraConfig.model) {
+            res.status(400).json({ error: '缺少必要的 Mastra 配置字段' });
+            return;
+          }
+          // 如果 apiKey 是脱敏值，保留原始值
+          if (mastraConfig.apiKey.includes('****')) {
+            const existing = await botService.getMastraConfig(botId);
+            if (existing) {
+              mastraConfig.apiKey = existing.apiKey;
+            }
+          }
+          await botService.saveMastraConfig(botId, mastraConfig);
+          const masked = await botService.getMastraConfigMasked(botId);
+          res.json({ mastraConfig: masked });
+          return;
+        }
+
+        // 服务端模式：更新 LLM 配置
         if (runMode !== 'server') {
-          res.status(400).json({ error: '仅服务端模式机器人支持配置更新' });
+          res.status(400).json({ error: '该模式不支持配置更新' });
           return;
         }
 
@@ -444,11 +520,72 @@ export class BotModule implements ServerModule {
       res.json({ providers: LLM_PROVIDERS });
     });
 
-    // Socket handler：监听 skill:result 事件
+    // GET /api/bot/mastra-providers — 获取可用 Mastra providers 及模型列表
+    router.get('/mastra-providers', (_req, res) => {
+      res.json({ providers: MASTRA_PROVIDERS });
+    });
+
+    // Socket handler：监听 skill:result + local bot 流式中继事件
     const skillDispatcher = this.skillDispatcher;
-    const socketHandler = (_io: TypedIO, socket: import('../../core/types').TypedSocket) => {
+    const socketHandler = (io: TypedIO, socket: import('../../core/types').TypedSocket) => {
       socket.on('skill:result', (result) => {
         skillDispatcher.handleResult(result);
+      });
+
+      // Local Bot 流式中继：Electron → Server → 会话 room
+      socket.on('localbot:stream', (data) => {
+        io.to(data.conversationId).emit('message:stream', {
+          messageId: data.messageId,
+          botId: data.botId,
+          conversationId: data.conversationId,
+          chunk: data.chunk,
+          done: false,
+        });
+      });
+
+      // Local Bot 流结束：保存完整消息到 DB 并广播
+      socket.on('localbot:stream:end', async (data) => {
+        try {
+          const msg: Message = {
+            id: generateId(),
+            conversationId: data.conversationId,
+            senderId: data.botId,
+            content: data.fullContent,
+            type: (data.messageType as Message['type']) || 'text',
+            createdAt: Date.now(),
+          };
+          const message = await messageRepo.saveMessage(msg);
+          // 广播最终完整消息
+          io.to(data.conversationId).emit('message:receive', message);
+          // 发送 done 信号
+          io.to(data.conversationId).emit('message:stream', {
+            messageId: data.messageId,
+            botId: data.botId,
+            conversationId: data.conversationId,
+            chunk: '',
+            done: true,
+          });
+        } catch (err) {
+          console.error('[LocalBot] Failed to save stream-end message:', err);
+        }
+      });
+
+      // Local Bot 错误处理
+      socket.on('localbot:error', async (data) => {
+        try {
+          const msg: Message = {
+            id: generateId(),
+            conversationId: data.conversationId,
+            senderId: data.botId,
+            content: `⚠️ Bot 错误: ${data.error}`,
+            type: 'text',
+            createdAt: Date.now(),
+          };
+          const message = await messageRepo.saveMessage(msg);
+          io.to(data.conversationId).emit('message:receive', message);
+        } catch (err) {
+          console.error('[LocalBot] Failed to save error message:', err);
+        }
       });
     };
 

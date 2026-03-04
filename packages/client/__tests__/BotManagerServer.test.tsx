@@ -175,6 +175,6 @@ describe('BotManager — 创建', () => {
       fireEvent.click(screen.getByText('创建机器人'));
     });
 
-    expect(mockCreateBot).toHaveBeenCalledWith('newbot', 'client', undefined);
+    expect(mockCreateBot).toHaveBeenCalledWith('newbot', 'client', undefined, undefined);
   });
 });

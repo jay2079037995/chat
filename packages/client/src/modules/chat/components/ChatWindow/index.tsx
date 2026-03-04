@@ -24,6 +24,7 @@ import MessageContextMenu from '../MessageContextMenu';
 import ReplyPreview from '../ReplyPreview';
 import PinnedMessage from '../PinnedMessage';
 import ForwardModal from '../ForwardModal';
+import StreamingMessage from '../StreamingMessage';
 import styles from './index.module.less';
 
 const { TextArea } = Input;
@@ -79,6 +80,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
   const typingUsers = useChatStore((s) => s.typingUsers);
   const pinnedMessages = useChatStore((s) => s.pinnedMessages);
   const loadPinnedMessages = useChatStore((s) => s.loadPinnedMessages);
+  const streamingMessages = useChatStore((s) => s.streamingMessages);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -684,6 +686,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
             </div>
           );
         })}
+        {/* 流式消息（Local Bot 正在生成） */}
+        {currentConversationId && streamingMessages?.[currentConversationId] && (
+          <StreamingMessage
+            content={streamingMessages[currentConversationId].content}
+          />
+        )}
         <div ref={messageEndRef} />
       </div>
 

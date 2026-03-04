@@ -1,9 +1,10 @@
 /**
  * 机器人管理抽屉组件
  *
- * 支持两种运行模式：
+ * 支持三种运行模式：
  * - 客户端模式：创建后获取 token，通过 agent-app 运行
  * - 服务端模式：创建时配置 LLM，服务器自动运行
+ * - 本地模式：通过 Mastra 在 Electron 本地运行
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import {
@@ -16,13 +17,17 @@ import {
   EditOutlined, PlayCircleOutlined, PauseCircleOutlined,
   FileTextOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
-import type { Bot, LLMConfig, BotRunMode } from '@chat/shared';
+import type { Bot, LLMConfig, MastraLLMConfig, BotRunMode } from '@chat/shared';
 import { botService } from '../../services/botService';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
 import ServerBotConfigForm from './ServerBotConfigForm';
+import LocalBotConfigForm from './LocalBotConfigForm';
 import BotLogViewer from './BotLogViewer';
 import SkillMarketplace from './SkillMarketplace';
 import styles from './index.module.less';
+
+/** 检测是否在 Electron 环境 */
+const isElectron = !!(window as any).electronAPI?.isElectron;
 
 /** Skill 信息（从 /api/skill/list 获取） */
 interface SkillInfo {
@@ -177,6 +182,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     }
 
     let llmConfig: LLMConfig | undefined;
+    let mastraConfig: MastraLLMConfig | undefined;
     if (runMode === 'server') {
       try {
         llmConfig = await createForm.validateFields();
@@ -184,10 +190,17 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         return;
       }
     }
+    if (runMode === 'local') {
+      try {
+        mastraConfig = await createForm.validateFields();
+      } catch {
+        return;
+      }
+    }
 
     setCreating(true);
     try {
-      const { bot, token } = await botService.createBot(name, runMode, llmConfig);
+      const { bot, token } = await botService.createBot(name, runMode, llmConfig, mastraConfig);
       setBots((prev) => [...prev, bot]);
       if (token) {
         setNewToken(token);
@@ -260,16 +273,24 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     if (!editingBot) return;
     try {
       const values = await editForm.validateFields();
-      const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
 
-      // 保存 Skill 配置（推理模型跳过）
-      const isReasoner = values.model === 'deepseek-reasoner';
-      const skillsToSave = isReasoner ? ['*'] : selectedSkills;
-      const { allowedSkills: savedSkills } = await botService.setBotSkills(editingBot.id, skillsToSave);
+      if (editingBot.runMode === 'local') {
+        // 本地模式：更新 Mastra 配置
+        const { mastraConfig: updated } = await botService.updateLocalBotConfig(editingBot.id, values);
+        setBots((prev) => prev.map((b) =>
+          b.id === editingBot.id ? { ...b, mastraConfig: updated } : b,
+        ));
+      } else {
+        // 服务端模式：更新 LLM 配置 + Skill
+        const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
+        const isReasoner = values.model === 'deepseek-reasoner';
+        const skillsToSave = isReasoner ? ['*'] : selectedSkills;
+        const { allowedSkills: savedSkills } = await botService.setBotSkills(editingBot.id, skillsToSave);
+        setBots((prev) => prev.map((b) =>
+          b.id === editingBot.id ? { ...b, llmConfig: updated, allowedSkills: savedSkills } : b,
+        ));
+      }
 
-      setBots((prev) => prev.map((b) =>
-        b.id === editingBot.id ? { ...b, llmConfig: updated, allowedSkills: savedSkills } : b,
-      ));
       setEditingBot(null);
       void antMessage.success('配置已更新');
     } catch {
@@ -321,6 +342,19 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       );
     }
 
+    if (bot.runMode === 'local') {
+      actions.push(
+        <Button
+          key="edit"
+          type="text"
+          icon={<EditOutlined />}
+          size="small"
+          onClick={() => handleEditConfig(bot)}
+          title="编辑配置"
+        />,
+      );
+    }
+
     actions.push(
       <Popconfirm
         key="delete"
@@ -348,6 +382,15 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
             {provider} / {model} · {date}
           </Text>
         </div>
+      );
+    }
+    if (bot.runMode === 'local') {
+      const provider = bot.mastraConfig?.provider || '';
+      const model = bot.mastraConfig?.model || '';
+      return (
+        <Text type="secondary" className={styles.botMeta}>
+          {provider} / {model} · {date}
+        </Text>
       );
     }
     return `创建于 ${date}`;
@@ -388,6 +431,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         >
           <Radio.Button value="client">客户端运行</Radio.Button>
           <Radio.Button value="server">服务端运行</Radio.Button>
+          <Radio.Button value="local" disabled={!isElectron}>本地运行</Radio.Button>
         </Radio.Group>
       </div>
 
@@ -395,6 +439,13 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       {runMode === 'server' && (
         <div className={styles.configArea}>
           <ServerBotConfigForm form={createForm} />
+        </div>
+      )}
+
+      {/* 本地模式 Mastra 配置 */}
+      {runMode === 'local' && (
+        <div className={styles.configArea}>
+          <LocalBotConfigForm form={createForm} />
         </div>
       )}
 
@@ -447,10 +498,10 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
                 <Space size={4}>
                   {bot.username}
                   <Tag
-                    color={bot.runMode === 'server' ? 'green' : 'blue'}
+                    color={bot.runMode === 'server' ? 'green' : bot.runMode === 'local' ? 'orange' : 'blue'}
                     className={styles.modeTag}
                   >
-                    {bot.runMode === 'server' ? '服务端' : '客户端'}
+                    {bot.runMode === 'server' ? '服务端' : bot.runMode === 'local' ? '本地' : '客户端'}
                   </Tag>
                 </Space>
               }
@@ -470,7 +521,13 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         cancelText="取消"
         destroyOnClose
       >
-        {editingBot && (
+        {editingBot && editingBot.runMode === 'local' && (
+          <LocalBotConfigForm
+            form={editForm}
+            initialValues={editingBot.mastraConfig}
+          />
+        )}
+        {editingBot && editingBot.runMode === 'server' && (
           <>
             <ServerBotConfigForm
               form={editForm}

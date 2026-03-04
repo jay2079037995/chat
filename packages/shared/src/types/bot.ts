@@ -2,10 +2,24 @@ import type { Message } from './message';
 import type { LLMToolCall } from './skill';
 
 /** 机器人运行模式 */
-export type BotRunMode = 'client' | 'server';
+export type BotRunMode = 'client' | 'server' | 'local';
 
-/** 机器人运行状态（仅 server 模式） */
+/** 机器人运行状态（仅 server/local 模式） */
 export type BotStatus = 'running' | 'stopped' | 'error';
+
+/** Mastra AI SDK 提供商（本地 Bot 使用） */
+export type MastraProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'qwen';
+
+/** Mastra LLM 配置（本地机器人使用） */
+export interface MastraLLMConfig {
+  provider: MastraProvider;
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  contextLength: number;
+  /** 启用的 Mastra 工具 ID 列表（['*'] 表示全部） */
+  enabledTools?: string[];
+}
 
 /** LLM 服务提供商 */
 export type LLMProvider = 'deepseek' | 'minimax' | 'openai' | 'claude' | 'qwen' | 'custom';
@@ -52,6 +66,8 @@ export interface Bot {
   llmConfig?: Omit<LLMConfig, 'apiKey'> & { apiKey: string };
   /** Bot 允许使用的 Skill 函数名列表（['*'] 或空表示全部） */
   allowedSkills?: string[];
+  /** Mastra LLM 配置（仅 local 模式） */
+  mastraConfig?: Omit<MastraLLMConfig, 'apiKey'> & { apiKey: string };
 }
 
 /** 机器人创建后返回（含 token，仅 client 模式显示） */
@@ -64,6 +80,7 @@ export interface CreateBotRequest {
   username: string;
   runMode: BotRunMode;
   llmConfig?: LLMConfig;
+  mastraConfig?: MastraLLMConfig;
 }
 
 /** 机器人收到的消息更新 */
