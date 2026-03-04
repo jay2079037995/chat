@@ -11,6 +11,10 @@ export const macPhotosSkill: SkillDefinition = {
   description: '浏览相册、搜索和导出 macOS 照片',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'photos', 'media'],
   actions: [
     {
       functionName: 'mac_photos_list_albums',

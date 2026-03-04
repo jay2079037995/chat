@@ -1,53 +1,20 @@
 /**
- * 自定义 Skill 包管理器
+ * Skill 包管理器（SKILL.md 标准）
  *
- * 管理 userData/skills/ 目录下的自定义 Skill 包。
+ * 管理 userData/skills/ 目录下的 Skill 包。
  * 每个 Skill 包是一个子目录，包含：
- *   - manifest.json — SkillPackageManifest 定义
- *   - handler.js   — CommonJS 模块，导出 { functionName: async (params) => result }
+ *   - SKILL.md       — YAML frontmatter + Markdown 指令（必需）
+ *   - scripts/handler.js — CommonJS 模块，导出 { functionName: async (params) => result }（可选）
  */
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { parseSkillMd, toSkillDefinition } from './SkillMdParser';
+import type { SkillDefinition } from './SkillMdParser';
 import type { SkillHandler } from './handlers';
 import type { PermissionLevel } from './PermissionManager';
 
-/** Skill 平台类型（本地定义，与 @chat/shared 一致） */
-type SkillPlatform = 'mac' | 'windows' | 'linux' | 'all';
-/** Skill 权限类型（本地定义，与 @chat/shared 一致） */
-type SkillPermission = 'read' | 'write' | 'execute' | 'dangerous';
-
-/** Skill Action 定义（本地类型） */
-interface SkillAction {
-  functionName: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  permission?: SkillPermission;
-}
-
-/** Skill 元数据定义（本地类型，与 @chat/shared SkillDefinition 一致） */
-export interface SkillDefinition {
-  name: string;
-  displayName: string;
-  description: string;
-  platform: SkillPlatform;
-  permission: SkillPermission;
-  actions: SkillAction[];
-  source?: 'builtin' | 'custom';
-  enabled?: boolean;
-}
-
-/** 自定义 Skill 包清单（对应 manifest.json） */
-interface SkillPackageManifest {
-  name: string;
-  displayName: string;
-  description: string;
-  platform: SkillPlatform;
-  permission: SkillPermission;
-  actions: SkillAction[];
-  version?: string;
-  author?: string;
-}
+export type { SkillDefinition };
 
 /** Skill 包根目录 */
 const SKILLS_DIR = path.join(app.getPath('userData'), 'skills');
@@ -87,79 +54,61 @@ export class SkillPackageManager {
   /** 加载单个 Skill 包 */
   private loadPackage(dirName: string): void {
     const pkgDir = path.join(SKILLS_DIR, dirName);
-    const manifestPath = path.join(pkgDir, 'manifest.json');
-    const handlerPath = path.join(pkgDir, 'handler.js');
+    const skillMdPath = path.join(pkgDir, 'SKILL.md');
 
-    if (!fs.existsSync(manifestPath)) {
-      throw new Error(`缺少 manifest.json: ${dirName}`);
-    }
-    if (!fs.existsSync(handlerPath)) {
-      throw new Error(`缺少 handler.js: ${dirName}`);
+    if (!fs.existsSync(skillMdPath)) {
+      throw new Error(`缺少 SKILL.md: ${dirName}`);
     }
 
-    // 读取 manifest
-    const manifestRaw = fs.readFileSync(manifestPath, 'utf-8');
-    const manifest: SkillPackageManifest = JSON.parse(manifestRaw);
+    // 解析 SKILL.md
+    const raw = fs.readFileSync(skillMdPath, 'utf-8');
+    const parsed = parseSkillMd(raw);
+    const skillDef = toSkillDefinition(parsed, 'custom');
 
-    // 校验 manifest 结构
-    if (!manifest.name || !manifest.actions || !Array.isArray(manifest.actions)) {
-      throw new Error(`无效的 manifest.json: ${dirName}`);
-    }
+    this.customSkills.set(skillDef.name, skillDef);
 
-    // 加载 handler.js（CommonJS 格式），清除缓存以支持热重载
-    const resolvedPath = require.resolve(handlerPath);
-    delete require.cache[resolvedPath];
-    const handlerModule = require(handlerPath);
+    // 尝试加载 scripts/handler.js（可选）
+    const handlerPath = path.join(pkgDir, 'scripts', 'handler.js');
+    if (fs.existsSync(handlerPath)) {
+      // 清除缓存以支持热重载
+      const resolvedPath = require.resolve(handlerPath);
+      delete require.cache[resolvedPath];
+      const handlerModule = require(handlerPath);
 
-    // 构造 SkillDefinition
-    const skillDef: SkillDefinition = {
-      name: manifest.name,
-      displayName: manifest.displayName,
-      description: manifest.description,
-      platform: manifest.platform,
-      permission: manifest.permission,
-      actions: manifest.actions,
-      source: 'custom',
-    };
-    this.customSkills.set(manifest.name, skillDef);
-
-    // 映射 handler 和 permission
-    for (const action of manifest.actions) {
-      const fn = handlerModule[action.functionName];
-      if (typeof fn === 'function') {
-        this.customHandlers.set(action.functionName, fn);
-      } else {
-        console.warn(`[SkillPackageManager] handler.js 缺少函数: ${action.functionName}`);
+      // 映射 handler 和 permission
+      for (const action of skillDef.actions) {
+        const fn = handlerModule[action.functionName];
+        if (typeof fn === 'function') {
+          this.customHandlers.set(action.functionName, fn);
+        } else {
+          console.warn(`[SkillPackageManager] handler.js 缺少函数: ${action.functionName}`);
+        }
+        const perm = (action.permission || skillDef.permission || 'read') as PermissionLevel;
+        this.customPermissions.set(action.functionName, perm);
       }
-      // 权限：action 级 > skill 级，默认 read
-      const perm = (action.permission || manifest.permission || 'read') as PermissionLevel;
-      this.customPermissions.set(action.functionName, perm);
     }
   }
 
   /**
    * 安装自定义 Skill 包（从指定目录复制）
-   * @param sourcePath 包含 manifest.json + handler.js 的源目录
+   * @param sourcePath 包含 SKILL.md 的源目录
    */
   install(sourcePath: string): SkillDefinition {
-    const manifestPath = path.join(sourcePath, 'manifest.json');
-    if (!fs.existsSync(manifestPath)) {
-      throw new Error('指定目录缺少 manifest.json');
-    }
-    const handlerPath = path.join(sourcePath, 'handler.js');
-    if (!fs.existsSync(handlerPath)) {
-      throw new Error('指定目录缺少 handler.js');
+    const skillMdPath = path.join(sourcePath, 'SKILL.md');
+    if (!fs.existsSync(skillMdPath)) {
+      throw new Error('指定目录缺少 SKILL.md');
     }
 
-    const manifest: SkillPackageManifest = JSON.parse(
-      fs.readFileSync(manifestPath, 'utf-8'),
-    );
-    if (!manifest.name) {
-      throw new Error('manifest.json 缺少 name 字段');
+    // 解析 SKILL.md 获取 name
+    const raw = fs.readFileSync(skillMdPath, 'utf-8');
+    const parsed = parseSkillMd(raw);
+    const name = parsed.frontmatter.name;
+    if (!name) {
+      throw new Error('SKILL.md 缺少 name 字段');
     }
 
     // 使用 skill name 做目录名（去掉特殊字符）
-    const safeName = manifest.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
     const targetDir = path.join(SKILLS_DIR, safeName);
 
     // 如果已存在则覆盖
@@ -170,7 +119,7 @@ export class SkillPackageManager {
 
     // 重新加载该包
     this.loadPackage(safeName);
-    return this.customSkills.get(manifest.name)!;
+    return this.customSkills.get(name)!;
   }
 
   /** 卸载自定义 Skill 包 */

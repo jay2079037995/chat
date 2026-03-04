@@ -36,20 +36,26 @@ function getElectronAPI(): ElectronAPI | null {
  *
  * 在 socket 连接建立后调用，注册 skill:exec 事件监听。
  */
+/**
+ * 将本地自定义 Skill 同步到服务端 SkillRegistry
+ *
+ * 可在 Skill 安装/卸载后手动调用，确保服务端及时更新。
+ */
+export function syncSkillsToServer(socket: TypedSocket): void {
+  const electronAPI = getElectronAPI();
+  if (!electronAPI?.listCustomSkills) return;
+  electronAPI.listCustomSkills().then((customSkills) => {
+    socket.emit('skill:sync', { customSkills }, (result) => {
+      console.log('[SkillBridge] Skill 同步完成:', result);
+    });
+  }).catch((err) => {
+    console.error('[SkillBridge] 同步失败:', err);
+  });
+}
+
 export function initSkillBridge(socket: TypedSocket): void {
   // Electron 环境下：连接后同步自定义 Skill 到服务端
-  const electronAPI = getElectronAPI();
-  if (electronAPI && electronAPI.listCustomSkills) {
-    electronAPI.listCustomSkills().then((customSkills) => {
-      if (customSkills.length > 0) {
-        socket.emit('skill:sync', { customSkills }, (result) => {
-          console.log('[SkillBridge] Skill 同步完成:', result);
-        });
-      }
-    }).catch((err) => {
-      console.error('[SkillBridge] 获取自定义 Skill 列表失败:', err);
-    });
-  }
+  syncSkillsToServer(socket);
 
   socket.on('skill:exec', async (request: SkillExecRequest) => {
     const electronAPI = getElectronAPI();

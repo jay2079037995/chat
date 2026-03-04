@@ -31,6 +31,24 @@ export class SkillModule implements ServerModule {
       res.json({ skills });
     });
 
+    /** 返回标准格式的 Skill 注册表（兼容 SKILL.md 标准） */
+    router.get('/registry', (_req, res) => {
+      const skills = registry.listSkills();
+      const entries = skills.map((s) => ({
+        name: s.name,
+        displayName: s.displayName,
+        description: s.description,
+        platform: s.platform,
+        version: s.version || '1.0.0',
+        author: s.author || 'unknown',
+        license: s.license,
+        tags: s.tags,
+        source: s.source,
+        enabled: s.enabled !== false,
+      }));
+      res.json({ name: 'chat-skills', updatedAt: new Date().toISOString(), skills: entries });
+    });
+
     /** 获取单个 Skill 详情 */
     router.get('/:name', (req, res) => {
       const skill = registry.getSkill(req.params.name);

@@ -51,6 +51,7 @@ describe('SkillMarketplace', () => {
       setSkillRegistries: jest.fn(),
       fetchMarketplaceSkills: jest.fn().mockResolvedValue([]),
       downloadAndInstallSkill: jest.fn(),
+      installSkillFromGit: jest.fn(),
     };
 
     await act(async () => {
@@ -74,6 +75,7 @@ describe('SkillMarketplace', () => {
       setSkillRegistries: jest.fn(),
       fetchMarketplaceSkills: jest.fn().mockResolvedValue([]),
       downloadAndInstallSkill: jest.fn(),
+      installSkillFromGit: jest.fn(),
     };
 
     await act(async () => {

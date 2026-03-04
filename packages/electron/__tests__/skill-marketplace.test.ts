@@ -1,14 +1,14 @@
 /**
- * SkillMarketplace 管理器单元测试（v1.14.0）
+ * SkillMarketplace 管理器单元测试（v1.16.0 — SKILL.md 标准）
  *
- * 测试注册表管理、缓存、findManifestDir、fetchAllSkills 去重逻辑。
+ * 测试注册表管理、缓存、findSkillMdDir、fetchAllSkills 去重逻辑、Git URL 解析。
  * Mock electron-store / electron.net / fs / extract-zip。
  */
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-// 创建临时目录用于 findManifestDir 测试
+// 创建临时目录用于 findSkillMdDir 测试
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-marketplace-test-'));
 
 // Mock electron-store
@@ -102,44 +102,59 @@ describe('SkillMarketplace', () => {
     expect(mockStoreData.registries).toEqual(['https://b.com/reg.json']);
   });
 
-  test('findManifestDir 查找直接目录中的 manifest', () => {
+  test('findSkillMdDir 查找直接目录中的 SKILL.md', () => {
     const testDir = path.join(tmpDir, 'find-test-1');
     fs.mkdirSync(testDir, { recursive: true });
-    fs.writeFileSync(path.join(testDir, 'manifest.json'), '{}');
+    fs.writeFileSync(path.join(testDir, 'SKILL.md'), '---\nname: test\n---');
 
     const mp = loadMarketplace();
-    // 通过 private 方法测试：使用 prototype 访问
-    const result = (mp as any).findManifestDir(testDir);
+    const result = (mp as any).findSkillMdDir(testDir);
     expect(result).toBe(testDir);
 
-    // 清理
     fs.rmSync(testDir, { recursive: true });
   });
 
-  test('findManifestDir 查找子目录中的 manifest', () => {
+  test('findSkillMdDir 查找子目录中的 SKILL.md', () => {
     const testDir = path.join(tmpDir, 'find-test-2');
     const subDir = path.join(testDir, 'my-skill');
     fs.mkdirSync(subDir, { recursive: true });
-    fs.writeFileSync(path.join(subDir, 'manifest.json'), '{}');
+    fs.writeFileSync(path.join(subDir, 'SKILL.md'), '---\nname: test\n---');
 
     const mp = loadMarketplace();
-    const result = (mp as any).findManifestDir(testDir);
+    const result = (mp as any).findSkillMdDir(testDir);
     expect(result).toBe(subDir);
 
-    // 清理
     fs.rmSync(testDir, { recursive: true });
   });
 
-  test('findManifestDir 找不到时返回 null', () => {
+  test('findSkillMdDir 找不到时返回 null', () => {
     const testDir = path.join(tmpDir, 'find-test-3');
     fs.mkdirSync(testDir, { recursive: true });
-    // 不创建 manifest.json
 
     const mp = loadMarketplace();
-    const result = (mp as any).findManifestDir(testDir);
+    const result = (mp as any).findSkillMdDir(testDir);
     expect(result).toBeNull();
 
-    // 清理
     fs.rmSync(testDir, { recursive: true });
+  });
+
+  test('parseGitUrl 解析普通 GitHub URL', () => {
+    const mp = loadMarketplace();
+    const result = (mp as any).parseGitUrl('https://github.com/user/repo');
+    expect(result.cloneUrl).toBe('https://github.com/user/repo.git');
+    expect(result.subDir).toBeUndefined();
+  });
+
+  test('parseGitUrl 解析 GitHub tree URL（带子目录）', () => {
+    const mp = loadMarketplace();
+    const result = (mp as any).parseGitUrl('https://github.com/user/repo/tree/main/skills/my-skill');
+    expect(result.cloneUrl).toBe('https://github.com/user/repo.git');
+    expect(result.subDir).toBe('skills/my-skill');
+  });
+
+  test('parseGitUrl 已有 .git 后缀不重复添加', () => {
+    const mp = loadMarketplace();
+    const result = (mp as any).parseGitUrl('https://github.com/user/repo.git');
+    expect(result.cloneUrl).toBe('https://github.com/user/repo.git');
   });
 });

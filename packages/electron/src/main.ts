@@ -58,7 +58,7 @@ if (!gotSingleInstanceLock) {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: '选择 Skill 包目录',
-      message: '请选择包含 manifest.json 和 handler.js 的目录',
+      message: '请选择包含 SKILL.md 的目录',
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
@@ -70,6 +70,7 @@ if (!gotSingleInstanceLock) {
   ipcMain.handle('skill:set-registries', (_event, urls: string[]) => skillMarketplace.setRegistries(urls));
   ipcMain.handle('skill:fetch-marketplace', () => skillMarketplace.fetchAllSkills());
   ipcMain.handle('skill:download-install', (_event, entry: any) => skillMarketplace.downloadAndInstall(entry));
+  ipcMain.handle('skill:install-from-git', (_event, gitUrl: string, subDir?: string) => skillMarketplace.installFromGit(gitUrl, subDir));
 
   // --- Bot 信任管理 IPC ---
   ipcMain.handle('bot-trust:list', () => botTrustStore.listTrustConfigs());

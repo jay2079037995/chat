@@ -11,6 +11,10 @@ export const macCalendarSkill: SkillDefinition = {
   description: '查看、创建和删除 macOS 日历事件',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'calendar', 'productivity'],
   actions: [
     {
       functionName: 'mac_calendar_list',

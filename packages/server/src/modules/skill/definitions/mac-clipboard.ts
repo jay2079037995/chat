@@ -11,6 +11,10 @@ export const macClipboardSkill: SkillDefinition = {
   description: '读取和写入 macOS 系统剪贴板',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'clipboard', 'utility'],
   actions: [
     {
       functionName: 'mac_clipboard_read',

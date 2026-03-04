@@ -878,3 +878,101 @@ deepseek-reasoner 与 deepseek-chat 的 API 差异：不支持 function calling 
 | `packages/client/.../stores/useSocketStore.ts` | message:stream 监听 |
 | `packages/client/.../ChatWindow/index.tsx` | 渲染 StreamingMessage |
 | `packages/client/.../services/skillBridge.ts` | initLocalBotBridge |
+
+---
+
+## v1.16.0 - Skill 系统标准化（Claude Plugins 兼容）
+
+**目标**：将现有自定义 Skill 格式改造为兼容 Claude Plugins / Agent Skills Open Standard（SKILL.md 标准），实现与主流 AI Skill 生态互通。
+
+### 背景
+
+当前 Skill 系统使用自定义格式（manifest.json + handler.js），与业界标准不兼容，在线市场无可用 Skill。Claude Plugins 生态已有 75,000+ 插件，Anthropic 官方 Agent Skills 标准（SKILL.md）已成为行业通用格式。
+
+### 标准格式对照
+
+| 现有格式 | Claude Plugins 标准 |
+|----------|-------------------|
+| `manifest.json` — name/displayName/description/platform/permission/actions | `SKILL.md` — YAML frontmatter（name/description/version）+ Markdown 指令 |
+| `handler.js` — CommonJS 导出 async 函数 | `scripts/` 目录 — Python/Bash/JS 脚本 |
+| `.zip` 打包分发 | 目录结构分发，支持 Git 仓库引用 |
+| 自定义 registry.json | 标准 Plugin Registry（plugin.json 清单） |
+
+### 新的 Skill 包结构
+
+```
+skill-name/
+├── SKILL.md              # 主指令文件（YAML frontmatter + Markdown）— 必需
+├── scripts/              # 可执行脚本目录
+│   ├── handler.js        # Node.js 处理器（兼容现有 handler）
+│   └── *.sh / *.py       # 其他脚本
+├── references/           # 参考文档
+│   └── api-docs.md
+├── assets/               # 模板和资源文件
+└── examples/             # 使用示例
+```
+
+### SKILL.md 格式
+
+```yaml
+---
+name: mac-notes
+description: 读取、创建、更新、删除和搜索 macOS 备忘录
+version: 1.0.0
+license: Apache-2.0
+compatibility:
+  platforms: [mac]
+  permissions: [read, write]
+allowed-tools:
+  - Bash
+metadata:
+  author: chat-app
+  tags: [mac, notes, productivity]
+  actions:
+    - functionName: mac_notes_list
+      description: 列出所有备忘录
+      parameters: { type: object, properties: {...} }
+    - functionName: mac_notes_read
+      description: 读取指定备忘录
+      parameters: { type: object, properties: {...} }
+---
+
+# Mac 备忘录 Skill
+
+操作 macOS 备忘录应用...
+
+## 使用指南
+...
+```
+
+### 功能清单
+
+#### 共享层
+- [ ] `SkillDefinition` 改造为 SKILL.md frontmatter 格式（name/description/version/license/compatibility/metadata）
+- [ ] 移除旧 `SkillPackageManifest` 类型，统一使用 SKILL.md 格式
+- [ ] `SkillRegistryEntry` 扩展支持 SKILL.md 格式元数据
+
+#### Electron 端
+- [ ] `SkillPackageManager` 改造 — 从读取 manifest.json 改为读取/解析 SKILL.md
+- [ ] 新增 `SkillMdParser` — 解析 SKILL.md YAML frontmatter + Markdown 内容
+- [ ] `SkillMarketplace` 改造 — 支持从 Git 仓库 URL 安装 Skill
+- [ ] `SkillMarketplace` 改造 — 默认注册表改为兼容 Claude Plugins Registry 格式
+- [ ] 内置 Skill 全部改写为 SKILL.md 格式（替换原 definitions/*.ts 为 SKILL.md 文件）
+- [ ] 新增 `skill:install-from-git` IPC — 从 Git 仓库克隆安装
+
+#### 服务端
+- [ ] `SkillRegistry` 适配 — 从 SKILL.md 格式的 actions 注册 tools
+- [ ] 内置 Skill 定义改为 SKILL.md 文件，启动时解析加载
+- [ ] `SkillModule` 新增 `GET /api/skill/registry` — 返回标准格式的 Skill 注册表
+
+#### 前端
+- [ ] `SkillMarketplace` UI 改造 — 显示 SKILL.md 格式信息（version/author/tags/license）
+- [ ] 新增 "从 Git 安装" 输入框（支持 GitHub/GitLab URL）
+- [ ] Skill 详情弹窗 — 渲染 SKILL.md 的 Markdown 内容
+
+### 测试
+- [ ] SkillMdParser 解析测试
+- [ ] 新旧格式兼容测试
+- [ ] Git 安装流程测试
+- [ ] 内置 Skill 迁移后功能测试
+- [ ] pnpm build + pnpm test 全量通过

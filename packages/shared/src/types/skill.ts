@@ -1,6 +1,7 @@
 /**
- * 远程 Skill 系统共享类型定义
+ * Skill 系统共享类型定义
  *
+ * 基于 Claude Plugins / Agent Skills Open Standard（SKILL.md 标准）。
  * Skill 是 Bot 通过 LLM function calling 远程调用 Electron 桌面端
  * 本地能力（备忘录、日历、文件操作等）的标准化接口。
  */
@@ -45,14 +46,20 @@ export interface SkillAction {
 /** Skill 来源类型 */
 export type SkillSource = 'builtin' | 'custom';
 
-/** Skill 元数据定义 */
+/**
+ * Skill 元数据定义（兼容 SKILL.md 标准）
+ *
+ * 对应 SKILL.md YAML frontmatter 的结构化表示。
+ */
 export interface SkillDefinition {
-  /** Skill 名称（唯一标识，如 mac:notes） */
+  /** Skill 名称（唯一标识，如 mac-notes） */
   name: string;
   /** Skill 显示名称 */
   displayName: string;
-  /** Skill 描述 */
+  /** Skill 描述（Claude 用于判断何时调用） */
   description: string;
+  /** 版本号（semver） */
+  version: string;
   /** 支持的平台 */
   platform: SkillPlatform;
   /** 默认权限级别 */
@@ -63,26 +70,14 @@ export interface SkillDefinition {
   source?: SkillSource;
   /** 是否启用（默认 true） */
   enabled?: boolean;
-}
-
-/** 自定义 Skill 包清单（对应 manifest.json） */
-export interface SkillPackageManifest {
-  /** Skill 名称（唯一标识） */
-  name: string;
-  /** 显示名称 */
-  displayName: string;
-  /** 描述 */
-  description: string;
-  /** 支持的平台 */
-  platform: SkillPlatform;
-  /** 默认权限级别 */
-  permission: SkillPermission;
-  /** 操作列表 */
-  actions: SkillAction[];
-  /** 包版本号 */
-  version?: string;
-  /** 作者信息 */
+  /** 许可证（如 Apache-2.0、MIT） */
+  license?: string;
+  /** 作者 */
   author?: string;
+  /** 标签 */
+  tags?: string[];
+  /** SKILL.md 的 Markdown 正文内容（不含 frontmatter） */
+  instructions?: string;
 }
 
 /** Skill 同步请求（Electron → 服务端，推送自定义 Skill 元数据） */
@@ -123,7 +118,7 @@ export interface SkillExecResult {
   error?: string;
 }
 
-/** Skill 市场注册表条目 */
+/** Skill 市场注册表条目（兼容 SKILL.md 标准） */
 export interface SkillRegistryEntry {
   /** Skill 名称（唯一标识） */
   name: string;
@@ -137,12 +132,16 @@ export interface SkillRegistryEntry {
   version: string;
   /** 作者 */
   author: string;
-  /** 下载地址（zip 包） */
-  downloadUrl: string;
-  /** 包大小（字节） */
-  size?: number;
+  /** 许可证 */
+  license?: string;
   /** 标签 */
   tags?: string[];
+  /** Git 仓库地址（优先） */
+  repoUrl?: string;
+  /** 下载地址（zip 包，备选） */
+  downloadUrl?: string;
+  /** 包大小（字节） */
+  size?: number;
 }
 
 /** Skill 注册表索引（注册表服务器返回的 JSON 格式） */

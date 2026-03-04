@@ -11,6 +11,10 @@ export const macSystemInfoSkill: SkillDefinition = {
   description: '获取 macOS 系统的 CPU、内存、磁盘和网络状态',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'system', 'monitoring'],
   actions: [
     {
       functionName: 'mac_system_info_cpu',

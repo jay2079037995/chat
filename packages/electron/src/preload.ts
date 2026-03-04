@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 下载并安装 Skill 包 */
   downloadAndInstallSkill: (entry: unknown): Promise<unknown> =>
     ipcRenderer.invoke('skill:download-install', entry),
+  /** 从 Git 仓库安装 Skill */
+  installSkillFromGit: (gitUrl: string, subDir?: string): Promise<unknown> =>
+    ipcRenderer.invoke('skill:install-from-git', gitUrl, subDir),
   // --- Bot 信任管理 ---
   /** 获取所有 Bot 信任配置 */
   getBotTrustList: (): Promise<unknown[]> =>

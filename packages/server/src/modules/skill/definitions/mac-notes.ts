@@ -11,6 +11,10 @@ export const macNotesSkill: SkillDefinition = {
   description: '读取、创建、更新、删除和搜索 macOS 备忘录',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'notes', 'productivity'],
   actions: [
     {
       functionName: 'mac_notes_list',

@@ -11,6 +11,10 @@ export const macBrowserSkill: SkillDefinition = {
   description: '打开 URL、获取当前浏览器标签页信息',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'browser', 'web'],
   actions: [
     {
       functionName: 'mac_browser_open_url',

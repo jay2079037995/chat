@@ -11,6 +11,10 @@ export const macRemindersSkill: SkillDefinition = {
   description: '查看、创建、完成和删除 macOS 提醒事项',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'reminders', 'productivity'],
   actions: [
     {
       functionName: 'mac_reminders_list',

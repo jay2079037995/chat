@@ -12,6 +12,10 @@ export const macShellSkill: SkillDefinition = {
   description: '在用户电脑上执行 Shell 命令（危险操作，每次需确认）',
   platform: 'mac',
   permission: 'dangerous',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'shell', 'system'],
   actions: [
     {
       functionName: 'mac_shell_exec',

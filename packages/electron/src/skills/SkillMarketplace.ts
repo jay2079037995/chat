@@ -1,16 +1,18 @@
 /**
- * Skill 市场管理器
+ * Skill 市场管理器（SKILL.md 标准）
  *
  * 管理在线 Skill 注册表（registry）：
  *   - 存储/编辑注册表 URL 列表
  *   - 拉取注册表索引（带 5 分钟缓存）
- *   - 下载 Skill zip 包 → 解压 → 验证 → 调用 SkillPackageManager.install()
+ *   - 从 Git 仓库克隆安装 Skill
+ *   - 下载 Skill zip 包 → 解压 → 验证 → 安装
  */
-import { app, net } from 'electron';
+import { net } from 'electron';
 import Store from 'electron-store';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { execSync } from 'child_process';
 import extractZip from 'extract-zip';
 import type { SkillPackageManager } from './SkillPackageManager';
 
@@ -22,9 +24,11 @@ interface SkillRegistryEntry {
   platform: string;
   version: string;
   author: string;
-  downloadUrl: string;
-  size?: number;
+  license?: string;
   tags?: string[];
+  repoUrl?: string;
+  downloadUrl?: string;
+  size?: number;
 }
 
 /** 注册表索引（与 @chat/shared SkillRegistryIndex 一致） */
@@ -45,7 +49,7 @@ const CACHE_TTL = 5 * 60 * 1000;
 
 /** 默认注册表 URL 列表 */
 const DEFAULT_REGISTRIES = [
-  'https://raw.githubusercontent.com/nicepkg/chat-skills/main/registry.json',
+  'https://raw.githubusercontent.com/jay2079037995/chat-skills/main/registry.json',
 ];
 
 export class SkillMarketplace {
@@ -68,7 +72,6 @@ export class SkillMarketplace {
   /** 设置注册表 URL 列表 */
   setRegistries(urls: string[]): void {
     this.store.set('registries', urls);
-    // 清除缓存
     this.cache.clear();
   }
 
@@ -112,14 +115,72 @@ export class SkillMarketplace {
     return allSkills;
   }
 
-  /** 下载并安装 Skill 包 */
+  /**
+   * 从 Git 仓库安装 Skill
+   *
+   * 支持格式：
+   *   - https://github.com/user/repo.git
+   *   - https://github.com/user/repo
+   *   - git@github.com:user/repo.git
+   *   - https://github.com/user/repo/tree/main/skills/my-skill（子目录）
+   *
+   * @param gitUrl Git 仓库 URL
+   * @param subDir 可选的子目录路径（当 SKILL.md 不在仓库根目录时）
+   */
+  async installFromGit(gitUrl: string, subDir?: string): Promise<unknown> {
+    const tmpDir = path.join(os.tmpdir(), `skill-git-${Date.now()}`);
+
+    try {
+      // 解析 GitHub URL 中的子目录
+      const parsed = this.parseGitUrl(gitUrl);
+      const cloneUrl = parsed.cloneUrl;
+      const effectiveSubDir = subDir || parsed.subDir;
+
+      // 克隆仓库
+      fs.mkdirSync(tmpDir, { recursive: true });
+      execSync(`git clone --depth 1 ${cloneUrl} "${tmpDir}/repo"`, {
+        timeout: 60000,
+        stdio: 'pipe',
+      });
+
+      // 确定安装源目录
+      let installDir = path.join(tmpDir, 'repo');
+      if (effectiveSubDir) {
+        installDir = path.join(installDir, effectiveSubDir);
+      }
+
+      // 查找 SKILL.md
+      const skillMdDir = this.findSkillMdDir(installDir);
+      if (!skillMdDir) {
+        throw new Error('仓库中找不到 SKILL.md 文件');
+      }
+
+      return this.packageManager.install(skillMdDir);
+    } finally {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // 忽略清理错误
+      }
+    }
+  }
+
+  /** 下载并安装 Skill 包（zip 格式） */
   async downloadAndInstall(entry: SkillRegistryEntry): Promise<unknown> {
+    // 优先使用 Git 安装
+    if (entry.repoUrl) {
+      return this.installFromGit(entry.repoUrl);
+    }
+
+    if (!entry.downloadUrl) {
+      throw new Error('注册表条目缺少 repoUrl 和 downloadUrl');
+    }
+
     const tmpDir = path.join(os.tmpdir(), `skill-download-${Date.now()}`);
     const zipPath = path.join(tmpDir, `${entry.name}.zip`);
     const extractDir = path.join(tmpDir, 'extracted');
 
     try {
-      // 创建临时目录
       fs.mkdirSync(tmpDir, { recursive: true });
       fs.mkdirSync(extractDir, { recursive: true });
 
@@ -129,23 +190,64 @@ export class SkillMarketplace {
       // 解压
       await extractZip(zipPath, { dir: extractDir });
 
-      // 查找包含 manifest.json 的目录（可能在子目录中）
-      const installDir = this.findManifestDir(extractDir);
+      // 查找 SKILL.md
+      const installDir = this.findSkillMdDir(extractDir);
       if (!installDir) {
-        throw new Error('下载的包中找不到 manifest.json');
+        throw new Error('下载的包中找不到 SKILL.md');
       }
 
-      // 调用 SkillPackageManager.install()
-      const result = this.packageManager.install(installDir);
-      return result;
+      return this.packageManager.install(installDir);
     } finally {
-      // 清理临时目录
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       } catch {
         // 忽略清理错误
       }
     }
+  }
+
+  /**
+   * 解析 Git URL，提取克隆地址和子目录
+   *
+   * 支持 GitHub /tree/branch/path 格式的子目录提取
+   */
+  private parseGitUrl(url: string): { cloneUrl: string; subDir?: string } {
+    // 处理 GitHub tree URL: https://github.com/user/repo/tree/branch/path/to/skill
+    const treeMatch = url.match(
+      /^(https:\/\/github\.com\/[^/]+\/[^/]+)\/tree\/[^/]+\/(.+)$/,
+    );
+    if (treeMatch) {
+      return {
+        cloneUrl: treeMatch[1] + '.git',
+        subDir: treeMatch[2],
+      };
+    }
+
+    // 普通 URL，确保有 .git 后缀
+    let cloneUrl = url.trim();
+    if (cloneUrl.startsWith('https://') && !cloneUrl.endsWith('.git')) {
+      cloneUrl += '.git';
+    }
+
+    return { cloneUrl };
+  }
+
+  /** 查找包含 SKILL.md 的目录 */
+  private findSkillMdDir(dir: string): string | null {
+    if (fs.existsSync(path.join(dir, 'SKILL.md'))) {
+      return dir;
+    }
+    // 检查一级子目录
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subDir = path.join(dir, entry.name);
+        if (fs.existsSync(path.join(subDir, 'SKILL.md'))) {
+          return subDir;
+        }
+      }
+    }
+    return null;
   }
 
   /** 拉取单个注册表（带缓存） */
@@ -158,31 +260,12 @@ export class SkillMarketplace {
     const data = await this.httpGet(url);
     const index: SkillRegistryIndex = JSON.parse(data);
 
-    // 基本校验
     if (!index.skills || !Array.isArray(index.skills)) {
       throw new Error(`无效的注册表格式: ${url}`);
     }
 
     this.cache.set(url, { data: index, fetchedAt: Date.now() });
     return index;
-  }
-
-  /** 查找包含 manifest.json 的目录 */
-  private findManifestDir(dir: string): string | null {
-    if (fs.existsSync(path.join(dir, 'manifest.json'))) {
-      return dir;
-    }
-    // 检查一级子目录
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const subDir = path.join(dir, entry.name);
-        if (fs.existsSync(path.join(subDir, 'manifest.json'))) {
-          return subDir;
-        }
-      }
-    }
-    return null;
   }
 
   /** HTTP GET 请求 */

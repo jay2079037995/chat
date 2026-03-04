@@ -11,6 +11,10 @@ export const macNotificationSkill: SkillDefinition = {
   description: '在 macOS 上发送系统桌面通知',
   platform: 'mac',
   permission: 'write',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'notification', 'utility'],
   actions: [
     {
       functionName: 'mac_notification_send',

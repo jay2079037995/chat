@@ -8,6 +8,7 @@ const mockSkill: SkillDefinition = {
   name: 'test:skill',
   displayName: '测试 Skill',
   description: '用于测试的 Skill',
+  version: '1.0.0',
   platform: 'mac',
   permission: 'read',
   actions: [
@@ -33,6 +34,7 @@ const mockSkill2: SkillDefinition = {
   name: 'test:skill2',
   displayName: '测试 Skill 2',
   description: '用于测试的 Skill 2',
+  version: '1.0.0',
   platform: 'windows',
   permission: 'read',
   actions: [

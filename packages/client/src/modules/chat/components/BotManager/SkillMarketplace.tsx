@@ -1,8 +1,8 @@
 /**
- * Skill 市场组件
+ * Skill 市场组件（SKILL.md 标准）
  *
  * Modal 组件，包含两个 Tab：
- *   - 已安装：显示本地自定义 Skill，支持卸载和本地安装
+ *   - 已安装：显示本地自定义 Skill，支持卸载、本地安装、Git 安装
  *   - 在线市场：浏览注册表中的 Skill，支持搜索、安装
  *
  * 仅 Electron 桌面端可用。
@@ -15,6 +15,7 @@ import {
 import {
   DownloadOutlined, DeleteOutlined, FolderOpenOutlined,
   PlusOutlined, CloseOutlined, CloudDownloadOutlined, CheckCircleOutlined,
+  GithubOutlined,
 } from '@ant-design/icons';
 import type { SkillRegistryEntry } from '@chat/shared';
 import styles from './SkillMarketplace.module.less';
@@ -22,13 +23,16 @@ import styles from './SkillMarketplace.module.less';
 const { Text } = Typography;
 const { Search } = Input;
 
-/** 本地已安装的 Skill */
+/** 本地已安装的 Skill（SKILL.md 格式） */
 interface InstalledSkill {
   name: string;
   displayName: string;
   description: string;
   version?: string;
   author?: string;
+  license?: string;
+  tags?: string[];
+  instructions?: string;
 }
 
 /** electronAPI 市场相关方法 */
@@ -42,6 +46,7 @@ interface MarketplaceAPI {
   setSkillRegistries: (urls: string[]) => Promise<void>;
   fetchMarketplaceSkills: () => Promise<SkillRegistryEntry[]>;
   downloadAndInstallSkill: (entry: SkillRegistryEntry) => Promise<unknown>;
+  installSkillFromGit: (gitUrl: string, subDir?: string) => Promise<unknown>;
 }
 
 function getMarketplaceAPI(): MarketplaceAPI | null {
@@ -70,9 +75,16 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
   const [searchText, setSearchText] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
 
+  // Git 安装
+  const [gitUrl, setGitUrl] = useState('');
+  const [gitInstalling, setGitInstalling] = useState(false);
+
   // 注册表管理
   const [registries, setRegistries] = useState<string[]>([]);
   const [newRegistryUrl, setNewRegistryUrl] = useState('');
+
+  // Skill 详情弹窗
+  const [detailSkill, setDetailSkill] = useState<InstalledSkill | null>(null);
 
   const installedNames = new Set(installed.map((s) => s.name));
 
@@ -118,6 +130,7 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
       void loadOnline();
       void loadRegistries();
       setSearchText('');
+      setGitUrl('');
     }
   }, [visible, api, loadInstalled, loadOnline, loadRegistries]);
 
@@ -133,6 +146,23 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
       onSkillChanged?.();
     } catch (err: any) {
       void antMessage.error(err?.message || '安装失败');
+    }
+  };
+
+  /** 从 Git 仓库安装 */
+  const handleGitInstall = async () => {
+    if (!api || !gitUrl.trim()) return;
+    setGitInstalling(true);
+    try {
+      await api.installSkillFromGit(gitUrl.trim());
+      void antMessage.success('Skill 从 Git 安装成功');
+      setGitUrl('');
+      void loadInstalled();
+      onSkillChanged?.();
+    } catch (err: any) {
+      void antMessage.error(err?.message || 'Git 安装失败');
+    } finally {
+      setGitInstalling(false);
     }
   };
 
@@ -227,17 +257,41 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
   const installedTab = (
     <div className={styles.tabContent}>
       <div className={styles.localActions}>
-        <Button icon={<FolderOpenOutlined />} onClick={handleLocalInstall}>
-          从本地目录安装
+        <Space>
+          <Button icon={<FolderOpenOutlined />} onClick={handleLocalInstall}>
+            从本地目录安装
+          </Button>
+        </Space>
+      </div>
+
+      {/* 从 Git 安装 */}
+      <div className={styles.gitInstallRow}>
+        <Input
+          prefix={<GithubOutlined />}
+          placeholder="输入 Git 仓库 URL（如 https://github.com/user/skill-repo）"
+          value={gitUrl}
+          onChange={(e) => setGitUrl(e.target.value)}
+          onPressEnter={handleGitInstall}
+          disabled={gitInstalling}
+        />
+        <Button
+          type="primary"
+          icon={<DownloadOutlined />}
+          loading={gitInstalling}
+          onClick={handleGitInstall}
+          disabled={!gitUrl.trim()}
+        >
+          安装
         </Button>
       </div>
+
       <Spin spinning={installedLoading}>
         {installed.length === 0 ? (
           <Empty description="暂无已安装的自定义 Skill" className={styles.emptyState} />
         ) : (
           installed.map((skill) => (
             <div key={skill.name} className={styles.skillItem}>
-              <div className={styles.skillInfo}>
+              <div className={styles.skillInfo} onClick={() => setDetailSkill(skill)} style={{ cursor: 'pointer' }}>
                 <span className={styles.skillName}>{skill.displayName}</span>
                 <Tag>{skill.name}</Tag>
                 <div><Text type="secondary">{skill.description}</Text></div>
@@ -245,8 +299,16 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
                   <Text type="secondary">
                     {skill.version && `v${skill.version}`}
                     {skill.author && ` · ${skill.author}`}
+                    {skill.license && ` · ${skill.license}`}
                   </Text>
                 </div>
+                {skill.tags && skill.tags.length > 0 && (
+                  <div className={styles.skillTags}>
+                    {skill.tags.map((tag) => (
+                      <Tag key={tag} color="default">{tag}</Tag>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className={styles.skillActions}>
                 <Popconfirm
@@ -290,6 +352,7 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
                   <div className={styles.skillMeta}>
                     <Text type="secondary">
                       v{skill.version} · {skill.author}
+                      {skill.license && ` · ${skill.license}`}
                       {skill.size && ` · ${(skill.size / 1024).toFixed(0)} KB`}
                     </Text>
                   </div>
@@ -363,23 +426,59 @@ const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ visible, onClose, o
   );
 
   return (
-    <Modal
-      title="Skill 市场"
-      open={visible}
-      onCancel={onClose}
-      footer={null}
-      width={640}
-      styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
-      destroyOnClose
-    >
-      <Tabs
-        defaultActiveKey="installed"
-        items={[
-          { key: 'installed', label: '已安装', children: installedTab },
-          { key: 'online', label: '在线市场', children: onlineTab },
-        ]}
-      />
-    </Modal>
+    <>
+      <Modal
+        title="Skill 市场"
+        open={visible}
+        onCancel={onClose}
+        footer={null}
+        width={640}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+        destroyOnClose
+      >
+        <Tabs
+          defaultActiveKey="installed"
+          items={[
+            { key: 'installed', label: '已安装', children: installedTab },
+            { key: 'online', label: '在线市场', children: onlineTab },
+          ]}
+        />
+      </Modal>
+
+      {/* Skill 详情弹窗 */}
+      <Modal
+        title={detailSkill?.displayName || 'Skill 详情'}
+        open={!!detailSkill}
+        onCancel={() => setDetailSkill(null)}
+        footer={null}
+        width={560}
+      >
+        {detailSkill && (
+          <div className={styles.skillDetail}>
+            <div className={styles.skillDetailHeader}>
+              <Tag color="blue">{detailSkill.name}</Tag>
+              {detailSkill.version && <Tag>v{detailSkill.version}</Tag>}
+              {detailSkill.license && <Tag color="green">{detailSkill.license}</Tag>}
+              {detailSkill.author && <Text type="secondary"> by {detailSkill.author}</Text>}
+            </div>
+            <p>{detailSkill.description}</p>
+            {detailSkill.tags && detailSkill.tags.length > 0 && (
+              <div className={styles.skillTags}>
+                {detailSkill.tags.map((tag) => (
+                  <Tag key={tag} color="default">{tag}</Tag>
+                ))}
+              </div>
+            )}
+            {detailSkill.instructions && (
+              <div className={styles.skillInstructions}>
+                <Text strong>使用说明</Text>
+                <pre className={styles.markdownContent}>{detailSkill.instructions}</pre>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </>
   );
 };
 

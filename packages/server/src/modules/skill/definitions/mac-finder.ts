@@ -11,6 +11,10 @@ export const macFinderSkill: SkillDefinition = {
   description: '搜索、打开、移动、复制和压缩文件',
   platform: 'mac',
   permission: 'read',
+  version: '1.0.0',
+  license: 'Apache-2.0',
+  author: 'chat-app',
+  tags: ['mac', 'finder', 'filesystem'],
   actions: [
     {
       functionName: 'mac_finder_search',

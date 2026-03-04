@@ -1,5 +1,5 @@
 /**
- * SkillPackageManager 单元测试
+ * SkillPackageManager 单元测试（SKILL.md 标准）
  *
  * 验证自定义 Skill 包的加载、安装、卸载和校验逻辑。
  * 使用真实临时目录替代 mock 文件系统。
@@ -22,32 +22,47 @@ jest.mock('electron', () => ({
 // 所以 SKILLS_DIR = tmpSkillsDir/skills
 const SKILLS_DIR = path.join(tmpSkillsDir, 'skills');
 
-/** 创建一个有效的 Skill 包目录 */
+/** 创建一个有效的 SKILL.md 格式 Skill 包目录 */
 function createSkillPackage(
   dir: string,
-  manifest: Record<string, unknown>,
-  handlerCode: string,
+  skillMdContent: string,
+  handlerCode?: string,
 ): void {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
-  fs.writeFileSync(path.join(dir, 'handler.js'), handlerCode);
+  fs.writeFileSync(path.join(dir, 'SKILL.md'), skillMdContent);
+  if (handlerCode) {
+    const scriptsDir = path.join(dir, 'scripts');
+    fs.mkdirSync(scriptsDir, { recursive: true });
+    fs.writeFileSync(path.join(scriptsDir, 'handler.js'), handlerCode);
+  }
 }
 
-const validManifest = {
-  name: 'test-skill',
-  displayName: 'Test Skill',
-  description: '测试用 Skill',
-  platform: 'all',
-  permission: 'read',
-  actions: [
-    {
-      functionName: 'test_run',
-      description: '测试运行',
-      parameters: { type: 'object', properties: {} },
-    },
-  ],
-  version: '1.0.0',
-};
+const validSkillMd = `---
+name: test-skill
+displayName: Test Skill
+description: 测试用 Skill
+version: 1.0.0
+compatibility:
+  platforms:
+    - all
+  permissions:
+    - read
+metadata:
+  author: tester
+  tags:
+    - test
+  actions:
+    - functionName: test_run
+      description: 测试运行
+      parameters:
+        type: object
+        properties: {}
+---
+
+# Test Skill
+
+这是测试用 Skill。
+`;
 
 const validHandlerCode = `
 module.exports = {
@@ -86,8 +101,12 @@ describe('SkillPackageManager', () => {
     expect(fs.existsSync(SKILLS_DIR)).toBe(true);
   });
 
-  test('loadAll 加载目录中的有效 Skill 包', () => {
-    createSkillPackage(path.join(SKILLS_DIR, 'test-skill'), validManifest, validHandlerCode);
+  test('loadAll 加载目录中的有效 SKILL.md 包', () => {
+    createSkillPackage(
+      path.join(SKILLS_DIR, 'test-skill'),
+      validSkillMd,
+      validHandlerCode,
+    );
 
     const { SkillPackageManager } = require('../src/skills/SkillPackageManager');
     const manager = new SkillPackageManager();
@@ -97,6 +116,7 @@ describe('SkillPackageManager', () => {
     expect(skills).toHaveLength(1);
     expect(skills[0].name).toBe('test-skill');
     expect(skills[0].source).toBe('custom');
+    expect(skills[0].version).toBe('1.0.0');
   });
 
   test('loadAll 跳过空目录（无子包）', () => {
@@ -106,11 +126,10 @@ describe('SkillPackageManager', () => {
     expect(manager.listCustomSkills()).toHaveLength(0);
   });
 
-  test('缺少 manifest.json 时跳过并输出错误', () => {
+  test('缺少 SKILL.md 时跳过并输出错误', () => {
     const pkgDir = path.join(SKILLS_DIR, 'bad-pkg');
-    fs.mkdirSync(pkgDir);
-    fs.writeFileSync(path.join(pkgDir, 'handler.js'), 'module.exports = {};');
-    // 不创建 manifest.json
+    fs.mkdirSync(pkgDir, { recursive: true });
+    // 不创建 SKILL.md
 
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -124,7 +143,11 @@ describe('SkillPackageManager', () => {
   });
 
   test('uninstall 删除已安装的 Skill', () => {
-    createSkillPackage(path.join(SKILLS_DIR, 'test-skill'), validManifest, validHandlerCode);
+    createSkillPackage(
+      path.join(SKILLS_DIR, 'test-skill'),
+      validSkillMd,
+      validHandlerCode,
+    );
 
     const { SkillPackageManager } = require('../src/skills/SkillPackageManager');
     const manager = new SkillPackageManager();
@@ -144,7 +167,11 @@ describe('SkillPackageManager', () => {
   });
 
   test('getHandler 返回加载的 handler 函数', async () => {
-    createSkillPackage(path.join(SKILLS_DIR, 'test-skill'), validManifest, validHandlerCode);
+    createSkillPackage(
+      path.join(SKILLS_DIR, 'test-skill'),
+      validSkillMd,
+      validHandlerCode,
+    );
 
     const { SkillPackageManager } = require('../src/skills/SkillPackageManager');
     const manager = new SkillPackageManager();
@@ -159,22 +186,30 @@ describe('SkillPackageManager', () => {
   });
 
   test('getPermission 返回 action 级权限', () => {
-    const manifest = {
-      ...validManifest,
-      name: 'perm-skill',
-      actions: [
-        {
-          functionName: 'perm_exec',
-          description: '执行操作',
-          parameters: { type: 'object', properties: {} },
-          permission: 'execute',
-        },
-      ],
-    };
+    const skillMd = `---
+name: perm-skill
+displayName: Perm Skill
+description: 权限测试 Skill
+version: 1.0.0
+compatibility:
+  platforms:
+    - all
+  permissions:
+    - read
+metadata:
+  actions:
+    - functionName: perm_exec
+      description: 执行操作
+      parameters:
+        type: object
+        properties: {}
+      permission: execute
+---
+`;
 
     createSkillPackage(
       path.join(SKILLS_DIR, 'perm-skill'),
-      manifest,
+      skillMd,
       `module.exports = { perm_exec: async () => ({}) };`,
     );
 
