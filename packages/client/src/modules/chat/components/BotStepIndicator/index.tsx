@@ -10,6 +10,7 @@ import styles from './index.module.less';
 
 /** 工具名 → 中文描述映射 */
 const STEP_LABELS: Record<string, string> = {
+  loading_history: '正在加载历史记录',
   generating: '正在生成回复',
   bash_exec: '正在执行命令',
   read_file: '正在读取文件',

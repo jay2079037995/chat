@@ -6,7 +6,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import * as url from 'url';
-import type { AgentGenerationLog } from '@chat/shared';
+import type { AgentGenerationLog, LLMCallLog } from '@chat/shared';
 
 export interface BotUpdate {
   updateId: number;
@@ -75,6 +75,15 @@ export class BotClient {
   /** 保存 Agent 生成日志到服务端 */
   async saveGenerationLog(log: AgentGenerationLog): Promise<void> {
     const apiUrl = `${this.serverUrl}/api/bot/generationLog`;
+    await this.request('POST', apiUrl, {
+      token: this.token,
+      log,
+    });
+  }
+
+  /** 保存 LLM 调用日志到服务端 */
+  async saveLLMCallLog(log: LLMCallLog): Promise<void> {
+    const apiUrl = `${this.serverUrl}/api/bot/llmLog`;
     await this.request('POST', apiUrl, {
       token: this.token,
       log,

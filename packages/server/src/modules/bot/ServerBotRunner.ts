@@ -10,7 +10,7 @@
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
 import { Agent } from '@mastra/core/agent';
-import type { LLMConfig, BotStatus, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
+import type { LLMConfig, BotStatus, MessageMetadata, AgentStepLog, AgentGenerationLog, LLMCallLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { BotService } from './BotService';
 import type { ToolDispatcher } from './ToolDispatcher';
@@ -132,8 +132,12 @@ export class ServerBotRunner {
   /** 构建包含 Skill 指令的系统提示词 */
   private buildSystemPrompt(): string {
     const base = this.llmConfig.systemPrompt || 'You are a helpful assistant.';
-    if (!this.skillInstructions) return base;
-    return base + this.skillInstructions;
+    if (this.skillInstructions) return base + this.skillInstructions;
+    // 无 Skill 推送但有工具能力时，补充基础工具说明
+    if (this.toolDispatcher) {
+      return base + '\n\n# 工作区环境\n\n你拥有一个专属的工作目录。\n\n## 工具使用说明\n\n你可以使用以下工具来执行任务：\n\n- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。\n- `read_file`: 读取文件。相对路径基于工作区目录解析。\n- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。\n- `list_files`: 列出目录。默认列出工作区根目录。\n- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。\n\n**重要**: 所有相对路径都基于工作区目录解析，bash_exec 的工作目录已设为工作区，直接运行命令即可。';
+    }
+    return base;
   }
 
   /** 核心轮询循环 */
@@ -391,6 +395,25 @@ export class ServerBotRunner {
         steps: stepLogs,
       });
 
+      // 保存 LLM 调用日志（fire-and-forget）
+      this.saveLLMLog({
+        id: generateId(),
+        botId: this.botId,
+        timestamp: llmStartTime,
+        conversationId,
+        request: {
+          provider: this.llmConfig.provider,
+          model: this.llmConfig.model,
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          tools: tools ? Object.keys(tools).map((n) => ({ name: n, description: '' })) : undefined,
+        },
+        response: {
+          content: content,
+          finishReason: result.finishReason || 'stop',
+        },
+        durationMs: llmDurationMs,
+      });
+
       return { content, metadata: pendingMetadata, fileArtifacts: pendingFileArtifacts };
     } catch (err: any) {
       this.emitStepProgress(conversationId, { step: 'generating', status: 'error', detail: err.message });
@@ -406,6 +429,22 @@ export class ServerBotRunner {
         error: err.message,
         steps: stepLogs,
       });
+
+      // 保存错误 LLM 调用日志（fire-and-forget）
+      this.saveLLMLog({
+        id: generateId(),
+        botId: this.botId,
+        timestamp: generationStartTime,
+        conversationId,
+        request: {
+          provider: this.llmConfig.provider,
+          model: this.llmConfig.model,
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+        },
+        error: err.message,
+        durationMs: Date.now() - generationStartTime,
+      });
+
       throw err;
     }
   }
@@ -417,6 +456,11 @@ export class ServerBotRunner {
     } catch {
       // 日志保存失败不影响主流程
     }
+  }
+
+  /** 保存 LLM 调用日志（fire-and-forget） */
+  private saveLLMLog(log: LLMCallLog): void {
+    this.botService.saveLLMCallLog(log).catch(() => {});
   }
 
   /** 处理 Slash 命令 */

@@ -44,7 +44,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   const [creating, setCreating] = useState(false);
   const [newBotName, setNewBotName] = useState('');
   const [newToken, setNewToken] = useState<string | null>(null);
-  const [runMode, setRunMode] = useState<BotRunMode>('client');
+  const [runMode, setRunMode] = useState<BotRunMode>(isElectron ? 'local' : 'server');
 
   // 编辑配置 Modal
   const [editingBot, setEditingBot] = useState<Bot | null>(null);
@@ -77,7 +77,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       void loadBots();
       setNewToken(null);
       setNewBotName('');
-      setRunMode('client');
+      setRunMode(isElectron ? 'local' : 'server');
       createForm.resetFields();
     }
   }, [visible]);
@@ -219,7 +219,8 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       );
     }
 
-    if (bot.runMode === 'server') {
+    // 日志按钮（所有模式均可查看：server 直接保存，local/client 通过 HTTP 上报）
+    if (bot.runMode === 'server' || bot.runMode === 'local' || bot.runMode === 'client') {
       actions.push(
         <Button
           key="logs"
@@ -230,6 +231,9 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           title="调用日志"
         />,
       );
+    }
+
+    if (bot.runMode === 'server') {
       actions.push(
         <Button
           key="edit"
@@ -282,6 +286,11 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
 
   const renderBotDescription = (bot: Bot) => {
     const date = new Date(bot.createdAt).toLocaleDateString('zh-CN');
+    const idTag = (
+      <Text type="secondary" copyable={{ text: bot.id }} style={{ fontSize: 11 }}>
+        ID: {bot.id.slice(0, 8)}
+      </Text>
+    );
     if (bot.runMode === 'server') {
       const provider = bot.llmConfig?.provider || '';
       const model = bot.llmConfig?.model || '';
@@ -291,6 +300,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           <Text type="secondary" className={styles.botMeta}>
             {provider} / {model} · {date}
           </Text>
+          <div>{idTag}</div>
         </div>
       );
     }
@@ -298,12 +308,20 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       const provider = bot.mastraConfig?.provider || '';
       const model = bot.mastraConfig?.model || '';
       return (
-        <Text type="secondary" className={styles.botMeta}>
-          {provider} / {model} · {date}
-        </Text>
+        <div>
+          <Text type="secondary" className={styles.botMeta}>
+            {provider} / {model} · {date}
+          </Text>
+          <div>{idTag}</div>
+        </div>
       );
     }
-    return `创建于 ${date}`;
+    return (
+      <div>
+        <Text type="secondary">创建于 {date}</Text>
+        <div>{idTag}</div>
+      </div>
+    );
   };
 
   return (
@@ -319,7 +337,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           placeholder="输入机器人用户名（须以 bot 结尾）"
           value={newBotName}
           onChange={(e) => setNewBotName(e.target.value)}
-          onPressEnter={runMode === 'client' ? handleCreate : undefined}
+          onPressEnter={handleCreate}
           disabled={creating}
         />
       </div>
@@ -330,7 +348,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           onChange={(e) => setRunMode(e.target.value)}
           size="small"
         >
-          <Radio.Button value="client">客户端运行</Radio.Button>
           <Radio.Button value="server">服务端运行</Radio.Button>
           <Radio.Button value="local" disabled={!isElectron}>本地运行</Radio.Button>
         </Radio.Group>
@@ -435,8 +452,34 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
                   <Text ellipsis style={{ flex: 1, fontSize: 13 }}>{workspacePath || '加载中...'}</Text>
                   <Button
                     size="small"
+                    onClick={async () => {
+                      const electronAPI = (window as any).electronAPI;
+                      const selected = await electronAPI?.selectWorkspaceDir();
+                      if (selected) {
+                        const effectivePath = await electronAPI.setCustomWorkspace(editingBot.id, selected);
+                        setWorkspacePath(effectivePath);
+                      }
+                    }}
+                    title="选择自定义工作目录"
+                  >
+                    选择
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={async () => {
+                      const electronAPI = (window as any).electronAPI;
+                      const effectivePath = await electronAPI?.setCustomWorkspace(editingBot.id, null);
+                      setWorkspacePath(effectivePath);
+                    }}
+                    title="恢复默认工作目录"
+                  >
+                    默认
+                  </Button>
+                  <Button
+                    size="small"
                     icon={<FolderOpenOutlined />}
                     onClick={() => (window as any).electronAPI?.openWorkspace(editingBot.id)}
+                    title="在文件管理器中打开"
                   >
                     打开
                   </Button>

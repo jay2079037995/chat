@@ -17,9 +17,15 @@ import type { ClaudeSkill, ClaudeSkillMeta, PluginEntry } from '../../../shared/
 export class BotSkillManager {
   /** 基础数据目录 */
   private readonly baseDir: string;
+  /** 自定义工作目录配置文件路径 */
+  private readonly workspaceConfigPath: string;
+  /** 自定义工作目录内存缓存 { botId → dirPath } */
+  private customWorkspaces: Record<string, string> = {};
 
   constructor() {
     this.baseDir = path.join(app.getPath('userData'), 'bots');
+    this.workspaceConfigPath = path.join(this.baseDir, 'workspace-config.json');
+    this.loadWorkspaceConfig();
   }
 
   /**
@@ -30,10 +36,54 @@ export class BotSkillManager {
   }
 
   /**
-   * 获取 Bot 的工作区目录
+   * 获取 Bot 的工作区目录（优先返回自定义路径）
    */
   getWorkspacePath(botId: string): string {
+    const custom = this.customWorkspaces[botId];
+    if (custom && fs.existsSync(custom)) {
+      return custom;
+    }
     return path.join(this.baseDir, botId, 'workspace');
+  }
+
+  /**
+   * 设置自定义工作目录
+   */
+  setCustomWorkspace(botId: string, dirPath: string): void {
+    this.customWorkspaces[botId] = dirPath;
+    this.saveWorkspaceConfig();
+  }
+
+  /**
+   * 清除自定义工作目录（恢复默认）
+   */
+  clearCustomWorkspace(botId: string): void {
+    delete this.customWorkspaces[botId];
+    this.saveWorkspaceConfig();
+  }
+
+  /**
+   * 获取自定义工作目录（如有）
+   */
+  getCustomWorkspace(botId: string): string | null {
+    return this.customWorkspaces[botId] || null;
+  }
+
+  /** 从磁盘加载自定义工作目录配置 */
+  private loadWorkspaceConfig(): void {
+    try {
+      if (fs.existsSync(this.workspaceConfigPath)) {
+        this.customWorkspaces = JSON.parse(fs.readFileSync(this.workspaceConfigPath, 'utf-8'));
+      }
+    } catch {
+      this.customWorkspaces = {};
+    }
+  }
+
+  /** 保存自定义工作目录配置到磁盘 */
+  private saveWorkspaceConfig(): void {
+    this.ensureDir(path.dirname(this.workspaceConfigPath));
+    fs.writeFileSync(this.workspaceConfigPath, JSON.stringify(this.customWorkspaces, null, 2));
   }
 
   /**
@@ -221,27 +271,8 @@ export class BotSkillManager {
     const skills = await this.listSkillsWithContent(botId);
     const workspacePath = this.getWorkspacePath(botId);
 
-    if (skills.length === 0) {
-      return basePrompt;
-    }
-
-    // Skill 目录列表
-    const skillsDir = this.getSkillsDir(botId);
-    const skillDirsList = skills
-      .map((skill) => `  - \`${path.join(skillsDir, skill.name)}/\` (${skill.name})`)
-      .join('\n');
-
-    // 拼接 Skill 指令块
-    const skillBlocks = skills
-      .map((skill) => {
-        const header = `## Skill: ${skill.name}`;
-        const desc = skill.description ? `\n${skill.description}` : '';
-        const body = skill.instructions ? `\n\n${skill.instructions}` : '';
-        return `${header}${desc}${body}`;
-      })
-      .join('\n\n---\n\n');
-
-    const skillSection = [
+    // 始终包含工作区环境和工具说明（即使无 Skill 安装）
+    const sections: string[] = [
       '',
       '# 工作区环境',
       '',
@@ -252,25 +283,48 @@ export class BotSkillManager {
       '你可以使用以下工具来执行任务：',
       '',
       '- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。',
-      '- `read_file`: 读取文件。相对路径基于工作区目录解析。也可读取 Skill 目录中的参考文件。',
+      '- `read_file`: 读取文件。相对路径基于工作区目录解析。',
       '- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。',
-      '- `list_files`: 列出目录。默认列出工作区根目录。也可列出 Skill 目录。',
+      '- `list_files`: 列出目录。默认列出工作区根目录。',
       '- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。',
       '',
       '**重要**:',
       '- 所有相对路径都基于工作区目录解析',
       '- 你可以直接使用相对路径（如 `output.docx`），无需拼接绝对路径',
       '- bash_exec 的工作目录已设为工作区，直接运行命令即可',
-      `- 以下 Skill 目录可读取参考文件:\n${skillDirsList}`,
-      '',
-      '# 可用 Skills',
-      '',
-      '以下是你已安装的 Skills 及其指令：',
-      '',
-      skillBlocks,
-    ].join('\n');
+    ];
 
-    return basePrompt + skillSection;
+    // 有 Skill 时追加 Skill 目录和指令
+    if (skills.length > 0) {
+      const skillsDir = this.getSkillsDir(botId);
+      const skillDirsList = skills
+        .map((skill) => `  - \`${path.join(skillsDir, skill.name)}/\` (${skill.name})`)
+        .join('\n');
+
+      sections.push(
+        `- 以下 Skill 目录可读取参考文件:\n${skillDirsList}`,
+      );
+
+      const skillBlocks = skills
+        .map((skill) => {
+          const header = `## Skill: ${skill.name}`;
+          const desc = skill.description ? `\n${skill.description}` : '';
+          const body = skill.instructions ? `\n\n${skill.instructions}` : '';
+          return `${header}${desc}${body}`;
+        })
+        .join('\n\n---\n\n');
+
+      sections.push(
+        '',
+        '# 可用 Skills',
+        '',
+        '以下是你已安装的 Skills 及其指令：',
+        '',
+        skillBlocks,
+      );
+    }
+
+    return basePrompt + sections.join('\n');
   }
 
   /**

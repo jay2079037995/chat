@@ -52,6 +52,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 打开 Bot 工作目录 */
   openWorkspace: (botId: string): Promise<void> =>
     ipcRenderer.invoke('localbot:open-workspace', botId),
+  /** 选择工作目录（打开目录选择对话框） */
+  selectWorkspaceDir: (): Promise<string | null> =>
+    ipcRenderer.invoke('localbot:select-workspace-dir'),
+  /** 设置自定义工作目录（传 null 恢复默认） */
+  setCustomWorkspace: (botId: string, dirPath: string | null): Promise<string> =>
+    ipcRenderer.invoke('localbot:set-custom-workspace', botId, dirPath),
   /** 监听 Skill 指令更新（Electron → 渲染进程 → Socket.IO → Server） */
   onSkillInstructionsUpdate: (callback: (data: { botId: string; instructions: string }) => void): void => {
     ipcRenderer.on('bot:skill-instructions-update', (_ipcEvent, data: { botId: string; instructions: string }) => callback(data));

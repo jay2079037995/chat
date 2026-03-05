@@ -1,6 +1,6 @@
 {
   "name": "@chat/client",
-  "version": "1.25.0",
+  "version": "1.27.0",
   "private": true,
   "scripts": {
     "dev": "webpack serve --mode development",

@@ -97,6 +97,14 @@ describe('BotStepIndicator — 步骤进度集成渲染', () => {
     );
     expect(screen.getByText('正在执行命令')).toBeDefined();
   });
+
+  // v1.26.0: loading_history 步骤
+  test('loading_history 步骤显示正在加载历史记录', () => {
+    render(
+      <BotStepIndicator step="loading_history" status="start" timestamp={Date.now()} />,
+    );
+    expect(screen.getByText('正在加载历史记录')).toBeDefined();
+  });
 });
 
 // ─── Test 3: useSocketStore bot:step-progress 处理逻辑 ─────────────

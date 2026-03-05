@@ -4,7 +4,7 @@ import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
-import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
+import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog, LLMCallLog } from '@chat/shared';
 import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
 import { Agent } from '@mastra/core/agent';
 import { BotService } from './BotService';
@@ -343,6 +343,30 @@ export class BotModule implements ServerModule {
       }
     });
 
+    // POST /api/bot/llmLog — Agent-app 保存 LLM 调用日志（通过 token 认证）
+    router.post('/llmLog', async (req, res) => {
+      try {
+        const { token, log } = req.body;
+        if (!token || !log) {
+          res.status(400).json({ error: '缺少必要参数 (token, log)' });
+          return;
+        }
+
+        const botId = await botService.getBotIdByToken(token);
+        if (!botId) {
+          res.status(401).json({ error: 'Token 无效' });
+          return;
+        }
+
+        // 安全：强制覆盖 botId，防止伪造
+        const sanitizedLog: LLMCallLog = { ...log, botId };
+        await botService.saveLLMCallLog(sanitizedLog);
+        res.json({ success: true });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // GET /api/bot/:id/config — 获取 Bot 完整配置（需 session + 所有权，仅 local 模式）
     router.get('/:id/config', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
@@ -637,10 +661,14 @@ export class BotModule implements ServerModule {
           }
         }
 
-        // 构建系统提示词（含 skill 指令）
+        // 构建系统提示词（含 skill 指令 + 工具说明）
         const skillInstructions = serverBotManager?.getSkillInstructions(botId) || '';
         const basePrompt = llmConfig.systemPrompt || '';
-        const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '');
+        // 如果无 Skill 推送但 Bot 有工具能力（本地/服务端），补充基础工具说明
+        const toolInstructions = !skillInstructions && runMode !== 'client'
+          ? '\n\n# 工作区环境\n\n你拥有一个专属的工作目录。\n\n## 工具使用说明\n\n你可以使用以下工具来执行任务：\n\n- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。\n- `read_file`: 读取文件。相对路径基于工作区目录解析。\n- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。\n- `list_files`: 列出目录。默认列出工作区根目录。\n- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。\n\n**重要**: 所有相对路径都基于工作区目录解析，bash_exec 的工作目录已设为工作区，直接运行命令即可。'
+          : '';
+        const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '') + toolInstructions;
 
         // 创建 model + tools + 步骤日志收集
         const model = await createModel(llmConfig);

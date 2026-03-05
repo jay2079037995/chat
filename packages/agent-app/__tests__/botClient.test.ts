@@ -56,4 +56,26 @@ describe('BotClient（Bot API 客户端）', () => {
       steps: [],
     })).rejects.toThrow();
   });
+
+  // v1.26.0: LLM 调用日志方法
+  it('should have saveLLMCallLog method', () => {
+    const client = new BotClient('http://localhost:3001', 'test-token');
+    expect(typeof client.saveLLMCallLog).toBe('function');
+  });
+
+  it('should handle saveLLMCallLog network error gracefully', async () => {
+    const client = new BotClient('http://localhost:19999', 'test-token');
+    await expect(client.saveLLMCallLog({
+      id: 'llm-1',
+      botId: 'bot-1',
+      timestamp: Date.now(),
+      conversationId: 'conv-1',
+      request: {
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'hello' }],
+      },
+      durationMs: 500,
+    })).rejects.toThrow();
+  });
 });

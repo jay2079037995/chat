@@ -21,7 +21,7 @@ registerRepositories(container);
 const app: Express = express();
 
 app.use(cors({ origin: config.cors.origin, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // 静态文件服务 — 上传的文件通过 /uploads/* 路径访问

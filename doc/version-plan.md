@@ -1489,6 +1489,24 @@ v1.24.0 为服务端 Bot 和本地模式 Bot 添加了实时步骤进度和 Agen
 - [ ] doc/test/v1.25.0-test.md 测试文档
 - [ ] pnpm build + pnpm test
 
+## v1.26.0 — 完整 LLM 调用日志 + 细粒度步骤进度
+
+### 目标
+- agent-app + ServerBotRunner 保存完整 LLMCallLog（请求消息、模型、响应内容、耗时）
+- BotLogViewer "LLM 日志" Tab 从空变有数据
+- agent-app 增加 loading_history 步骤进度
+
+### 修改清单
+- [ ] Server: POST /api/bot/llmLog 端点（token 认证）
+- [ ] ServerBotRunner: LLM 调用后 saveLLMLog()
+- [ ] agent-app BotClient: saveLLMCallLog 方法
+- [ ] agent-app AgentManager: 保存 LLMCallLog + loading_history 步骤
+- [ ] Client BotStepIndicator: loading_history 标签
+- [ ] 测试: bot-llm-log-api.test.ts、botClient.test.ts、BotStepProgress.test.tsx
+- [ ] 版本号 → 1.26.0
+- [ ] doc/test/v1.26.0-test.md 测试文档
+- [ ] pnpm build + pnpm test
+
 ### 文件清单
 
 | 文件 | 变更 |
@@ -1500,3 +1518,27 @@ v1.24.0 为服务端 Bot 和本地模式 Bot 添加了实时步骤进度和 Agen
 | `packages/agent-app/__tests__/botClient.test.ts` | 更新 |
 | `packages/agent-app/__tests__/agentManager.test.ts` | 更新 |
 | 版本相关文件 (8+ 个) | 版本号 → 1.25.0 |
+
+## v1.27.0 — 本地机器人自定义工作目录 + 机器人 ID 显示
+
+### 目标
+- 允许本地机器人自定义工作目录（替代固定的 userData/bots/{id}/workspace）
+- 在机器人列表界面显示机器人 ID
+
+### 修改清单
+- [x] BotSkillManager: 自定义工作目录存储 + getWorkspacePath 优先返回自定义路径
+- [x] Electron main.ts: 新增 localbot:select-workspace-dir 和 localbot:set-custom-workspace IPC
+- [x] Electron preload.ts: 暴露 selectWorkspaceDir 和 setCustomWorkspace API
+- [x] BotManager: renderBotDescription 显示 bot ID + 编辑弹窗可配置工作目录
+- [x] 版本号 → 1.27.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/electron/src/claudeskill/BotSkillManager.ts` | 自定义工作目录存储 + 修改 getWorkspacePath |
+| `packages/electron/src/main.ts` | 新增 2 个 IPC 处理器 |
+| `packages/electron/src/preload.ts` | 暴露 2 个新 API |
+| `packages/client/src/modules/chat/components/BotManager/index.tsx` | 显示 bot ID + 可编辑工作目录 |
+| 版本相关文件 (8+ 个) | 版本号 → 1.27.0 |

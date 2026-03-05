@@ -17,7 +17,7 @@ import {
   clearConversationHistory,
 } from './conversationHistory';
 import { generateId } from '@chat/shared';
-import type { AgentGenerationLog, AgentStepLog } from '@chat/shared';
+import type { AgentGenerationLog, AgentStepLog, LLMCallLog } from '@chat/shared';
 import type { AgentConfig, AgentState, LogEntry } from '../shared/types';
 
 interface AgentRunner {
@@ -225,12 +225,15 @@ export class AgentManager {
             // 自动加载历史（首次接触新会话时）
             if (!hasHistory(config.id, conversationId)) {
               try {
+                botClient.reportStepProgress(conversationId, 'loading_history', 'start').catch(() => {});
                 const historyData = await botClient.getHistory(conversationId, runner.config.contextLength * 2);
                 if (historyData.messages && historyData.messages.length > 0) {
                   prefillHistory(config.id, conversationId, historyData.messages, historyData.botUserId);
                   this.emitLog(config.id, 'info', `加载会话 [${conversationId.substring(0, 8)}] 历史记录: ${historyData.messages.length} 条`);
                 }
+                botClient.reportStepProgress(conversationId, 'loading_history', 'complete').catch(() => {});
               } catch (err: any) {
+                botClient.reportStepProgress(conversationId, 'loading_history', 'error', err.message).catch(() => {});
                 this.emitLog(config.id, 'warn', `加载历史失败: ${err.message}`);
               }
             }
@@ -329,6 +332,26 @@ export class AgentManager {
             }).catch((e) => {
               this.emitLog(config.id, 'warn', `保存生成日志失败: ${e.message}`);
             });
+
+            // 保存 LLM 调用日志（fire-and-forget）
+            botClient.saveLLMCallLog({
+              id: generateId(),
+              botId: config.id,
+              timestamp: llmStartTime,
+              conversationId,
+              request: {
+                provider: runner.config.provider,
+                model: runner.config.model,
+                messages: recentHistory.map((m) => ({ role: m.role, content: m.content })),
+              },
+              response: {
+                content: reply,
+                finishReason: (result as any).finishReason || 'stop',
+              },
+              durationMs: llmDurationMs,
+            }).catch((e) => {
+              this.emitLog(config.id, 'warn', `保存 LLM 日志失败: ${e.message}`);
+            });
           } catch (err: any) {
             runner.consecutiveErrors++;
             runner.lastError = err.message;
@@ -337,6 +360,21 @@ export class AgentManager {
 
             // 报告步骤错误（fire-and-forget）
             botClient.reportStepProgress(conversationId, 'generating', 'error', err.message).catch(() => {});
+
+            // 保存错误 LLM 调用日志（fire-and-forget）
+            botClient.saveLLMCallLog({
+              id: generateId(),
+              botId: config.id,
+              timestamp: Date.now(),
+              conversationId,
+              request: {
+                provider: runner.config.provider,
+                model: runner.config.model,
+                messages: [],
+              },
+              error: err.message,
+              durationMs: 0,
+            }).catch(() => {});
 
             // 连续失败 5 次，暂停 agent
             if (runner.consecutiveErrors >= 5) {

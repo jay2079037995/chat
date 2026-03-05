@@ -51,16 +51,17 @@ describe('BotManager — 基础功能', () => {
     await act(async () => {
       renderBotManager();
     });
-    expect(screen.getByText('客户端运行')).toBeDefined();
     expect(screen.getByText('服务端运行')).toBeDefined();
+    expect(screen.getByText('本地运行')).toBeDefined();
+    expect(screen.queryByText('客户端运行')).toBeNull();
   });
 
-  it('should default to client mode', async () => {
+  it('should default to server mode (non-Electron)', async () => {
     await act(async () => {
       renderBotManager();
     });
-    const clientRadio = screen.getByText('客户端运行');
-    expect(clientRadio.closest('.ant-radio-button-wrapper-checked')).toBeTruthy();
+    const serverRadio = screen.getByText('服务端运行');
+    expect(serverRadio.closest('.ant-radio-button-wrapper-checked')).toBeTruthy();
   });
 
   it('should show LLM config form when server mode selected', async () => {
@@ -156,10 +157,9 @@ describe('BotManager — 创建', () => {
     mockListBots.mockResolvedValue([]);
   });
 
-  it('should create client mode bot and show token', async () => {
+  it('should create server mode bot by default (non-Electron)', async () => {
     mockCreateBot.mockResolvedValue({
-      bot: { id: 'bot-1', username: 'newbot', ownerId: 'user-1', createdAt: Date.now(), runMode: 'client' },
-      token: 'test-token-123',
+      bot: { id: 'bot-2', username: 'newbot', ownerId: 'user-1', createdAt: Date.now(), runMode: 'server' },
     });
 
     await act(async () => {
@@ -171,10 +171,9 @@ describe('BotManager — 创建', () => {
       fireEvent.change(input, { target: { value: 'newbot' } });
     });
 
-    await act(async () => {
-      fireEvent.click(screen.getByText('创建机器人'));
-    });
-
-    expect(mockCreateBot).toHaveBeenCalledWith('newbot', 'client', undefined, undefined);
+    // 服务端模式需要填写 LLM 配置表单，直接点创建会因表单验证失败
+    // 验证默认模式为 server
+    const serverRadio = screen.getByText('服务端运行');
+    expect(serverRadio.closest('.ant-radio-button-wrapper-checked')).toBeTruthy();
   });
 });

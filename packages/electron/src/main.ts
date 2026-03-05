@@ -118,6 +118,28 @@ if (!gotSingleInstanceLock) {
     }
   });
 
+  // 选择工作目录（打开目录选择对话框）
+  ipcMain.handle('localbot:select-workspace-dir', async () => {
+    const { dialog } = await import('electron');
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '选择工作目录',
+      message: '选择机器人的工作目录',
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  // 设置自定义工作目录（传 null 恢复默认）
+  ipcMain.handle('localbot:set-custom-workspace', (_event, botId: string, dirPath: string | null) => {
+    if (dirPath) {
+      botSkillManager.setCustomWorkspace(botId, dirPath);
+    } else {
+      botSkillManager.clearCustomWorkspace(botId);
+    }
+    return botSkillManager.getWorkspacePath(botId);
+  });
+
   app.whenReady().then(() => {
     // 允许麦克风、摄像头等媒体权限请求（否则 Electron 默认静默拒绝）
     session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {

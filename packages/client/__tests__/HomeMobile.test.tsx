@@ -137,7 +137,7 @@ describe('Home — 桌面端布局', () => {
     await act(async () => {
       renderHome();
     });
-    expect(screen.getByText('v1.25.0')).toBeDefined();
+    expect(screen.getByText('v1.27.0')).toBeDefined();
   });
 });
 
