@@ -109,11 +109,32 @@ const BotLogViewer: React.FC<BotLogViewerProps> = ({ visible, onClose, botId, bo
     }
   };
 
+  /** 生成工具调用的摘要信息 */
+  const getToolSummary = (step: AgentStepLog): string | null => {
+    if (!step.toolInput) return null;
+    const input = step.toolInput;
+    switch (step.toolName) {
+      case 'bash_exec': return String(input.command || '').slice(0, 80);
+      case 'read_file': return String(input.path || '');
+      case 'write_file': return `${input.path} (${String(input.content || '').length} chars)`;
+      case 'list_files': return String(input.path || '.');
+      case 'read_file_binary': return String(input.path || '');
+      case 'send_file_to_chat': return String(input.path || '');
+      case 'search_skills': return `"${input.query}"`;
+      case 'install_skill': return String(input.url || input.localPath || '');
+      case 'uninstall_skill': return String(input.name || '');
+      case 'read_skill': return String(input.name || '');
+      case 'execute_skill_script': return `${input.skillName}/${input.scriptPath}`;
+      default: return null;
+    }
+  };
+
   const renderStepItem = (step: AgentStepLog) => {
     const isStepExpanded = expandedStepId === step.id;
     const isError = step.type === 'error' || !!step.error;
     const typeLabel = STEP_TYPE_LABELS[step.type] || step.type;
     const icon = STEP_ICONS[step.type] || <ClockCircleOutlined />;
+    const toolSummary = getToolSummary(step);
 
     return (
       <div key={step.id} className={styles.stepItem}>
@@ -134,10 +155,27 @@ const BotLogViewer: React.FC<BotLogViewerProps> = ({ visible, onClose, botId, bo
             </Tag>
             {step.toolName && <Text code style={{ fontSize: 12 }}>{step.toolName}</Text>}
             <Tag style={{ margin: 0 }}>{step.durationMs}ms</Tag>
+            {step.toolOutputLength !== undefined && step.toolOutputLength > 0 && (
+              <Tag color="default" style={{ margin: 0, fontSize: 11 }}>{step.toolOutputLength > 1000 ? `${(step.toolOutputLength / 1000).toFixed(1)}k` : step.toolOutputLength} chars</Tag>
+            )}
           </div>
+          {/* 未展开时显示工具调用摘要 */}
+          {!isStepExpanded && toolSummary && (
+            <div style={{ marginTop: 2 }}>
+              <Text type="secondary" style={{ fontSize: 11 }} ellipsis>{toolSummary}</Text>
+            </div>
+          )}
 
           {isStepExpanded && (
             <div className={styles.stepDetail} onClick={(e) => e.stopPropagation()}>
+              {/* 时间信息 */}
+              <div style={{ marginBottom: 6 }}>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  <ClockCircleOutlined style={{ marginRight: 4 }} />
+                  {formatTime(step.timestamp)} · 耗时 {step.durationMs}ms
+                  {step.toolOutputLength !== undefined && ` · 输出 ${step.toolOutputLength} chars`}
+                </Text>
+              </div>
               {step.llmInfo && (
                 <div style={{ marginBottom: 6 }}>
                   <Tag color="blue">{step.llmInfo.provider}/{step.llmInfo.model}</Tag>
@@ -158,7 +196,14 @@ const BotLogViewer: React.FC<BotLogViewerProps> = ({ visible, onClose, botId, bo
               {step.toolOutput && (
                 <>
                   <div className={styles.sectionTitle} style={{ marginTop: 6 }}>
-                    <span>Output</span>
+                    <span>
+                      Output
+                      {step.toolOutputLength !== undefined && step.toolOutputLength > (step.toolOutput?.length || 0) && (
+                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                          (截断: {step.toolOutput?.length}/{step.toolOutputLength})
+                        </Text>
+                      )}
+                    </span>
                     <Tooltip title="复制"><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => handleCopyJson(step.toolOutput)} /></Tooltip>
                   </div>
                   <div className={styles.jsonBlock}>

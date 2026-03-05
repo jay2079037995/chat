@@ -148,6 +148,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
     }
   }, [currentMessages.length, botChat.messages.length]);
 
+  // Bot 流式回复时持续滚动到底部
+  useEffect(() => {
+    if (!botChat.isLoading) return;
+    const interval = setInterval(() => {
+      messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
+    return () => clearInterval(interval);
+  }, [botChat.isLoading]);
+
   // 切换会话时清除引用状态
   useEffect(() => {
     setReplyingTo(null);
@@ -675,7 +684,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
           const isSelf = msg.role === 'user';
           const senderName = isSelf ? (currentUser?.username || '') : (participantNames[otherParticipantId] || otherParticipantId);
           const isLast = msg === botChat.messages[botChat.messages.length - 1];
-          // 将 useChat 消息转换为 Message 格式用于 MessageBubble
+          // 尝试从 store 消息中查找匹配项以获取 metadata（如 present_choices 生成的选项）
+          const storeMsg = currentMessages.find((m) => m.id === msg.id);
           const fakeMsg: Message = {
             id: msg.id,
             conversationId: currentConversationId!,
@@ -683,6 +693,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
             content: msg.content,
             type: (!isSelf && /[#*`\[\]|>]/.test(msg.content) && msg.content.length > 20) ? 'markdown' : 'text',
             createdAt: msg.createdAt?.getTime() || Date.now(),
+            ...(storeMsg?.metadata ? { metadata: storeMsg.metadata } : {}),
           };
           return (
             <div key={msg.id}>
@@ -714,6 +725,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
             </div>
           );
         })}
+        {/* Bot 对话：渲染 store 中的文件/图片消息（send_file_to_chat 产生） */}
+        {isBotChat && currentMessages
+          .filter((m) => m.type === 'file' || m.type === 'image')
+          .map((msg) => {
+            const senderName = participantNames[msg.senderId] || msg.senderId;
+            return (
+              <div key={msg.id}>
+                <div className={`${styles.messageMeta} ${styles.messageMetaOther}`}>
+                  <span className={styles.senderName}>{senderName}</span>
+                </div>
+                <div className={`${styles.messageItem} ${styles.messageItemOther}`}>
+                  <div className={`${styles.bubble} ${styles.bubbleOther} ${styles.bubbleMedia}`}>
+                    <MessageBubble message={msg} isSelf={false} participantNames={participantNames} />
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        }
         {/* 非 Bot 对话：使用 store 消息 */}
         {!isBotChat && (() => {
           let lastBotMsgId: string | undefined;

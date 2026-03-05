@@ -43,7 +43,10 @@ const ConversationContextMenu: React.FC<ConversationContextMenuProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Element;
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        // 不关闭 Popconfirm 弹出层内的点击，否则确认操作会被中断
+        if (target.closest?.('.ant-popconfirm, .ant-popover')) return;
         onClose();
       }
     };

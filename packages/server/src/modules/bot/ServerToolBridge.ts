@@ -36,6 +36,8 @@ export interface ToolLogData {
   toolName: string;
   input: Record<string, unknown>;
   output?: string;
+  /** 输出原始总长度（截断前） */
+  outputLength?: number;
   error?: string;
   durationMs: number;
 }
@@ -99,7 +101,7 @@ async function dispatchTool(
       : typeof result.data === 'string' ? result.data : JSON.stringify(result.data ?? '');
 
     options.onStepProgress?.({ step: toolName, status: hasError ? 'error' : 'complete', detail: hasError ? result.error : undefined, durationMs });
-    options.onToolLog?.({ toolName, input: params, output: truncate(output, 2000), error: result.error || undefined, durationMs });
+    options.onToolLog?.({ toolName, input: params, output: truncate(output, 5000), outputLength: output.length, error: result.error || undefined, durationMs });
 
     return output;
   } catch (err: any) {

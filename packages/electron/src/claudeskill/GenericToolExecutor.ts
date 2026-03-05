@@ -47,6 +47,13 @@ export class GenericToolExecutor {
     workspacePath: string,
     skillDirs: string[],
   ): Promise<GenericToolExecResult> {
+    const startTime = Date.now();
+    const { toolName, params, botId, requestId } = request;
+
+    console.log(`[ToolExec] ▶ ${toolName} | bot=${botId} | reqId=${requestId}`);
+    console.log(`[ToolExec]   params: ${JSON.stringify(params).slice(0, 500)}`);
+    console.log(`[ToolExec]   workspace: ${workspacePath}`);
+
     try {
       // 确保工作区存在
       if (!fs.existsSync(workspacePath)) {
@@ -55,53 +62,59 @@ export class GenericToolExecutor {
 
       let data: unknown;
 
-      switch (request.toolName) {
+      switch (toolName) {
         case 'bash_exec':
-          data = await this.bashExec(request.params, workspacePath);
+          data = await this.bashExec(params, workspacePath);
           break;
         case 'read_file':
-          data = await this.readFile(request.params, workspacePath, skillDirs);
+          data = await this.readFile(params, workspacePath, skillDirs);
           break;
         case 'write_file':
-          data = await this.writeFile(request.params, workspacePath);
+          data = await this.writeFile(params, workspacePath);
           break;
         case 'list_files':
-          data = await this.listFiles(request.params, workspacePath, skillDirs);
+          data = await this.listFiles(params, workspacePath, skillDirs);
           break;
         case 'read_file_binary':
-          data = await this.readFileBinary(request.params, workspacePath, skillDirs);
+          data = await this.readFileBinary(params, workspacePath, skillDirs);
           break;
         // v2.1.0 Skill 管理工具
         case 'search_skills':
-          data = await this.searchSkills(request.params);
+          data = await this.searchSkills(params);
           break;
         case 'install_skill':
-          data = await this.installSkill(request.params, request.botId);
+          data = await this.installSkill(params, botId);
           break;
         case 'uninstall_skill':
-          data = await this.uninstallSkill(request.params, request.botId);
+          data = await this.uninstallSkill(params, botId);
           break;
         case 'list_skills':
-          data = await this.listSkillsTool(request.botId);
+          data = await this.listSkillsTool(botId);
           break;
         case 'read_skill':
-          data = await this.readSkill(request.params, request.botId);
+          data = await this.readSkill(params, botId);
           break;
         case 'execute_skill_script':
-          data = await this.executeSkillScript(request.params, request.botId, workspacePath);
+          data = await this.executeSkillScript(params, botId, workspacePath);
           break;
         default:
-          throw new Error(`未知工具: ${request.toolName}`);
+          throw new Error(`未知工具: ${toolName}`);
       }
 
+      const durationMs = Date.now() - startTime;
+      const outputStr = typeof data === 'string' ? data : JSON.stringify(data);
+      console.log(`[ToolExec] ✓ ${toolName} | ${durationMs}ms | output(${outputStr.length}): ${outputStr.slice(0, 300)}${outputStr.length > 300 ? '…' : ''}`);
+
       return {
-        requestId: request.requestId,
+        requestId,
         success: true,
         data,
       };
     } catch (err) {
+      const durationMs = Date.now() - startTime;
+      console.error(`[ToolExec] ✗ ${toolName} | ${durationMs}ms | error: ${(err as Error).message}`);
       return {
-        requestId: request.requestId,
+        requestId,
         success: false,
         error: (err as Error).message,
       };
@@ -199,7 +212,7 @@ export class GenericToolExecutor {
     }
 
     await fs.promises.writeFile(resolvedPath, content, 'utf-8');
-    return `文件已写入: ${filePath}`;
+    return `文件已写入: ${resolvedPath}`;
   }
 
   /**

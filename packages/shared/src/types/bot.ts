@@ -138,14 +138,18 @@ export interface AgentStepLog {
   timestamp: number;
   /** 工具名称（仅 tool_call / tool_result 类型） */
   toolName?: string;
-  /** 工具输入参数（仅 tool_call 类型，截断后） */
+  /** 工具输入参数（完整 JSON） */
   toolInput?: Record<string, unknown>;
-  /** 工具输出结果（仅 tool_result 类型，截断后） */
+  /** 工具输出结果（截断后） */
   toolOutput?: string;
+  /** 工具输出字符总长度（未截断前） */
+  toolOutputLength?: number;
   /** 错误信息 */
   error?: string;
   /** 步骤耗时（毫秒） */
   durationMs: number;
+  /** 工作区路径 */
+  workspacePath?: string;
   /** LLM 相关信息（仅 llm_call 类型） */
   llmInfo?: {
     provider: string;

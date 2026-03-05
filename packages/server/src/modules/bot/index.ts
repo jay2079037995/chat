@@ -384,8 +384,10 @@ export class BotModule implements ServerModule {
               toolName: log.toolName,
               toolInput: log.input,
               toolOutput: log.output,
+              toolOutputLength: log.outputLength,
               error: log.error,
               durationMs: log.durationMs,
+              // workspacePath 由 Electron 侧日志记录
             });
           },
         }) : undefined;

@@ -38,6 +38,9 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   const [creating, setCreating] = useState(false);
   const [newBotName, setNewBotName] = useState('');
 
+  // 每个 bot 的工作目录缓存
+  const [workspacePaths, setWorkspacePaths] = useState<Record<string, string>>({});
+
   // 编辑配置 Modal
   const [editingBot, setEditingBot] = useState<Bot | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string>('');
@@ -57,6 +60,18 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     try {
       const list = await botService.listBots();
       setBots(list);
+      // 加载每个 bot 的工作目录
+      if (isElectron) {
+        const electronAPI = (window as any).electronAPI;
+        const paths: Record<string, string> = {};
+        for (const bot of list) {
+          try {
+            const p = await electronAPI?.getWorkspacePath(bot.id);
+            if (p) paths[bot.id] = p;
+          } catch { /* ignore */ }
+        }
+        setWorkspacePaths(paths);
+      }
     } catch {
       void antMessage.error('加载机器人列表失败');
     } finally {
@@ -210,12 +225,34 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       </Text>
     );
     const modelStr = bot.modelConfig?.model || bot.mastraConfig?.model || '';
+    const wsPath = workspacePaths[bot.id];
     return (
       <div>
         <Text type="secondary" className={styles.botMeta}>
           {modelStr} · {date}
         </Text>
         <div>{idTag}</div>
+        {isElectron && wsPath && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <FolderOpenOutlined style={{ fontSize: 11, color: '#999' }} />
+            <Text
+              type="secondary"
+              ellipsis={{ tooltip: wsPath }}
+              style={{ fontSize: 11, maxWidth: 200, cursor: 'pointer' }}
+              onClick={() => (window as any).electronAPI?.openWorkspace(bot.id)}
+            >
+              {wsPath}
+            </Text>
+            <Button
+              type="link"
+              size="small"
+              style={{ fontSize: 11, padding: 0, height: 'auto' }}
+              onClick={() => (window as any).electronAPI?.openWorkspace(bot.id)}
+            >
+              打开
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
