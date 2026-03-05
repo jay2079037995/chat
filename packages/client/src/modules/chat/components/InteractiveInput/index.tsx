@@ -1,14 +1,15 @@
 /**
- * 交互式文本输入组件
+ * 交互式文本输入组件 — 内联决策卡片
  *
- * 渲染 AI 请求的文本输入框。
- * 当 interactive=true 时用户可输入并提交，自动作为消息发送。
- * 当 interactive=false 时为静态展示（历史消息）。
+ * 渲染 AI 请求的文本输入框，包裹在决策卡片中。
+ * 当 interactive=true 且未提交时用户可输入并提交。
+ * 提交后标记 submitted 并持久化到服务端。
  */
 import React, { useState } from 'react';
 import { Input, Button } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
+import { SendOutlined, CheckCircleOutlined, EditOutlined } from '@ant-design/icons';
 import { useChatStore } from '../../stores/useChatStore';
+import { useSocketStore } from '../../stores/useSocketStore';
 import styles from './index.module.less';
 
 interface InteractiveInputProps {
@@ -18,15 +19,33 @@ interface InteractiveInputProps {
   placeholder?: string;
   /** 是否可交互 */
   interactive: boolean;
+  /** 是否已提交 */
+  submitted?: boolean;
+  /** 消息 ID */
+  messageId?: string;
+  /** 会话 ID */
+  conversationId?: string;
 }
 
-const InteractiveInput: React.FC<InteractiveInputProps> = ({ label, placeholder, interactive }) => {
+const InteractiveInput: React.FC<InteractiveInputProps> = ({
+  label, placeholder, interactive, submitted, messageId, conversationId,
+}) => {
   const [value, setValue] = useState('');
+  const canInteract = interactive && !submitted;
 
   const handleSubmit = () => {
-    if (!value.trim() || !interactive) return;
+    if (!value.trim() || !canInteract) return;
     useChatStore.getState().sendMessage(value.trim());
     setValue('');
+    // 更新 metadata 持久化已提交状态
+    if (messageId && conversationId) {
+      const { socket } = useSocketStore.getState();
+      socket?.emit('message:update-metadata', {
+        messageId,
+        conversationId,
+        metadataUpdate: { inputRequest: { submitted: true } },
+      });
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -37,26 +56,39 @@ const InteractiveInput: React.FC<InteractiveInputProps> = ({ label, placeholder,
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.label}>{label}</div>
-      <div className={styles.inputRow}>
-        <Input
-          className={styles.input}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder || '请输入...'}
-          disabled={!interactive}
-          size="small"
-        />
-        {interactive && (
-          <Button
-            type="primary"
-            size="small"
-            icon={<SendOutlined />}
-            onClick={handleSubmit}
-            disabled={!value.trim()}
-          />
+    <div className={styles.card}>
+      {/* 卡片头部 */}
+      <div className={styles.header}>
+        <EditOutlined className={styles.headerIcon} />
+        <span className={styles.headerText}>{label}</span>
+        {submitted && <CheckCircleOutlined className={styles.submittedIcon} />}
+      </div>
+      <div className={styles.divider} />
+      {/* 输入区域 */}
+      <div className={styles.inputArea}>
+        {submitted ? (
+          <div className={styles.submittedText}>已提交</div>
+        ) : (
+          <div className={styles.inputRow}>
+            <Input
+              className={styles.input}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder || '请输入...'}
+              disabled={!canInteract}
+              size="small"
+            />
+            {canInteract && (
+              <Button
+                type="primary"
+                size="small"
+                icon={<SendOutlined />}
+                onClick={handleSubmit}
+                disabled={!value.trim()}
+              />
+            )}
+          </div>
         )}
       </div>
     </div>

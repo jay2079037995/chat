@@ -245,6 +245,37 @@ export class BotService {
     return this.messageRepo.saveMessage(message);
   }
 
+  /**
+   * 以 Bot 身份发送文件/图片消息
+   */
+  async sendFileMessageByBotId(
+    botId: string,
+    conversationId: string,
+    fileUrl: string,
+    type: 'file' | 'image',
+    fileName: string,
+    fileSize: number,
+    mimeType: string,
+  ): Promise<Message> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(botId)) throw new Error('NOT_PARTICIPANT');
+
+    const message: Message = {
+      id: generateId(),
+      conversationId,
+      senderId: botId,
+      type,
+      content: fileUrl,
+      fileName,
+      fileSize,
+      mimeType,
+      createdAt: Date.now(),
+    };
+
+    return this.messageRepo.saveMessage(message);
+  }
+
   /** 保存服务端 Bot LLM 配置（apiKey 加密存储） */
   async saveServerBotConfig(botId: string, llmConfig: LLMConfig): Promise<void> {
     const redis = getRedisClient();

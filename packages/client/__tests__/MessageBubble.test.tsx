@@ -142,4 +142,51 @@ describe('MessageBubble (v1.3.0)', () => {
       emoji: '👍',
     });
   });
+
+  it('渲染交互式选项（含 richItems + selectedIndex）', async () => {
+    const msg = createMessage({
+      senderId: 'bot1',
+      content: 'AI 回复',
+      metadata: {
+        choices: {
+          prompt: '请选择',
+          items: ['选项A', '选项B'],
+          richItems: [
+            { label: '选项A', description: '描述A' },
+            { label: '选项B', description: '描述B' },
+          ],
+          selectedIndex: 0,
+        },
+      },
+    });
+
+    await act(async () => {
+      render(<MessageBubble message={msg} isSelf={false} isLastBotMessage={true} />);
+    });
+
+    expect(screen.getByText('请选择')).toBeDefined();
+    expect(screen.getByText('选项A')).toBeDefined();
+    expect(screen.getByText('描述A')).toBeDefined();
+  });
+
+  it('渲染交互式输入（含 submitted 状态）', async () => {
+    const msg = createMessage({
+      senderId: 'bot1',
+      content: 'AI 回复',
+      metadata: {
+        inputRequest: {
+          label: '请输入名称',
+          placeholder: '输入...',
+          submitted: true,
+        },
+      },
+    });
+
+    await act(async () => {
+      render(<MessageBubble message={msg} isSelf={false} isLastBotMessage={true} />);
+    });
+
+    expect(screen.getByText('请输入名称')).toBeDefined();
+    expect(screen.getByText('已提交')).toBeDefined();
+  });
 });

@@ -97,3 +97,25 @@ export function getFileUrl(filePath: string): string {
   const relative = path.relative(UPLOAD_ROOT, filePath);
   return `/uploads/${relative.replace(/\\/g, '/')}`;
 }
+
+/**
+ * 保存 base64 编码的文件到上传目录
+ *
+ * 根据 MIME 类型自动决定存入 images/ 还是 files/ 目录。
+ */
+export function saveBase64File(
+  base64: string,
+  fileName: string,
+  mimeType: string,
+): { url: string } {
+  const ext = path.extname(fileName) || '.bin';
+  const isImage = mimeType.startsWith('image/');
+  const destDir = isImage ? UPLOAD_DIRS.images : UPLOAD_DIRS.files;
+  const savedName = `${uuidv4()}${ext}`;
+  const destPath = path.join(destDir, savedName);
+
+  const buffer = Buffer.from(base64, 'base64');
+  fs.writeFileSync(destPath, buffer);
+
+  return { url: getFileUrl(destPath) };
+}

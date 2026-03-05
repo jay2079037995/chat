@@ -165,7 +165,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf, particip
         <InteractiveOptions
           prompt={message.metadata.choices.prompt}
           items={message.metadata.choices.items}
+          richItems={message.metadata.choices.richItems}
+          selectedIndex={message.metadata.choices.selectedIndex}
           interactive={!!isLastBotMessage}
+          messageId={message.id}
+          conversationId={message.conversationId}
         />
       )}
       {/* 交互式输入 */}
@@ -174,6 +178,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf, particip
           label={message.metadata.inputRequest.label}
           placeholder={message.metadata.inputRequest.placeholder}
           interactive={!!isLastBotMessage}
+          submitted={message.metadata.inputRequest.submitted}
+          messageId={message.id}
+          conversationId={message.conversationId}
         />
       )}
       {/* 已编辑标记 */}

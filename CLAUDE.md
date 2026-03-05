@@ -198,6 +198,30 @@ pnpm lint             # 代码检查
 5. 打上对应的版本标签（`git tag vX.X.0`）并推送到远端（`git push && git push --tags`）
 6. 确认完成后再进入下一个版本开发
 
+## Bot 测试规范
+
+Bot 相关功能的测试必须包含真实 LLM 调用验证：
+
+### 测试用 LLM 配置
+- **Provider**: DeepSeek
+- **API Key**: sk-1d27fbdfbfd74d29be3dabb42fb57cbd
+- **模型**: deepseek-chat
+- **Base URL**: https://api.deepseek.com/v1
+
+### 要求
+- Bot 功能的自动化测试使用 mock（Jest 单元测试）
+- 每个版本涉及 Bot 功能变更时，必须进行真实 LLM 调用验证：
+  1. 创建一个使用 DeepSeek 配置的 Bot
+  2. 与 Bot 进行真实对话，确认回复正常
+  3. 验证工具调用链路（如有）
+  4. 验证消息保存和广播
+
+### 测试文档要求
+- **每个版本必须有对应的测试文档** `doc/test/vX.X.0-test.md`
+- 测试文档在版本开发开始前或开发过程中创建，不得遗漏
+- 文档包含：自动化测试用例列表、真实验证项（如需）、构建验证
+- 所有测试项必须为 `[AUTO]`，参照测试铁律
+
 ## 版本状态
 - [x] v0.1.0 - 项目基础设施
 - [x] v0.2.0 - 用户系统
@@ -230,3 +254,4 @@ pnpm lint             # 代码检查
 - [x] v1.20.0 - Skill 工作区上下文 + 交互式选项 UI
 - [x] v1.21.0 - Mastra 统一运行时 + AI SDK 流式界面
 - [x] v1.22.0 - Mastra Agent 统一运行时迁移
+- [x] v1.23.0 - Bot 聊天修复 + Agent 文件产物发送 + 交互式 UI 重设计

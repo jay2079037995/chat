@@ -1303,3 +1303,88 @@ After (v1.22.0):
 | `packages/agent-app/src/main/llmClient.ts` | **删除** |
 | `server/__tests__/llm-client*.test.ts` (3 个) | **删除** |
 | 其余测试文件 (4 个) | 更新 mock |
+
+---
+
+## v1.23.0 — Bot 聊天修复 + Agent 文件产物发送 + 交互式 UI 重设计
+
+### 概述
+
+修复 v1.22.0 遗留的 Bot 聊天 500 错误，新增 Agent 文件产物发送功能和交互式 UI 重设计，补充 v1.20.0-v1.22.0 缺失的测试文档。
+
+### 问题与需求
+
+1. **Bug**: `POST /api/bot/chat` 返回 500 — `agent.stream()` 的 `textStream`（`ReadableStream`）消费方式不兼容
+2. **Feature**: Agent 生成的文件产物（图片、文件、目录）需发送到聊天中展示
+3. **Feature**: `present_choices` 交互 UI 需重设计为内联决策卡片（类 Claude Code VSCode 风格）
+4. **补漏**: v1.20.0 ~ v1.22.0 缺少测试文档
+
+### 功能清单
+
+**阶段 0：Bug Fix — Bot 聊天 500 错误**
+- [ ] `server/modules/bot/index.ts`: `for await...of` → `getReader()` + `read()` 安全消费 ReadableStream
+- [ ] 添加 `isReasoner` 检查（推理模型不传 tools）
+- [ ] 增强错误日志
+
+**阶段 1：Shared 类型扩展**
+- [ ] `shared/types/claude-skill.ts`: GenericToolName 新增 `read_file_binary`，GENERIC_TOOL_DEFINITIONS 新增 `send_file_to_chat`，`present_choices` 支持富选项
+- [ ] `shared/types/message.ts`: MessageMetadata 新增 `richItems`/`selectedIndex`/`submitted`，新增 `RichChoiceItem` 接口
+- [ ] `shared/types/socket.ts`: ClientToServerEvents 新增 `message:update-metadata`
+
+**阶段 2：Agent 文件产物发送**
+- [ ] `electron/GenericToolExecutor.ts`: 新增 `read_file_binary`（base64 + zip 目录打包，50MB 限制）
+- [ ] `electron/package.json`: 新增 archiver 依赖
+- [ ] `server/modules/chat/upload.ts`: 新增 `saveBase64File()` 函数
+- [ ] `server/modules/bot/ServerToolBridge.ts`: 新增 `send_file_to_chat` 工具 + `FileArtifact` 接口
+- [ ] `server/modules/bot/ServerBotRunner.ts`: 文件产物收集 + 发送文件消息
+- [ ] `server/modules/bot/BotService.ts`: 新增 `sendFileMessageByBotId()` 方法
+
+**阶段 3：交互式 UI 重设计**
+- [ ] `client/InteractiveOptions/`: 重写为内联决策卡片（圆角边框、hover 高亮、已选勾选）
+- [ ] `client/InteractiveInput/`: 决策卡片风格 + 已提交状态
+- [ ] `client/MessageBubble/`: 传递新 props（richItems、selectedIndex、submitted 等）
+- [ ] `server/RedisMessageRepository.ts`: updateMessage 新增 metadata 字段
+- [ ] `server/modules/chat/index.ts`: socket handler 新增 `message:update-metadata`
+
+**阶段 4：测试**
+- [ ] `electron/__tests__/generic-tool-executor.test.ts`: read_file_binary 用例
+- [ ] `server/__tests__/server-bot-generic-tools.test.ts`: 工具数量 5→6
+- [ ] `client/__tests__/InteractiveOptions.test.tsx`: **新建** 决策卡片测试
+- [ ] `client/__tests__/MessageBubble.test.tsx`: metadata 扩展字段测试
+
+**阶段 5：补充测试文档**
+- [ ] `doc/test/v1.20.0-test.md` — Skill 工作区上下文 + 交互式选项 UI
+- [ ] `doc/test/v1.21.0-test.md` — Mastra 统一运行时 + AI SDK 流式界面
+- [ ] `doc/test/v1.22.0-test.md` — Mastra Agent 统一运行时迁移
+- [ ] `doc/test/v1.23.0-test.md` — 本版本测试文档
+
+**阶段 6：版本收尾**
+- [ ] 6 个 package.json → 1.23.0
+- [ ] 客户端首页版本号
+- [ ] CLAUDE.md 版本列表 + Bot 测试规范 + 测试文档规范
+- [ ] pnpm build + pnpm test
+- [ ] 真实 DeepSeek Bot 聊天验证
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/server/src/modules/bot/index.ts` | **修复** 流式聊天 500 |
+| `packages/shared/src/types/claude-skill.ts` | GenericToolName + GENERIC_TOOL_DEFINITIONS |
+| `packages/shared/src/types/message.ts` | MessageMetadata 扩展 |
+| `packages/shared/src/types/socket.ts` | 新增 message:update-metadata |
+| `packages/electron/package.json` | 新增 archiver |
+| `packages/electron/src/claudeskill/GenericToolExecutor.ts` | read_file_binary + zip |
+| `packages/server/src/modules/chat/upload.ts` | saveBase64File |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | send_file_to_chat + richItems |
+| `packages/server/src/modules/bot/ServerBotRunner.ts` | 文件产物收集与发送 |
+| `packages/server/src/modules/bot/BotService.ts` | sendFileMessageByBotId |
+| `packages/server/src/repositories/redis/RedisMessageRepository.ts` | metadata 字段 |
+| `packages/server/src/modules/chat/index.ts` | metadata 更新 handler |
+| `packages/client/.../InteractiveOptions/` | **重写** |
+| `packages/client/.../InteractiveInput/` | 样式重做 |
+| `packages/client/.../MessageBubble/index.tsx` | 新 props |
+| 测试文件 (4 个) | 新建/修改 |
+| 测试文档 (4 个) | **新建** |
+| `CLAUDE.md` | 版本列表 + Bot 测试规范 + 测试文档规范 |
+| 版本相关文件 (8+ 个) | 版本号 → 1.23.0 |

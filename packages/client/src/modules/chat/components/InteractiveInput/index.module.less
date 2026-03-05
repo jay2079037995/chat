@@ -1,11 +1,43 @@
-.container {
-  margin-top: 8px;
+/** 内联决策卡片样式（文本输入） */
+.card {
+  margin-top: 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  background: #fafbfc;
+  overflow: hidden;
 }
 
-.label {
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 4px;
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.headerIcon {
+  color: #1890ff;
+  font-size: 14px;
+}
+
+.headerText {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+  flex: 1;
+}
+
+.submittedIcon {
+  color: #52c41a;
+  font-size: 14px;
+}
+
+.divider {
+  height: 1px;
+  background: #e8e8e8;
+}
+
+.inputArea {
+  padding: 10px 14px;
 }
 
 .inputRow {
@@ -16,4 +48,9 @@
 
 .input {
   flex: 1;
+}
+
+.submittedText {
+  font-size: 13px;
+  color: #52c41a;
 }

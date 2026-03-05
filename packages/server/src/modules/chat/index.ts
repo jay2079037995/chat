@@ -590,6 +590,30 @@ export class ChatModule implements ServerModule {
       socket.on('conversation:join', (conversationId) => {
         void socket.join(conversationId);
       });
+
+      /** 更新消息元数据（选项已选、输入已提交） */
+      socket.on('message:update-metadata', async (data) => {
+        try {
+          const { messageId, conversationId, metadataUpdate } = data;
+          const msg = await messageRepo.getMessage(messageId);
+          if (!msg) return;
+
+          // 深度合并 metadata
+          const existingMeta = msg.metadata || {};
+          const merged = { ...existingMeta };
+
+          if (metadataUpdate.choices && merged.choices) {
+            merged.choices = { ...merged.choices, selectedIndex: metadataUpdate.choices.selectedIndex };
+          }
+          if (metadataUpdate.inputRequest && merged.inputRequest) {
+            merged.inputRequest = { ...merged.inputRequest, submitted: metadataUpdate.inputRequest.submitted };
+          }
+
+          await messageRepo.updateMessage(messageId, { metadata: merged });
+        } catch (err) {
+          console.error('[Chat] message:update-metadata error:', err);
+        }
+      });
     };
 
     return { router, socketHandler };

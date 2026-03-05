@@ -1,6 +1,6 @@
 {
   "name": "@chat/electron",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
@@ -15,12 +15,14 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "archiver": "^7.0.0",
     "electron-store": "^6.0.0",
     "extract-zip": "^2.0.1",
     "js-yaml": "^4.1.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.0",
     "@types/extract-zip": "^2.0.3",
     "@types/js-yaml": "^4.0.9",
     "@types/jest": "^29.5.0",

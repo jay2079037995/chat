@@ -253,7 +253,7 @@ export class AgentManager {
               model,
             });
 
-            const result = await agent.generate(
+            const result = await agent.generateLegacy(
               recentHistory.map((m) => ({
                 role: m.role as 'user' | 'assistant',
                 content: m.content,

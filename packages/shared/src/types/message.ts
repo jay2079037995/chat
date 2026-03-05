@@ -8,17 +8,31 @@ export interface ReplySnapshot {
   type: MessageType;
 }
 
+/** 富选项条目（带描述） */
+export interface RichChoiceItem {
+  /** 选项标签 */
+  label: string;
+  /** 选项描述（可选） */
+  description?: string;
+}
+
 /** 消息元数据（可选，用于交互式内容） */
 export interface MessageMetadata {
   /** 交互式选项（AI 提供的可点击选项） */
   choices?: {
     prompt?: string;
     items: string[];
+    /** 带描述的富选项列表 */
+    richItems?: RichChoiceItem[];
+    /** 用户已选择的索引 */
+    selectedIndex?: number;
   };
   /** 交互式文本输入请求 */
   inputRequest?: {
     label: string;
     placeholder?: string;
+    /** 用户已提交标记 */
+    submitted?: boolean;
   };
 }
 

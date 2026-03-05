@@ -15,7 +15,8 @@ import { generateId } from '@chat/shared';
 import type { BotService } from './BotService';
 import type { ToolDispatcher } from './ToolDispatcher';
 import { createModel } from './ModelFactory';
-import { createServerTools } from './ServerToolBridge';
+import { createServerTools, type FileArtifact } from './ServerToolBridge';
+import { saveBase64File } from '../chat/upload';
 import { config } from '../../config';
 
 /** 最大 tool calling 轮次，防止无限循环 */
@@ -197,7 +198,7 @@ export class ServerBotRunner {
           );
 
           // 调用 AI SDK 生成回复
-          const { content: reply, metadata: replyMetadata } = await this.runAIGenerate(
+          const { content: reply, metadata: replyMetadata, fileArtifacts } = await this.runAIGenerate(
             conversationId, recentHistory, message.senderId,
           );
 
@@ -215,9 +216,26 @@ export class ServerBotRunner {
 
           this.broadcastMessage(savedMsg, conversationId);
 
+          // 发送文件产物到聊天
+          for (const artifact of fileArtifacts) {
+            try {
+              const { url } = saveBase64File(artifact.base64, artifact.fileName, artifact.mimeType);
+              const isImage = artifact.mimeType.startsWith('image/');
+              const fileMsg = await this.botService.sendFileMessageByBotId(
+                this.botId, conversationId, url,
+                isImage ? 'image' : 'file',
+                artifact.fileName, artifact.fileSize, artifact.mimeType,
+              );
+              this.broadcastMessage(fileMsg, conversationId);
+            } catch (fileErr: any) {
+              console.error(`[ServerBotRunner] 文件产物发送失败: ${fileErr.message}`);
+            }
+          }
+
           this.messagesProcessed++;
           this.consecutiveErrors = 0;
         } catch (err: any) {
+          console.error(`[ServerBotRunner] 消息处理失败 (bot: ${this.botId}):`, err.message || err);
           this.consecutiveErrors++;
           this.lastError = err.message;
 
@@ -257,8 +275,9 @@ export class ServerBotRunner {
     conversationId: string,
     history: Array<{ role: string; content: string }>,
     fallbackTargetUserId: string,
-  ): Promise<{ content: string; metadata?: MessageMetadata }> {
+  ): Promise<{ content: string; metadata?: MessageMetadata; fileArtifacts: FileArtifact[] }> {
     let pendingMetadata: MessageMetadata | undefined;
+    const pendingFileArtifacts: FileArtifact[] = [];
 
     const startTime = Date.now();
 
@@ -277,6 +296,7 @@ export class ServerBotRunner {
             botId: this.botId,
             conversationId,
             onPresentChoices: (m) => { pendingMetadata = m; },
+            onFileArtifact: (a) => { pendingFileArtifacts.push(a); },
           })
         : undefined;
 
@@ -288,13 +308,15 @@ export class ServerBotRunner {
         tools,
       });
 
-      const result = await agent.generate(
+      console.log(`[ServerBotRunner] 开始生成 (bot: ${this.botId}, model: ${this.llmConfig.model}, tools: ${useTools ? 'yes' : 'no'}, history: ${history.length} msgs)`);
+      const result = await agent.generateLegacy(
         history.map((m) => ({
           role: m.role,
           content: m.content,
         })) as any,
         { maxSteps: useTools ? MAX_TOOL_ROUNDS : 1 },
       );
+      console.log(`[ServerBotRunner] 生成完成 (bot: ${this.botId}, text length: ${result.text?.length || 0}, finishReason: ${result.finishReason})`);
 
       const content = result.text || '（无回复内容）';
 
@@ -304,7 +326,7 @@ export class ServerBotRunner {
         finishReason: result.finishReason || 'stop',
       }, undefined, Date.now() - startTime);
 
-      return { content, metadata: pendingMetadata };
+      return { content, metadata: pendingMetadata, fileArtifacts: pendingFileArtifacts };
     } catch (err: any) {
       await this.saveLLMLog(conversationId, history, false, undefined, err.message, Date.now() - startTime);
       throw err;
@@ -338,6 +360,7 @@ export class ServerBotRunner {
             { name: 'read_file', description: '读取文件' },
             { name: 'write_file', description: '写入文件' },
             { name: 'list_files', description: '列出文件' },
+            { name: 'send_file_to_chat', description: '发送文件到聊天' },
             { name: 'present_choices', description: '展示选项' },
           ] : undefined,
         },

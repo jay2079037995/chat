@@ -26,13 +26,14 @@ jest.mock('../src/config', () => ({
 }));
 
 describe('ServerBotRunner 通用工具', () => {
-  test('GENERIC_TOOL_DEFINITIONS 包含 5 个工具', () => {
-    expect(GENERIC_TOOL_DEFINITIONS).toHaveLength(5);
+  test('GENERIC_TOOL_DEFINITIONS 包含 6 个工具', () => {
+    expect(GENERIC_TOOL_DEFINITIONS).toHaveLength(6);
     const names = GENERIC_TOOL_DEFINITIONS.map((t) => t.function.name);
     expect(names).toContain('bash_exec');
     expect(names).toContain('read_file');
     expect(names).toContain('write_file');
     expect(names).toContain('list_files');
+    expect(names).toContain('send_file_to_chat');
     expect(names).toContain('present_choices');
   });
 

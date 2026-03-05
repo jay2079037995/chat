@@ -73,6 +73,12 @@ export interface ClientToServerEvents {
   'conversation:join': (conversationId: string) => void;
   /** 通用工具执行结果（Electron 客户端 → 服务端） */
   'tool:result': (result: GenericToolExecResult) => void;
+  /** 更新消息元数据（如选项已选、输入已提交） */
+  'message:update-metadata': (data: {
+    messageId: string;
+    conversationId: string;
+    metadataUpdate: { choices?: { selectedIndex: number }; inputRequest?: { submitted: boolean } };
+  }) => void;
   /** 推送 Bot 的 Skill 指令内容（Electron 客户端 → 服务端） */
   'bot:skill-instructions': (data: { botId: string; instructions: string }) => void;
 }

@@ -80,7 +80,7 @@ export interface PluginEntry {
 }
 
 /** 通用工具名称 */
-export type GenericToolName = 'bash_exec' | 'read_file' | 'write_file' | 'list_files';
+export type GenericToolName = 'bash_exec' | 'read_file' | 'write_file' | 'list_files' | 'read_file_binary';
 
 /** 通用工具执行请求（Server Bot → Electron） */
 export interface GenericToolExecRequest {
@@ -193,6 +193,27 @@ export const GENERIC_TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
+      name: 'send_file_to_chat',
+      description: '将文件或目录发送到聊天对话中。文件将作为可下载附件显示，图片将显示预览。如果指定的是目录，会自动打包为 zip 文件后发送。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          path: {
+            type: 'string',
+            description: '要发送的文件或目录路径（相对路径基于工作区目录解析）',
+          },
+          description: {
+            type: 'string',
+            description: '文件描述（可选，显示在聊天中）',
+          },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'present_choices',
       description: '向用户展示可选择的选项列表或请求文本输入。用户将看到可点击的选项按钮或输入框，选择后内容会自动作为用户消息发送。当你需要用户做选择时使用此工具。',
       parameters: {
@@ -209,8 +230,20 @@ export const GENERIC_TOOL_DEFINITIONS = [
           },
           choices: {
             type: 'array',
-            items: { type: 'string' },
-            description: 'type=single_select 时的选项列表',
+            items: {
+              oneOf: [
+                { type: 'string' },
+                {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string', description: '选项标签' },
+                    description: { type: 'string', description: '选项描述（可选）' },
+                  },
+                  required: ['label'],
+                },
+              ],
+            },
+            description: 'type=single_select 时的选项列表，支持字符串或 {label, description} 对象格式',
           },
           placeholder: {
             type: 'string',

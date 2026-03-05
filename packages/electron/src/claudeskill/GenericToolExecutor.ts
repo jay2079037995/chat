@@ -2,12 +2,13 @@
  * 通用工具执行器
  *
  * 在 Bot 的 workspace 沙箱中执行通用工具。
- * 支持 4 种工具：bash_exec、read_file、write_file、list_files。
+ * 支持 5 种工具：bash_exec、read_file、write_file、list_files、read_file_binary。
  * 所有文件操作限制在 workspace 和 skill 目录范围内（安全沙箱）。
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
+import archiver from 'archiver';
 import type { GenericToolExecRequest, GenericToolExecResult } from '../../../shared/dist';
 
 /** 默认命令超时时间（毫秒） */
@@ -47,6 +48,9 @@ export class GenericToolExecutor {
           break;
         case 'list_files':
           data = await this.listFiles(request.params, workspacePath, skillDirs);
+          break;
+        case 'read_file_binary':
+          data = await this.readFileBinary(request.params, workspacePath, skillDirs);
           break;
         default:
           throw new Error(`未知工具: ${request.toolName}`);
@@ -179,6 +183,115 @@ export class GenericToolExecutor {
 
     const entries = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
     return entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
+  }
+
+  /** 50MB 文件大小限制 */
+  private static readonly MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+  /**
+   * 读取文件为 base64（支持目录自动打包 zip）
+   */
+  private async readFileBinary(
+    params: Record<string, unknown>,
+    workspacePath: string,
+    skillDirs: string[],
+  ): Promise<{ base64: string; fileName: string; fileSize: number; mimeType: string }> {
+    const filePath = params.path as string;
+    if (!filePath) {
+      throw new Error('read_file_binary 缺少 path 参数');
+    }
+
+    const resolvedPath = this.resolvePath(filePath, workspacePath);
+    this.validatePath(resolvedPath, workspacePath, skillDirs);
+
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`文件不存在: ${filePath}`);
+    }
+
+    const stat = await fs.promises.stat(resolvedPath);
+
+    if (stat.isDirectory()) {
+      // 目录：打包为 zip
+      return this.zipDirectoryToBase64(resolvedPath);
+    }
+
+    // 单文件
+    if (stat.size > GenericToolExecutor.MAX_FILE_SIZE) {
+      throw new Error(`文件过大（${Math.round(stat.size / 1024 / 1024)}MB），超出 50MB 限制`);
+    }
+
+    const buffer = await fs.promises.readFile(resolvedPath);
+    const fileName = path.basename(resolvedPath);
+    return {
+      base64: buffer.toString('base64'),
+      fileName,
+      fileSize: stat.size,
+      mimeType: this.detectMimeType(fileName),
+    };
+  }
+
+  /**
+   * 将目录打包为 zip 并返回 base64
+   */
+  private zipDirectoryToBase64(
+    dirPath: string,
+  ): Promise<{ base64: string; fileName: string; fileSize: number; mimeType: string }> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      const archive = archiver('zip', { zlib: { level: 6 } });
+
+      archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+      archive.on('error', (err: Error) => reject(err));
+      archive.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length > GenericToolExecutor.MAX_FILE_SIZE) {
+          reject(new Error(`压缩后文件过大（${Math.round(buffer.length / 1024 / 1024)}MB），超出 50MB 限制`));
+          return;
+        }
+        const dirName = path.basename(dirPath);
+        resolve({
+          base64: buffer.toString('base64'),
+          fileName: `${dirName}.zip`,
+          fileSize: buffer.length,
+          mimeType: 'application/zip',
+        });
+      });
+
+      archive.directory(dirPath, path.basename(dirPath));
+      archive.finalize();
+    });
+  }
+
+  /**
+   * 根据文件扩展名推断 MIME 类型
+   */
+  private detectMimeType(fileName: string): string {
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.pdf': 'application/pdf',
+      '.zip': 'application/zip',
+      '.tar': 'application/x-tar',
+      '.gz': 'application/gzip',
+      '.json': 'application/json',
+      '.js': 'text/javascript',
+      '.ts': 'text/typescript',
+      '.html': 'text/html',
+      '.css': 'text/css',
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.csv': 'text/csv',
+      '.xml': 'application/xml',
+      '.mp3': 'audio/mpeg',
+      '.mp4': 'video/mp4',
+      '.wav': 'audio/wav',
+    };
+    return mimeMap[ext] || 'application/octet-stream';
   }
 
   /**

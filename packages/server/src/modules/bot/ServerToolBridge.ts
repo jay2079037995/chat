@@ -3,12 +3,24 @@
  *
  * 将通用工具定义转换为 Mastra createTool() 格式，
  * 每个工具的 execute() 通过 ToolDispatcher 分发到 Electron 端执行。
- * present_choices 工具本地拦截，不发送到 Electron。
+ * present_choices 和 send_file_to_chat 工具本地处理。
  */
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { ToolDispatcher } from './ToolDispatcher';
-import type { MessageMetadata } from '@chat/shared';
+import type { MessageMetadata, RichChoiceItem } from '@chat/shared';
+
+/** 文件产物（由 send_file_to_chat 工具生成） */
+export interface FileArtifact {
+  /** base64 编码的文件数据 */
+  base64: string;
+  /** 文件名 */
+  fileName: string;
+  /** 文件大小（字节） */
+  fileSize: number;
+  /** MIME 类型 */
+  mimeType: string;
+}
 
 interface ToolBridgeOptions {
   /** 通用工具分发器 */
@@ -21,12 +33,14 @@ interface ToolBridgeOptions {
   conversationId: string;
   /** present_choices 回调（本地拦截，不发送到 Electron） */
   onPresentChoices?: (metadata: MessageMetadata) => void;
+  /** 文件产物回调（send_file_to_chat 生成） */
+  onFileArtifact?: (artifact: FileArtifact) => void;
 }
 
 /** 分发工具到 Electron 并返回结果字符串 */
 async function dispatchTool(
   options: ToolBridgeOptions,
-  toolName: 'bash_exec' | 'read_file' | 'write_file' | 'list_files',
+  toolName: 'bash_exec' | 'read_file' | 'write_file' | 'list_files' | 'read_file_binary',
   params: Record<string, unknown>,
 ): Promise<string> {
   const result = await options.dispatcher.dispatch(
@@ -81,19 +95,71 @@ export function createServerTools(options: ToolBridgeOptions) {
       execute: async (inputData) => dispatchTool(options, 'list_files', inputData as Record<string, unknown>),
     }),
 
+    send_file_to_chat: createTool({
+      id: 'send_file_to_chat',
+      description: '将文件或目录发送到聊天对话中。文件将作为可下载附件显示，图片将显示预览。目录自动打包为 zip。',
+      inputSchema: z.object({
+        path: z.string().describe('要发送的文件或目录路径（相对路径基于工作区目录解析）'),
+        description: z.string().optional().describe('文件描述（可选）'),
+      }),
+      execute: async (params) => {
+        // 通过 ToolDispatcher 让 Electron 读取文件为 base64
+        const result = await options.dispatcher.dispatch(
+          options.targetUserId, 'read_file_binary', { path: params.path },
+          options.botId, options.conversationId,
+        );
+        if (result.error) {
+          return `Error: ${result.error}`;
+        }
+        const fileData = result.data as FileArtifact;
+        if (!fileData || !fileData.base64) {
+          return 'Error: 无法读取文件数据';
+        }
+        // 通过回调传递文件产物
+        options.onFileArtifact?.(fileData);
+        return `已将文件 ${fileData.fileName} 发送到聊天`;
+      },
+    }),
+
     present_choices: createTool({
       id: 'present_choices',
       description: '向用户展示可选择的选项列表或请求文本输入。用户将看到可点击的选项按钮或输入框。',
       inputSchema: z.object({
         type: z.enum(['single_select', 'text_input']).describe('交互类型'),
         prompt: z.string().optional().describe('提示文字（显示在选项上方）'),
-        choices: z.array(z.string()).optional().describe('type=single_select 时的选项列表'),
+        choices: z.array(
+          z.union([
+            z.string(),
+            z.object({
+              label: z.string().describe('选项标签'),
+              description: z.string().optional().describe('选项描述'),
+            }),
+          ]),
+        ).optional().describe('type=single_select 时的选项列表，支持字符串或 {label, description} 对象'),
         placeholder: z.string().optional().describe('type=text_input 时的输入框占位符'),
       }),
       execute: async (params) => {
         const metadata: MessageMetadata = {};
         if (params.type === 'single_select' && params.choices) {
-          metadata.choices = { prompt: params.prompt, items: params.choices };
+          // 兼容字符串和对象两种格式
+          const items: string[] = [];
+          const richItems: RichChoiceItem[] = [];
+          let hasRichItems = false;
+          for (const choice of params.choices) {
+            if (typeof choice === 'string') {
+              items.push(choice);
+              richItems.push({ label: choice });
+            } else {
+              items.push(choice.label);
+              richItems.push({ label: choice.label, description: choice.description });
+              if (choice.description) hasRichItems = true;
+            }
+          }
+          metadata.choices = {
+            prompt: params.prompt,
+            items,
+            ...(hasRichItems ? { richItems } : {}),
+          };
         } else if (params.type === 'text_input') {
           metadata.inputRequest = {
             label: params.prompt || '请输入',

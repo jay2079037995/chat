@@ -12,6 +12,7 @@ import { ServerBotManager } from './ServerBotManager';
 import { ToolDispatcher } from './ToolDispatcher';
 import { createModel } from './ModelFactory';
 import { createServerTools } from './ServerToolBridge';
+import { saveBase64File } from '../chat/upload';
 import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 
 /**
@@ -533,12 +534,16 @@ export class BotModule implements ServerModule {
         const model = await createModel(llmConfig);
         let pendingMetadata: MessageMetadata | undefined;
         const targetUserId = bot.botOwnerId || '';
-        const tools = targetUserId && toolDispatcher ? createServerTools({
+        // 推理模型不支持 function calling
+        const isReasoner = llmConfig.model === 'deepseek-reasoner';
+        const pendingFileArtifacts: import('./ServerToolBridge').FileArtifact[] = [];
+        const tools = !isReasoner && targetUserId && toolDispatcher ? createServerTools({
           dispatcher: toolDispatcher,
           targetUserId,
           botId,
           conversationId,
           onPresentChoices: (m) => { pendingMetadata = m; },
+          onFileArtifact: (a) => { pendingFileArtifacts.push(a); },
         }) : undefined;
 
         // Mastra Agent stream
@@ -550,7 +555,8 @@ export class BotModule implements ServerModule {
           tools: tools || undefined,
         });
 
-        const streamResult = await agent.stream(
+        console.log('[BotChat] Starting stream for bot:', botId, 'model:', llmConfig.model);
+        const streamResult = await agent.streamLegacy(
           messages.map((m: { role: string; content: string }) => ({
             role: m.role,
             content: m.content,
@@ -569,10 +575,18 @@ export class BotModule implements ServerModule {
         let fullText = '';
         const ioRef = this.io;
 
-        for await (const chunk of streamResult.textStream) {
-          fullText += chunk;
-          // AI SDK data stream protocol: 0:"chunk"\n
-          res.write(`0:${JSON.stringify(chunk)}\n`);
+        // 安全消费 ReadableStream（兼容 Mastra MastraModelOutput.textStream）
+        const reader = streamResult.textStream.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            fullText += value;
+            // AI SDK data stream protocol: 0:"chunk"\n
+            res.write(`0:${JSON.stringify(value)}\n`);
+          }
+        } finally {
+          reader.releaseLock();
         }
 
         // 发送 finish 信号
@@ -606,6 +620,24 @@ export class BotModule implements ServerModule {
             await botService.saveConvHistory(botId, conversationId, {
               role: 'assistant', content: fullText,
             });
+
+            // 发送文件产物到聊天
+            for (const artifact of pendingFileArtifacts) {
+              try {
+                const { url } = saveBase64File(artifact.base64, artifact.fileName, artifact.mimeType);
+                const isImage = artifact.mimeType.startsWith('image/');
+                const fileMsg = await botService.sendFileMessageByBotId(
+                  botId, conversationId, url,
+                  isImage ? 'image' : 'file',
+                  artifact.fileName, artifact.fileSize, artifact.mimeType,
+                );
+                if (ioRef) {
+                  ioRef.to(conversationId).emit('message:receive', fileMsg);
+                }
+              } catch (fileErr: any) {
+                console.error('[BotChat] 文件产物发送失败:', fileErr.message);
+              }
+            }
           } catch (saveErr) {
             console.error('[BotChat] Save after stream error:', saveErr);
           }

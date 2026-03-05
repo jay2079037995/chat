@@ -139,6 +139,56 @@ describe('GenericToolExecutor', () => {
     });
   });
 
+  describe('read_file_binary', () => {
+    test('读取单文件为 base64', async () => {
+      const result = await executor.execute(
+        makeRequest('read_file_binary', { path: 'hello.txt' }),
+        workspacePath,
+        [skillDir],
+      );
+      expect(result.success).toBe(true);
+      const data = result.data as any;
+      expect(data.fileName).toBe('hello.txt');
+      expect(data.base64).toBe(Buffer.from('Hello World').toString('base64'));
+      expect(data.fileSize).toBe(11);
+      expect(data.mimeType).toBe('text/plain');
+    });
+
+    test('读取目录自动打包为 zip', async () => {
+      const result = await executor.execute(
+        makeRequest('read_file_binary', { path: 'subdir' }),
+        workspacePath,
+        [skillDir],
+      );
+      expect(result.success).toBe(true);
+      const data = result.data as any;
+      expect(data.fileName).toBe('subdir.zip');
+      expect(data.mimeType).toBe('application/zip');
+      expect(data.base64.length).toBeGreaterThan(0);
+      expect(data.fileSize).toBeGreaterThan(0);
+    });
+
+    test('不存在的文件返回错误', async () => {
+      const result = await executor.execute(
+        makeRequest('read_file_binary', { path: 'nonexistent.txt' }),
+        workspacePath,
+        [skillDir],
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('不存在');
+    });
+
+    test('拒绝路径遍历攻击', async () => {
+      const result = await executor.execute(
+        makeRequest('read_file_binary', { path: '../../../etc/passwd' }),
+        workspacePath,
+        [skillDir],
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('路径');
+    });
+  });
+
   describe('未知工具', () => {
     test('拒绝未知工具名', async () => {
       const result = await executor.execute(

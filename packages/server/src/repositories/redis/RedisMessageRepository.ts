@@ -102,6 +102,7 @@ export class RedisMessageRepository implements IMessageRepository {
     if (updates.edited !== undefined) fields.edited = updates.edited ? '1' : '0';
     if (updates.editedAt !== undefined) fields.editedAt = String(updates.editedAt);
     if (updates.reactions !== undefined) fields.reactions = JSON.stringify(updates.reactions);
+    if (updates.metadata !== undefined) fields.metadata = JSON.stringify(updates.metadata);
     if (Object.keys(fields).length > 0) {
       await redis.hset(MSG_KEY(id), fields);
     }
