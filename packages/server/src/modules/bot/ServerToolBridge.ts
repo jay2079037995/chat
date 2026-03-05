@@ -9,6 +9,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { ToolDispatcher } from './ToolDispatcher';
 import type { MessageMetadata, RichChoiceItem } from '@chat/shared';
+import { MODEL_PROVIDERS } from '@chat/shared';
 
 /** 文件产物（由 send_file_to_chat 工具生成） */
 export interface FileArtifact {
@@ -56,6 +57,8 @@ interface ToolBridgeOptions {
   onStepProgress?: (data: StepProgressData) => void;
   /** 工具执行日志回调（记录每个工具调用的详情） */
   onToolLog?: (log: ToolLogData) => void;
+  /** 模型切换回调（switch_model 工具使用） */
+  onSwitchModel?: (modelStr: string) => void;
 }
 
 /** 获取工具执行的简短描述（用于进度提示） */
@@ -74,7 +77,9 @@ function truncate(str: string, maxLen: number): string {
 /** 分发工具到 Electron 并返回结果字符串 */
 async function dispatchTool(
   options: ToolBridgeOptions,
-  toolName: 'bash_exec' | 'read_file' | 'write_file' | 'list_files' | 'read_file_binary',
+  toolName: 'bash_exec' | 'read_file' | 'write_file' | 'list_files' | 'read_file_binary'
+    | 'search_skills' | 'install_skill' | 'uninstall_skill' | 'list_skills' | 'read_skill'
+    | 'execute_skill_script',
   params: Record<string, unknown>,
 ): Promise<string> {
   const startTime = Date.now();
@@ -247,6 +252,104 @@ export function createServerTools(options: ToolBridgeOptions) {
         options.onStepProgress?.({ step: 'present_choices', status: 'complete', durationMs });
         options.onToolLog?.({ toolName: 'present_choices', input: { type: params.type, prompt: params.prompt }, output: '已向用户展示选项', durationMs });
         return '已向用户展示选项';
+      },
+    }),
+
+    // ─── v2.1.0 Skill 管理工具 ──────────────────────────
+
+    search_skills: createTool({
+      id: 'search_skills',
+      description: '在 claude-plugins.dev 上搜索可用的 Skill。',
+      inputSchema: z.object({
+        query: z.string().describe('搜索关键词'),
+        limit: z.number().optional().describe('返回结果数量上限，默认 10'),
+      }),
+      execute: async (inputData) => dispatchTool(options, 'search_skills' as any, inputData as Record<string, unknown>),
+    }),
+
+    install_skill: createTool({
+      id: 'install_skill',
+      description: '安装 Skill。支持从 URL 或本地路径安装。安装前请先用 present_choices 向用户确认。',
+      inputSchema: z.object({
+        url: z.string().optional().describe('Skill 的 SKILL.md 原始文件 URL'),
+        localPath: z.string().optional().describe('本地 Skill 目录路径'),
+        overwrite: z.boolean().optional().describe('是否覆盖已存在的同名 Skill'),
+      }),
+      execute: async (inputData) => dispatchTool(options, 'install_skill' as any, inputData as Record<string, unknown>),
+    }),
+
+    uninstall_skill: createTool({
+      id: 'uninstall_skill',
+      description: '卸载已安装的 Skill。卸载前请先用 present_choices 向用户确认。',
+      inputSchema: z.object({
+        name: z.string().describe('要卸载的 Skill 名称'),
+      }),
+      execute: async (inputData) => dispatchTool(options, 'uninstall_skill' as any, inputData as Record<string, unknown>),
+    }),
+
+    list_skills: createTool({
+      id: 'list_skills',
+      description: '列出当前 Bot 已安装的所有 Skill。',
+      inputSchema: z.object({}),
+      execute: async (inputData) => dispatchTool(options, 'list_skills' as any, inputData as Record<string, unknown>),
+    }),
+
+    read_skill: createTool({
+      id: 'read_skill',
+      description: '读取已安装 Skill 的完整 SKILL.md 指令内容。',
+      inputSchema: z.object({
+        name: z.string().describe('要读取的 Skill 名称'),
+      }),
+      execute: async (inputData) => dispatchTool(options, 'read_skill' as any, inputData as Record<string, unknown>),
+    }),
+
+    // ─── v2.2.0 沙箱脚本执行 ──────────────────────────
+
+    execute_skill_script: createTool({
+      id: 'execute_skill_script',
+      description: '在安全沙箱中执行 Skill 的 scripts/ 目录下的脚本。',
+      inputSchema: z.object({
+        skillName: z.string().describe('脚本所属的 Skill 名称'),
+        scriptPath: z.string().describe('scripts/ 内的相对路径'),
+        args: z.array(z.string()).optional().describe('命令行参数'),
+        input: z.string().optional().describe('标准输入内容'),
+      }),
+      execute: async (inputData) => dispatchTool(options, 'execute_skill_script' as any, inputData as Record<string, unknown>),
+    }),
+
+    // ─── v2.3.0 模型管理工具（本地处理，不走 Electron） ──────
+
+    list_models: createTool({
+      id: 'list_models',
+      description: '列出所有可用的 AI 模型 Provider 及其模型列表。',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const entries = Object.entries(MODEL_PROVIDERS).map(([key, info]) => {
+          const models = info.models.length > 0
+            ? info.models.map(m => `${key}/${m}`).join(', ')
+            : '(需手动输入模型名)';
+          return `**${info.displayName}** (${key}): ${models}`;
+        });
+        return `可用 Provider 和模型:\n\n${entries.join('\n')}`;
+      },
+    }),
+
+    switch_model: createTool({
+      id: 'switch_model',
+      description: '切换当前对话使用的 AI 模型。格式为 "provider/model"，如 "openai/gpt-4o"。切换在下一轮对话生效。',
+      inputSchema: z.object({
+        model: z.string().describe('目标模型字符串，格式为 "provider/model"'),
+      }),
+      execute: async (params) => {
+        const model = params.model;
+        if (!model.includes('/')) {
+          return `无效的模型格式，应为 "provider/model"，如 "openai/gpt-4o"`;
+        }
+        if (options.onSwitchModel) {
+          options.onSwitchModel(model);
+          return `模型已切换为 ${model}（下一轮对话生效）`;
+        }
+        return `模型切换不可用`;
       },
     }),
   };

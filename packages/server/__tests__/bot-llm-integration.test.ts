@@ -5,7 +5,7 @@
  * 测试 AI SDK generateText/streamText + 工具元数据生成 + 文件产物回调。
  */
 import { generateText, streamText } from 'ai';
-import type { LLMConfig, MessageMetadata } from '@chat/shared';
+import type { BotModelConfig, MessageMetadata } from '@chat/shared';
 
 // Mock Mastra（ESM-only 依赖无法在 Jest CJS 模式加载）
 jest.mock('@mastra/core/tools', () => ({
@@ -20,11 +20,10 @@ jest.mock('@mastra/core/tools', () => ({
 import { createModel } from '../src/modules/bot/ModelFactory';
 import { createServerTools, type FileArtifact } from '../src/modules/bot/ServerToolBridge';
 
-/** DeepSeek 测试配置（参照 CLAUDE.md Bot 测试规范） */
-const DEEPSEEK_CONFIG: LLMConfig = {
-  provider: 'deepseek',
+/** DeepSeek 测试配置（v2.0 "provider/model" 格式） */
+const DEEPSEEK_CONFIG: BotModelConfig = {
   apiKey: 'sk-1d27fbdfbfd74d29be3dabb42fb57cbd',
-  model: 'deepseek-chat',
+  model: 'deepseek/deepseek-chat',
   systemPrompt: '你是一个简洁的助手，用一句话回答。',
   contextLength: 10,
 };

@@ -12,7 +12,10 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
     "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/groq": "^3.0.29",
+    "@ai-sdk/mistral": "^3.0.24",
     "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/xai": "^3.0.67",
     "@chat/shared": "workspace:*",
     "@mastra/core": "^1.9.0",
     "ai": "^4.0.0",

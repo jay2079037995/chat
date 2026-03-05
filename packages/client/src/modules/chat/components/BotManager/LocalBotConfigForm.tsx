@@ -1,23 +1,33 @@
 /**
- * 本地 Bot Mastra 配置表单
+ * Bot 模型配置表单（v2.0）
  *
- * 创建和编辑本地机器人时使用。
- * Provider 切换时自动填充默认模型。
+ * 使用 "provider/model" 格式。
+ * Provider 切换时自动填充默认模型、baseUrl、显示/隐藏 apiKey。
  */
-import React, { useEffect } from 'react';
-import { Form, Select, Input, InputNumber } from 'antd';
-import type { MastraLLMConfig, MastraProvider } from '@chat/shared';
-import { MASTRA_PROVIDERS } from '@chat/shared';
+import React, { useEffect, useMemo } from 'react';
+import { Form, Select, Input, InputNumber, Collapse } from 'antd';
+import type { BotModelConfig } from '@chat/shared';
+import { MODEL_PROVIDERS } from '@chat/shared';
 
 const { TextArea } = Input;
+const { Panel } = Collapse;
 
 interface LocalBotConfigFormProps {
   form: ReturnType<typeof Form.useForm>[0];
-  initialValues?: Partial<MastraLLMConfig>;
+  initialValues?: Partial<BotModelConfig>;
+}
+
+/** 从 "provider/model" 解析出 provider */
+function getProvider(model: string): string {
+  const idx = model.indexOf('/');
+  return idx === -1 ? '' : model.slice(0, idx);
 }
 
 const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialValues }) => {
-  const provider = Form.useWatch('provider', form);
+  const modelStr = Form.useWatch('model', form) as string | undefined;
+  const currentProvider = modelStr ? getProvider(modelStr) : '';
+
+  const providerInfo = currentProvider ? MODEL_PROVIDERS[currentProvider] : undefined;
 
   useEffect(() => {
     if (initialValues) {
@@ -25,35 +35,64 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
     }
   }, [initialValues, form]);
 
-  const handleProviderChange = (value: MastraProvider) => {
-    const info = MASTRA_PROVIDERS[value];
+  const handleProviderChange = (provider: string) => {
+    const info = MODEL_PROVIDERS[provider];
     if (info && info.models.length > 0) {
-      form.setFieldValue('model', info.models[0]);
+      form.setFieldValue('model', `${provider}/${info.models[0]}`);
     } else {
-      form.setFieldValue('model', '');
+      form.setFieldValue('model', `${provider}/`);
+    }
+    // 自动填充 baseUrl
+    if (info?.baseUrl) {
+      form.setFieldValue('baseUrl', info.baseUrl);
+    } else {
+      form.setFieldValue('baseUrl', undefined);
     }
   };
+
+  const handleModelSelect = (modelId: string) => {
+    form.setFieldValue('model', `${currentProvider}/${modelId}`);
+  };
+
+  // 当前 provider 的模型列表
+  const modelOptions = useMemo(() => {
+    if (!providerInfo) return [];
+    return providerInfo.models.map(m => ({ label: m, value: m }));
+  }, [providerInfo]);
+
+  // 从 model 字符串提取 modelId 部分
+  const currentModelId = modelStr ? modelStr.slice(modelStr.indexOf('/') + 1) : '';
+
+  const defaultProvider = initialValues?.model ? getProvider(initialValues.model) : 'openai';
+  const defaultModelStr = initialValues?.model || `openai/${MODEL_PROVIDERS.openai.models[0]}`;
 
   return (
     <Form
       form={form}
       layout="vertical"
       initialValues={{
-        provider: 'openai' as MastraProvider,
-        model: MASTRA_PROVIDERS.openai.models[0],
+        model: defaultModelStr,
         systemPrompt: '你是一个有用的助手。',
         contextLength: 4096,
+        apiKey: '',
         ...initialValues,
       }}
       size="small"
     >
+      {/* 隐藏的 model 字段存储完整 "provider/model" */}
+      <Form.Item name="model" hidden rules={[{ required: true }]}>
+        <Input />
+      </Form.Item>
+
       <Form.Item
-        name="provider"
         label="AI 服务商"
         rules={[{ required: true, message: '请选择服务商' }]}
       >
-        <Select onChange={handleProviderChange}>
-          {(Object.entries(MASTRA_PROVIDERS) as [MastraProvider, { displayName: string; models: string[] }][]).map(([key, info]) => (
+        <Select
+          value={currentProvider || defaultProvider}
+          onChange={handleProviderChange}
+        >
+          {Object.entries(MODEL_PROVIDERS).map(([key, info]) => (
             <Select.Option key={key} value={key}>
               {info.displayName}
             </Select.Option>
@@ -61,26 +100,35 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
         </Select>
       </Form.Item>
 
-      <Form.Item
-        name="apiKey"
-        label="API Key"
-        rules={[{ required: true, message: '请输入 API Key' }]}
-      >
-        <Input.Password placeholder="输入 API Key" />
-      </Form.Item>
+      {providerInfo?.requiresApiKey !== false && (
+        <Form.Item
+          name="apiKey"
+          label="API Key"
+          rules={[{ required: providerInfo?.requiresApiKey, message: '请输入 API Key' }]}
+        >
+          <Input.Password placeholder="输入 API Key" />
+        </Form.Item>
+      )}
 
       <Form.Item
-        name="model"
         label="模型"
         rules={[{ required: true, message: '请选择模型' }]}
       >
-        <Select>
-          {provider && MASTRA_PROVIDERS[provider as MastraProvider]?.models.map((m: string) => (
-            <Select.Option key={m} value={m}>
-              {m}
-            </Select.Option>
-          ))}
-        </Select>
+        {modelOptions.length > 0 ? (
+          <Select value={currentModelId} onChange={handleModelSelect}>
+            {modelOptions.map(opt => (
+              <Select.Option key={opt.value} value={opt.value}>
+                {opt.label}
+              </Select.Option>
+            ))}
+          </Select>
+        ) : (
+          <Input
+            value={currentModelId}
+            onChange={(e) => form.setFieldValue('model', `${currentProvider}/${e.target.value}`)}
+            placeholder="输入模型名称"
+          />
+        )}
       </Form.Item>
 
       <Form.Item
@@ -93,10 +141,22 @@ const LocalBotConfigForm: React.FC<LocalBotConfigFormProps> = ({ form, initialVa
       <Form.Item
         name="contextLength"
         label="上下文长度 (tokens)"
-        tooltip="Mastra Agent 的最大上下文 token 数"
+        tooltip="Agent 的最大上下文 token 数"
       >
         <InputNumber min={512} max={128000} step={512} style={{ width: '100%' }} />
       </Form.Item>
+
+      <Collapse ghost size="small">
+        <Panel header="高级选项" key="advanced">
+          <Form.Item
+            name="baseUrl"
+            label="自定义 API 端点"
+            tooltip="仅 OpenAI 兼容端点、本地模型或自定义服务商需要"
+          >
+            <Input placeholder="例如 http://localhost:11434/v1" />
+          </Form.Item>
+        </Panel>
+      </Collapse>
     </Form>
   );
 };

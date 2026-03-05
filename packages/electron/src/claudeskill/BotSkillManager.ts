@@ -139,6 +139,17 @@ export class BotSkillManager {
     // 下载 SKILL.md 内容
     const response = await fetch(entry.metadata.rawFileUrl);
     if (!response.ok) {
+      // GitHub API 限速检测
+      if (response.status === 403 || response.status === 429) {
+        const resetHeader = response.headers.get('x-ratelimit-reset');
+        const retryAfter = resetHeader
+          ? Math.ceil((Number(resetHeader) * 1000 - Date.now()) / 60000)
+          : null;
+        const waitMsg = retryAfter && retryAfter > 0
+          ? `，请等待约 ${retryAfter} 分钟后重试`
+          : '，请稍后重试';
+        throw new Error(`GitHub API 请求被限速 (HTTP ${response.status})${waitMsg}`);
+      }
       throw new Error(`下载 SKILL.md 失败: HTTP ${response.status}`);
     }
     const skillMdContent = await response.text();
@@ -156,8 +167,14 @@ export class BotSkillManager {
     }
     this.ensureDir(targetDir);
 
-    // 写入 SKILL.md
-    await fs.promises.writeFile(path.join(targetDir, 'SKILL.md'), skillMdContent, 'utf-8');
+    // 写入 SKILL.md（失败时回滚清理目录）
+    try {
+      await fs.promises.writeFile(path.join(targetDir, 'SKILL.md'), skillMdContent, 'utf-8');
+    } catch (writeErr) {
+      // 回滚：清理刚创建的目录
+      try { await fs.promises.rm(targetDir, { recursive: true }); } catch { /* ignore */ }
+      throw writeErr;
+    }
 
     return {
       name: skill.name,
@@ -259,19 +276,18 @@ export class BotSkillManager {
   }
 
   /**
-   * 构建包含 Skill 指令的系统提示词
+   * 构建包含 Skill 概览的系统提示词（v2.1.0 概览模式）
    *
-   * 将所有已安装 Skill 的指令内容拼接到基础系统提示词中。
+   * 仅注入 Skill 名称和描述，Agent 使用 read_skill 按需加载完整指令。
    *
    * @param botId Bot ID
    * @param basePrompt 基础系统提示词
    * @returns 增强后的系统提示词
    */
   async buildSystemPromptWithSkills(botId: string, basePrompt: string): Promise<string> {
-    const skills = await this.listSkillsWithContent(botId);
+    const skills = await this.listSkills(botId);
     const workspacePath = this.getWorkspacePath(botId);
 
-    // 始终包含工作区环境和工具说明（即使无 Skill 安装）
     const sections: string[] = [
       '',
       '# 工作区环境',
@@ -282,45 +298,40 @@ export class BotSkillManager {
       '',
       '你可以使用以下工具来执行任务：',
       '',
+      '### 基础工具',
       '- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。',
       '- `read_file`: 读取文件。相对路径基于工作区目录解析。',
       '- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。',
       '- `list_files`: 列出目录。默认列出工作区根目录。',
       '- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。',
       '',
+      '### Skill 管理工具',
+      '- `search_skills`: 在 claude-plugins.dev 上搜索可用的 Skill。',
+      '- `install_skill`: 安装 Skill（从 URL 或本地路径）。**安装前请用 present_choices 确认。**',
+      '- `uninstall_skill`: 卸载已安装的 Skill。**卸载前请用 present_choices 确认。**',
+      '- `list_skills`: 列出已安装的所有 Skill。',
+      '- `read_skill`: 读取 Skill 的完整 SKILL.md 指令。当需要使用某个 Skill 时，先用此工具加载其指令。',
+      '',
       '**重要**:',
       '- 所有相对路径都基于工作区目录解析',
       '- 你可以直接使用相对路径（如 `output.docx`），无需拼接绝对路径',
       '- bash_exec 的工作目录已设为工作区，直接运行命令即可',
+      '- 当用户需求超出你的能力范围时，使用 search_skills 搜索合适的 Skill',
     ];
 
-    // 有 Skill 时追加 Skill 目录和指令
+    // 有 Skill 时追加概览（仅名称 + 描述）
     if (skills.length > 0) {
-      const skillsDir = this.getSkillsDir(botId);
-      const skillDirsList = skills
-        .map((skill) => `  - \`${path.join(skillsDir, skill.name)}/\` (${skill.name})`)
+      const skillList = skills
+        .map((s) => `- **${s.name}**: ${s.description || '(无描述)'}`)
         .join('\n');
 
       sections.push(
-        `- 以下 Skill 目录可读取参考文件:\n${skillDirsList}`,
-      );
-
-      const skillBlocks = skills
-        .map((skill) => {
-          const header = `## Skill: ${skill.name}`;
-          const desc = skill.description ? `\n${skill.description}` : '';
-          const body = skill.instructions ? `\n\n${skill.instructions}` : '';
-          return `${header}${desc}${body}`;
-        })
-        .join('\n\n---\n\n');
-
-      sections.push(
         '',
-        '# 可用 Skills',
+        '# 已安装 Skills（概览）',
         '',
-        '以下是你已安装的 Skills 及其指令：',
+        '以下 Skill 已安装。使用 `read_skill` 工具加载完整指令后再使用。',
         '',
-        skillBlocks,
+        skillList,
       );
     }
 

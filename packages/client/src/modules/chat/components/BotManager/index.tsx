@@ -13,7 +13,7 @@ import {
   PlusOutlined, DeleteOutlined, RobotOutlined,
   EditOutlined, FileTextOutlined, AppstoreOutlined, FolderOpenOutlined,
 } from '@ant-design/icons';
-import type { Bot, MastraLLMConfig } from '@chat/shared';
+import type { Bot, BotModelConfig } from '@chat/shared';
 import { botService } from '../../services/botService';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
 import LocalBotConfigForm from './LocalBotConfigForm';
@@ -83,16 +83,16 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       return;
     }
 
-    let mastraConfig: MastraLLMConfig | undefined;
+    let modelConfig: BotModelConfig | undefined;
     try {
-      mastraConfig = await createForm.validateFields();
+      modelConfig = await createForm.validateFields();
     } catch {
       return;
     }
 
     setCreating(true);
     try {
-      const { bot } = await botService.createBot(name, 'local', undefined, mastraConfig);
+      const { bot } = await botService.createBot(name, 'local', undefined, undefined, modelConfig);
       setBots((prev) => [...prev, bot]);
       setNewBotName('');
       createForm.resetFields();
@@ -118,6 +118,13 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   const handleEditConfig = async (bot: Bot) => {
     setEditingBot(bot);
     editForm.resetFields();
+    // 加载完整配置
+    try {
+      const { modelConfig } = await botService.getBotConfig(bot.id);
+      if (modelConfig) {
+        editForm.setFieldsValue(modelConfig);
+      }
+    } catch { /* ignore */ }
     const electronAPI = (window as any).electronAPI;
     if (electronAPI?.getWorkspacePath) {
       const path = await electronAPI.getWorkspacePath(bot.id);
@@ -129,9 +136,9 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     if (!editingBot) return;
     try {
       const values = await editForm.validateFields();
-      const { mastraConfig: updated } = await botService.updateLocalBotConfig(editingBot.id, values);
+      const { modelConfig: updated } = await botService.updateModelConfig(editingBot.id, values);
       setBots((prev) => prev.map((b) =>
-        b.id === editingBot.id ? { ...b, mastraConfig: updated } : b,
+        b.id === editingBot.id ? { ...b, modelConfig: updated } : b,
       ));
       setEditingBot(null);
       void antMessage.success('配置已更新');
@@ -202,12 +209,11 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         ID: {bot.id.slice(0, 8)}
       </Text>
     );
-    const provider = bot.mastraConfig?.provider || '';
-    const model = bot.mastraConfig?.model || '';
+    const modelStr = bot.modelConfig?.model || bot.mastraConfig?.model || '';
     return (
       <div>
         <Text type="secondary" className={styles.botMeta}>
-          {provider} / {model} · {date}
+          {modelStr} · {date}
         </Text>
         <div>{idTag}</div>
       </div>
@@ -232,7 +238,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         />
       </div>
 
-      {/* Mastra 配置 */}
+      {/* 模型配置 */}
       <div className={styles.configArea}>
         <LocalBotConfigForm form={createForm} />
       </div>
@@ -282,7 +288,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
           <>
             <LocalBotConfigForm
               form={editForm}
-              initialValues={editingBot.mastraConfig}
+              initialValues={editingBot.modelConfig}
             />
             {isElectron && (
               <div style={{ marginTop: 12, padding: '8px 12px', background: '#f5f5f5', borderRadius: 6 }}>

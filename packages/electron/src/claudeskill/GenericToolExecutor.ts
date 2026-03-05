@@ -2,7 +2,11 @@
  * 通用工具执行器
  *
  * 在 Bot 的 workspace 沙箱中执行通用工具。
- * 支持 5 种工具：bash_exec、read_file、write_file、list_files、read_file_binary。
+ * 支持 11 种工具：
+ * - 文件/命令：bash_exec、read_file、write_file、list_files、read_file_binary
+ * - Skill 管理：search_skills、install_skill、uninstall_skill、list_skills、read_skill
+ * - 沙箱执行：execute_skill_script
+ *
  * 所有文件操作限制在 workspace 和 skill 目录范围内（安全沙箱）。
  */
 import * as fs from 'fs';
@@ -10,11 +14,26 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import archiver from 'archiver';
 import type { GenericToolExecRequest, GenericToolExecResult } from '../../../shared/dist';
+import type { BotSkillManager } from './BotSkillManager';
+import type { PluginSearchClient } from './PluginSearchClient';
+import { SandboxExecutor } from './SandboxExecutor';
 
 /** 默认命令超时时间（毫秒） */
 const DEFAULT_TIMEOUT = 30000;
 
 export class GenericToolExecutor {
+  private botSkillManager: BotSkillManager | null = null;
+  private pluginSearchClient: PluginSearchClient | null = null;
+  private sandboxExecutor = new SandboxExecutor();
+
+  /**
+   * 注入 Skill 管理依赖（延迟注入，避免循环依赖）
+   */
+  setSkillDependencies(skillManager: BotSkillManager, searchClient: PluginSearchClient): void {
+    this.botSkillManager = skillManager;
+    this.pluginSearchClient = searchClient;
+  }
+
   /**
    * 执行通用工具
    *
@@ -52,6 +71,25 @@ export class GenericToolExecutor {
         case 'read_file_binary':
           data = await this.readFileBinary(request.params, workspacePath, skillDirs);
           break;
+        // v2.1.0 Skill 管理工具
+        case 'search_skills':
+          data = await this.searchSkills(request.params);
+          break;
+        case 'install_skill':
+          data = await this.installSkill(request.params, request.botId);
+          break;
+        case 'uninstall_skill':
+          data = await this.uninstallSkill(request.params, request.botId);
+          break;
+        case 'list_skills':
+          data = await this.listSkillsTool(request.botId);
+          break;
+        case 'read_skill':
+          data = await this.readSkill(request.params, request.botId);
+          break;
+        case 'execute_skill_script':
+          data = await this.executeSkillScript(request.params, request.botId, workspacePath);
+          break;
         default:
           throw new Error(`未知工具: ${request.toolName}`);
       }
@@ -69,6 +107,10 @@ export class GenericToolExecutor {
       };
     }
   }
+
+  // ========================
+  // 文件/命令工具（原有）
+  // ========================
 
   /**
    * 执行 Shell 命令
@@ -229,6 +271,201 @@ export class GenericToolExecutor {
       mimeType: this.detectMimeType(fileName),
     };
   }
+
+  // ========================
+  // v2.1.0 Skill 管理工具
+  // ========================
+
+  /**
+   * 搜索在线 Skill
+   */
+  private async searchSkills(params: Record<string, unknown>): Promise<string> {
+    if (!this.pluginSearchClient) {
+      throw new Error('Skill 搜索服务未初始化');
+    }
+
+    const query = params.query as string;
+    if (!query) throw new Error('search_skills 缺少 query 参数');
+
+    const limit = (params.limit as number) || 10;
+    const result = await this.pluginSearchClient.search(query, limit);
+
+    if (result.skills.length === 0) {
+      return `未找到匹配 "${query}" 的 Skill`;
+    }
+
+    const entries = result.skills.map((s, i) =>
+      `${i + 1}. **${s.name}** (${s.namespace})\n   ${s.description}\n   安装: ${s.installs} | Stars: ${s.stars}\n   URL: ${s.metadata.rawFileUrl}`,
+    ).join('\n\n');
+
+    return `找到 ${result.total} 个 Skill（显示前 ${result.skills.length} 个）:\n\n${entries}`;
+  }
+
+  /**
+   * 安装 Skill
+   */
+  private async installSkill(params: Record<string, unknown>, botId: string): Promise<string> {
+    if (!this.botSkillManager) {
+      throw new Error('Skill 管理服务未初始化');
+    }
+
+    const url = params.url as string | undefined;
+    const localPath = params.localPath as string | undefined;
+
+    if (!url && !localPath) {
+      throw new Error('install_skill 需要 url 或 localPath 参数');
+    }
+
+    try {
+      if (url) {
+        // 从 URL 安装：构造 PluginEntry
+        const entry = {
+          id: '', name: '', namespace: '', description: '',
+          sourceUrl: url, author: '', stars: 0, installs: 0,
+          metadata: {
+            repoOwner: '', repoName: '', directoryPath: '',
+            rawFileUrl: url,
+          },
+        };
+        const meta = await this.botSkillManager.installFromUrl(botId, entry);
+        return JSON.stringify({
+          success: true,
+          message: `Skill "${meta.name}" 安装成功`,
+          skill: meta,
+          _action: 'push_skill_instructions',
+        });
+      } else {
+        const meta = await this.botSkillManager.installFromLocal(botId, localPath!);
+        return JSON.stringify({
+          success: true,
+          message: `Skill "${meta.name}" 从本地安装成功`,
+          skill: meta,
+          _action: 'push_skill_instructions',
+        });
+      }
+    } catch (err: any) {
+      // 回滚：安装失败时不需要特殊清理（installFromUrl/installFromLocal 内部已处理）
+      throw new Error(`Skill 安装失败: ${err.message}`);
+    }
+  }
+
+  /**
+   * 卸载 Skill
+   */
+  private async uninstallSkill(params: Record<string, unknown>, botId: string): Promise<string> {
+    if (!this.botSkillManager) {
+      throw new Error('Skill 管理服务未初始化');
+    }
+
+    const name = params.name as string;
+    if (!name) throw new Error('uninstall_skill 缺少 name 参数');
+
+    const removed = await this.botSkillManager.uninstall(botId, name);
+    if (!removed) {
+      return `Skill "${name}" 不存在`;
+    }
+
+    return JSON.stringify({
+      success: true,
+      message: `Skill "${name}" 已卸载`,
+      _action: 'push_skill_instructions',
+    });
+  }
+
+  /**
+   * 列出已安装 Skill
+   */
+  private async listSkillsTool(botId: string): Promise<string> {
+    if (!this.botSkillManager) {
+      throw new Error('Skill 管理服务未初始化');
+    }
+
+    const skills = await this.botSkillManager.listSkills(botId);
+    if (skills.length === 0) {
+      return '当前没有已安装的 Skill';
+    }
+
+    const list = skills.map((s, i) =>
+      `${i + 1}. **${s.name}**: ${s.description || '(无描述)'}`,
+    ).join('\n');
+
+    return `已安装 ${skills.length} 个 Skill:\n\n${list}`;
+  }
+
+  /**
+   * 读取 Skill 完整内容
+   */
+  private async readSkill(params: Record<string, unknown>, botId: string): Promise<string> {
+    if (!this.botSkillManager) {
+      throw new Error('Skill 管理服务未初始化');
+    }
+
+    const name = params.name as string;
+    if (!name) throw new Error('read_skill 缺少 name 参数');
+
+    const skill = await this.botSkillManager.getSkillContent(botId, name);
+    if (!skill) {
+      return `Skill "${name}" 不存在`;
+    }
+
+    return `# Skill: ${skill.name}\n\n${skill.instructions}`;
+  }
+
+  /**
+   * 在沙箱中执行 Skill 脚本（v2.2.0）
+   */
+  private async executeSkillScript(
+    params: Record<string, unknown>,
+    botId: string,
+    workspacePath: string,
+  ): Promise<string> {
+    if (!this.botSkillManager) {
+      throw new Error('Skill 管理服务未初始化');
+    }
+
+    const skillName = params.skillName as string;
+    const scriptPath = params.scriptPath as string;
+    const args = (params.args as string[]) || [];
+    const input = params.input as string | undefined;
+
+    if (!skillName) throw new Error('execute_skill_script 缺少 skillName 参数');
+    if (!scriptPath) throw new Error('execute_skill_script 缺少 scriptPath 参数');
+
+    // 验证 Skill 存在
+    const skill = await this.botSkillManager.getSkillContent(botId, skillName);
+    if (!skill || !skill.dirPath) {
+      throw new Error(`Skill "${skillName}" 不存在`);
+    }
+
+    // 验证脚本路径在 scripts/ 目录内
+    const scriptsDir = path.join(skill.dirPath, 'scripts');
+    if (!fs.existsSync(scriptsDir)) {
+      throw new Error(`Skill "${skillName}" 没有 scripts/ 目录`);
+    }
+
+    const fullScriptPath = path.resolve(scriptsDir, scriptPath);
+    // 安全检查：确保路径在 scripts/ 内
+    if (!fullScriptPath.startsWith(path.resolve(scriptsDir) + path.sep)) {
+      throw new Error('脚本路径越界：必须在 scripts/ 目录内');
+    }
+    if (!fs.existsSync(fullScriptPath)) {
+      throw new Error(`脚本不存在: ${scriptPath}`);
+    }
+
+    const result = await this.sandboxExecutor.execute(
+      fullScriptPath, args, input, undefined, workspacePath,
+    );
+
+    return JSON.stringify({
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+
+  // ========================
+  // 辅助方法
+  // ========================
 
   /**
    * 将目录打包为 zip 并返回 base64

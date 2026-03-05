@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { Message, MessageMetadata, BotUpdate, MastraLLMConfig, BotRunMode, AgentGenerationLog } from '@chat/shared';
+import type { Message, MessageMetadata, BotUpdate, MastraLLMConfig, BotModelConfig, BotRunMode, AgentGenerationLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
@@ -10,6 +10,7 @@ const BOT_UPDATES_KEY = (botId: string) => `bot_updates:${botId}`;
 const BOT_UPDATE_SEQ_KEY = (botId: string) => `bot_update_seq:${botId}`;
 const BOT_CONV_HISTORY_KEY = (botId: string, convId: string) => `bot_conv_history:${botId}:${convId}`;
 const BOT_MASTRA_CONFIG_KEY = (botId: string) => `bot_mastra_config:${botId}`;
+const BOT_MODEL_CONFIG_KEY = (botId: string) => `bot_model_config:${botId}`;
 const BOT_GEN_LOGS_KEY = (botId: string) => `bot_gen_logs:${botId}`;
 const LOCAL_BOTS_KEY = 'local_bots';
 
@@ -37,15 +38,16 @@ export class BotService {
     runMode: BotRunMode = 'local',
     _llmConfig?: unknown,
     mastraConfig?: MastraLLMConfig,
+    modelConfig?: BotModelConfig,
   ) {
     // 机器人用户名必须以 bot 结尾
     if (!username.toLowerCase().endsWith('bot')) {
       throw new Error('BOT_NAME_INVALID');
     }
 
-    // 必须提供 Mastra 配置
-    if (!mastraConfig) {
-      throw new Error('LOCAL_MODE_REQUIRES_MASTRA_CONFIG');
+    // 必须提供配置（新 modelConfig 或旧 mastraConfig）
+    if (!modelConfig && !mastraConfig) {
+      throw new Error('LOCAL_MODE_REQUIRES_MODEL_CONFIG');
     }
 
     // 检查用户名是否已存在
@@ -61,7 +63,11 @@ export class BotService {
     const redis = getRedisClient();
     await redis.hset(`user:${id}`, 'runMode', runMode);
 
-    await this.saveMastraConfig(id, mastraConfig);
+    if (modelConfig) {
+      await this.saveModelConfig(id, modelConfig);
+    } else if (mastraConfig) {
+      await this.saveMastraConfig(id, mastraConfig);
+    }
     await redis.sadd(LOCAL_BOTS_KEY, id);
 
     return { ...user, token, runMode };
@@ -86,6 +92,7 @@ export class BotService {
 
     const redis = getRedisClient();
     await redis.del(BOT_MASTRA_CONFIG_KEY(botId));
+    await redis.del(BOT_MODEL_CONFIG_KEY(botId));
     await redis.srem(LOCAL_BOTS_KEY, botId);
     await redis.del(BOT_GEN_LOGS_KEY(botId));
 
@@ -275,6 +282,79 @@ export class BotService {
     const results: Array<{ botId: string; config: MastraLLMConfig }> = [];
     for (const bot of bots) {
       const config = await this.getMastraConfig(bot.id);
+      if (config) {
+        results.push({ botId: bot.id, config });
+      }
+    }
+    return results;
+  }
+
+  // ========================
+  // v2.0 Model Config（替代 Mastra Config）
+  // ========================
+
+  /** 保存 Bot Model 配置（apiKey 加密存储） */
+  async saveModelConfig(botId: string, config: BotModelConfig): Promise<void> {
+    const redis = getRedisClient();
+    const data: Record<string, string> = {
+      model: config.model,
+      encryptedApiKey: encryptApiKey(config.apiKey),
+      systemPrompt: config.systemPrompt,
+      contextLength: String(config.contextLength),
+    };
+    if (config.baseUrl) data.baseUrl = config.baseUrl;
+    if (config.fallbacks && config.fallbacks.length > 0) {
+      data.fallbacks = JSON.stringify(config.fallbacks);
+    }
+    await redis.hset(BOT_MODEL_CONFIG_KEY(botId), data);
+  }
+
+  /** 获取 Bot Model 配置（解密 apiKey），自动 fallback 旧 Mastra 格式 */
+  async getModelConfig(botId: string): Promise<BotModelConfig | null> {
+    const redis = getRedisClient();
+    const data = await redis.hgetall(BOT_MODEL_CONFIG_KEY(botId));
+
+    // 新格式存在
+    if (data && data.model) {
+      return {
+        model: data.model,
+        apiKey: decryptApiKey(data.encryptedApiKey),
+        systemPrompt: data.systemPrompt || '',
+        contextLength: parseInt(data.contextLength, 10) || 10,
+        baseUrl: data.baseUrl || undefined,
+        fallbacks: data.fallbacks ? JSON.parse(data.fallbacks) : undefined,
+      };
+    }
+
+    // Fallback: 读旧 Mastra 配置并自动转换
+    const mastra = await this.getMastraConfig(botId);
+    if (!mastra) return null;
+
+    const converted: BotModelConfig = {
+      model: `${mastra.provider}/${mastra.model}`,
+      apiKey: mastra.apiKey,
+      systemPrompt: mastra.systemPrompt,
+      contextLength: mastra.contextLength,
+    };
+
+    // 自动迁移：写入新格式
+    await this.saveModelConfig(botId, converted);
+    return converted;
+  }
+
+  /** 获取脱敏的 Model 配置（给前端展示） */
+  async getModelConfigMasked(botId: string): Promise<(Omit<BotModelConfig, 'apiKey'> & { apiKey: string }) | null> {
+    const config = await this.getModelConfig(botId);
+    if (!config) return null;
+    return { ...config, apiKey: maskApiKey(config.apiKey) };
+  }
+
+  /** 获取某用户拥有的所有本地 Bot v2 配置 */
+  async getLocalBotModelConfigs(ownerId: string): Promise<Array<{ botId: string; config: BotModelConfig }>> {
+    const bots = await this.userRepo.getBotsByOwner(ownerId);
+    const results: Array<{ botId: string; config: BotModelConfig }> = [];
+    for (const bot of bots) {
+      const config = await this.getModelConfig(bot.id);
       if (config) {
         results.push({ botId: bot.id, config });
       }

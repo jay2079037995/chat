@@ -4,13 +4,45 @@ import type { LLMToolCall } from './skill';
 /** 机器人运行模式 */
 export type BotRunMode = 'client' | 'server' | 'local';
 
-/** 机器人运行状态（仅 server/local 模式） */
+/** 机器人运行状态 */
 export type BotStatus = 'running' | 'stopped' | 'error';
 
-/** Mastra AI SDK 提供商（本地 Bot 使用） */
+// ─── v2.0.0 新类型 ──────────────────────────────────────────
+
+/** Bot 模型配置（v2.0.0+，使用 "provider/model" 格式） */
+export interface BotModelConfig {
+  /** 模型字符串，格式为 "provider/model-name"，例如 "anthropic/claude-sonnet-4-5" */
+  model: string;
+  /** API Key（本地模型如 ollama/lmstudio 可为空） */
+  apiKey: string;
+  /** 系统提示词 */
+  systemPrompt: string;
+  /** 上下文长度（tokens） */
+  contextLength: number;
+  /** 备用模型列表（按优先级降序），例如 ["openai/gpt-4o", "google/gemini-2.5-flash"] */
+  fallbacks?: string[];
+  /** 自定义 Base URL（ollama/lmstudio/自定义端点） */
+  baseUrl?: string;
+}
+
+/** Model Provider 信息 */
+export interface ModelProviderInfo {
+  /** 显示名称 */
+  displayName: string;
+  /** 预置模型列表 */
+  models: string[];
+  /** 默认 Base URL（本地模型或国内服务有特定地址） */
+  baseUrl?: string;
+  /** 是否需要 API Key */
+  requiresApiKey: boolean;
+}
+
+// ─── 旧类型（已废弃，保留向后兼容） ─────────────────────────
+
+/** @deprecated 使用 BotModelConfig 替代 */
 export type MastraProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'qwen';
 
-/** Mastra LLM 配置（本地机器人使用） */
+/** @deprecated 使用 BotModelConfig 替代 */
 export interface MastraLLMConfig {
   provider: MastraProvider;
   apiKey: string;
@@ -19,10 +51,10 @@ export interface MastraLLMConfig {
   contextLength: number;
 }
 
-/** LLM 服务提供商 */
+/** @deprecated 不再使用 */
 export type LLMProvider = 'deepseek' | 'minimax' | 'openai' | 'claude' | 'qwen' | 'custom';
 
-/** LLM 配置（服务端机器人使用） */
+/** @deprecated 不再使用 */
 export interface LLMConfig {
   provider: LLMProvider;
   apiKey: string;
@@ -32,6 +64,8 @@ export interface LLMConfig {
   customBaseUrl?: string;
   customModel?: string;
 }
+
+// ─── 通用类型 ────────────────────────────────────────────────
 
 /** LLM 对话消息 */
 export interface ChatMessage {
@@ -47,7 +81,7 @@ export interface ChatMessage {
   name?: string;
 }
 
-/** Provider 配置信息 */
+/** @deprecated 使用 ModelProviderInfo 替代 */
 export interface ProviderInfo {
   baseUrl: string;
   models: string[];
@@ -61,16 +95,18 @@ export interface Bot {
   createdAt: number;
   runMode?: BotRunMode;
   status?: BotStatus;
-  llmConfig?: Omit<LLMConfig, 'apiKey'> & { apiKey: string };
-  /** Mastra LLM 配置（仅 local 模式） */
+  /** 模型配置（v2.0.0+） */
+  modelConfig?: Omit<BotModelConfig, 'apiKey'> & { apiKey: string };
+  /** @deprecated 旧 Mastra 配置，向后兼容 */
   mastraConfig?: Omit<MastraLLMConfig, 'apiKey'> & { apiKey: string };
 }
 
 /** 创建机器人请求体 */
 export interface CreateBotRequest {
   username: string;
-  runMode: BotRunMode;
-  llmConfig?: LLMConfig;
+  /** 模型配置（v2.0.0+） */
+  modelConfig?: BotModelConfig;
+  /** @deprecated 旧 Mastra 配置 */
   mastraConfig?: MastraLLMConfig;
 }
 
@@ -140,34 +176,3 @@ export interface AgentGenerationLog {
   steps: AgentStepLog[];
 }
 
-/** LLM 调用日志（Server Bot 每次 API 调用的完整记录） */
-export interface LLMCallLog {
-  /** 日志唯一标识 */
-  id: string;
-  /** Bot ID */
-  botId: string;
-  /** 调用时间戳 */
-  timestamp: number;
-  /** 会话 ID */
-  conversationId: string;
-  /** 请求信息 */
-  request: {
-    provider: string;
-    model: string;
-    messages: Array<{ role: string; content: string }>;
-    tools?: Array<{ name: string; description: string }>;
-  };
-  /** 响应信息（成功时） */
-  response?: {
-    content?: string;
-    toolCalls?: LLMToolCall[];
-    finishReason: string;
-    reasoningContent?: string;
-  };
-  /** 错误信息（失败时） */
-  error?: string;
-  /** 调用耗时（毫秒） */
-  durationMs: number;
-  /** Tool calling 轮次编号（仅在 tool calling 循环中） */
-  toolRound?: number;
-}

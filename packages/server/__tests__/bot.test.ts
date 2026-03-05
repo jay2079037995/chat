@@ -58,8 +58,8 @@ describe('Bot（机器人系统）', () => {
     await expect(botService.createBot(ownerId, 'dupebot', 'local', undefined, MASTRA_CONFIG)).rejects.toThrow('USERNAME_TAKEN');
   });
 
-  it('should reject missing mastra config', async () => {
-    await expect(botService.createBot(ownerId, 'noconfbot', 'local')).rejects.toThrow('LOCAL_MODE_REQUIRES_MASTRA_CONFIG');
+  it('should reject missing model config', async () => {
+    await expect(botService.createBot(ownerId, 'noconfbot', 'local')).rejects.toThrow('LOCAL_MODE_REQUIRES_MODEL_CONFIG');
   });
 
   it('should list bots for owner', async () => {

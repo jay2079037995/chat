@@ -38,6 +38,8 @@ if (!gotSingleInstanceLock) {
   const botSkillManager = new BotSkillManager();
   const pluginSearchClient = new PluginSearchClient();
   const genericToolExecutor = new GenericToolExecutor();
+  // v2.1.0: 注入 Skill 管理依赖
+  genericToolExecutor.setSkillDependencies(botSkillManager, pluginSearchClient);
 
   // --- Bot Skill 管理 IPC ---
   ipcMain.handle('bot-skill:list', (_event, botId: string) =>
@@ -89,7 +91,19 @@ if (!gotSingleInstanceLock) {
   ipcMain.handle('tool:exec', async (_event, request: GenericToolExecRequest) => {
     const workspacePath = botSkillManager.getWorkspacePath(request.botId);
     const skillDirs = await botSkillManager.getSkillDirs(request.botId);
-    return genericToolExecutor.execute(request, workspacePath, skillDirs);
+    const result = await genericToolExecutor.execute(request, workspacePath, skillDirs);
+
+    // v2.1.0: 检测 _action 标记，触发 Skill 指令更新推送
+    if (result.success && typeof result.data === 'string') {
+      try {
+        const parsed = JSON.parse(result.data);
+        if (parsed._action === 'push_skill_instructions') {
+          await pushSkillInstructions(request.botId);
+        }
+      } catch { /* data 不是 JSON，忽略 */ }
+    }
+
+    return result;
   });
 
   /** Skill 安装/卸载后将更新的 Skill 指令推送到渲染进程（由渲染进程转发到 Server） */

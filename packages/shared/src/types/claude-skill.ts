@@ -80,7 +80,10 @@ export interface PluginEntry {
 }
 
 /** 通用工具名称 */
-export type GenericToolName = 'bash_exec' | 'read_file' | 'write_file' | 'list_files' | 'read_file_binary';
+export type GenericToolName =
+  | 'bash_exec' | 'read_file' | 'write_file' | 'list_files' | 'read_file_binary'
+  | 'search_skills' | 'install_skill' | 'uninstall_skill' | 'list_skills' | 'read_skill'
+  | 'execute_skill_script';
 
 /** 通用工具执行请求（Server Bot → Electron） */
 export interface GenericToolExecRequest {
@@ -251,6 +254,130 @@ export const GENERIC_TOOL_DEFINITIONS = [
           },
         },
         required: ['type'],
+      },
+    },
+  },
+  // ─── v2.1.0 Skill 管理工具 ──────────────────────────
+  {
+    type: 'function' as const,
+    function: {
+      name: 'search_skills',
+      description: '在 claude-plugins.dev 上搜索可用的 Skill。返回匹配的 Skill 列表，包含名称、描述、安装次数等信息。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          query: {
+            type: 'string',
+            description: '搜索关键词',
+          },
+          limit: {
+            type: 'number',
+            description: '返回结果数量上限，默认 10',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'install_skill',
+      description: '安装 Skill。支持从 claude-plugins.dev URL 安装或从本地路径安装。安装前请先用 present_choices 向用户确认。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          url: {
+            type: 'string',
+            description: 'Skill 的 SKILL.md 原始文件 URL（从 search_skills 结果中获取）',
+          },
+          localPath: {
+            type: 'string',
+            description: '本地 Skill 目录路径（包含 SKILL.md 的目录）',
+          },
+          overwrite: {
+            type: 'boolean',
+            description: '如果已存在同名 Skill，是否覆盖安装，默认 false',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'uninstall_skill',
+      description: '卸载已安装的 Skill。卸载前请先用 present_choices 向用户确认。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          name: {
+            type: 'string',
+            description: '要卸载的 Skill 名称',
+          },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_skills',
+      description: '列出当前 Bot 已安装的所有 Skill。返回每个 Skill 的名称和描述。',
+      parameters: {
+        type: 'object' as const,
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_skill',
+      description: '读取已安装 Skill 的完整 SKILL.md 指令内容。当需要了解某个 Skill 的详细用法时使用。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          name: {
+            type: 'string',
+            description: '要读取的 Skill 名称',
+          },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  // ─── v2.2.0 沙箱脚本执行 ──────────────────────────
+  {
+    type: 'function' as const,
+    function: {
+      name: 'execute_skill_script',
+      description: '在安全沙箱中执行已安装 Skill 的 scripts/ 目录下的脚本。脚本的文件系统和网络访问受限。',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          skillName: {
+            type: 'string',
+            description: '脚本所属的 Skill 名称',
+          },
+          scriptPath: {
+            type: 'string',
+            description: '脚本在 scripts/ 目录内的相对路径（如 "init.sh" 或 "build.py"）',
+          },
+          args: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '命令行参数列表',
+          },
+          input: {
+            type: 'string',
+            description: '标准输入内容',
+          },
+        },
+        required: ['skillName', 'scriptPath'],
       },
     },
   },

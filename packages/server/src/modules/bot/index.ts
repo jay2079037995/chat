@@ -4,8 +4,9 @@ import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
-import type { MastraLLMConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
-import { MASTRA_PROVIDERS, generateId } from '@chat/shared';
+import type { MastraLLMConfig, BotModelConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
+import { MASTRA_PROVIDERS, MODEL_PROVIDERS, generateId } from '@chat/shared';
+import { parseModelString, isReasonerModel } from './ModelFactory';
 import { Agent } from '@mastra/core/agent';
 import { BotService } from './BotService';
 import { ToolDispatcher } from './ToolDispatcher';
@@ -58,14 +59,15 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        const { mastraConfig } = req.body;
-        if (!mastraConfig) {
-          res.status(400).json({ error: '需要提供 Mastra 配置' });
+        const { modelConfig, mastraConfig } = req.body;
+        if (!modelConfig && !mastraConfig) {
+          res.status(400).json({ error: '需要提供模型配置' });
           return;
         }
 
-        const result = await botService.createBot(req.userId!, username.trim(), 'local', undefined, mastraConfig);
+        const result = await botService.createBot(req.userId!, username.trim(), 'local', undefined, mastraConfig, modelConfig);
 
+        const maskedModelConfig = await botService.getModelConfigMasked(result.id);
         const maskedMastraConfig = await botService.getMastraConfigMasked(result.id);
 
         res.json({
@@ -75,6 +77,7 @@ export class BotModule implements ServerModule {
             ownerId: result.botOwnerId!,
             createdAt: result.createdAt,
             runMode: 'local',
+            modelConfig: maskedModelConfig,
             mastraConfig: maskedMastraConfig,
           },
         });
@@ -88,8 +91,8 @@ export class BotModule implements ServerModule {
           res.status(409).json({ error: '用户名已被占用' });
           return;
         }
-        if (error.message === 'LOCAL_MODE_REQUIRES_MASTRA_CONFIG') {
-          res.status(400).json({ error: '需要提供 Mastra 配置' });
+        if (error.message === 'LOCAL_MODE_REQUIRES_MODEL_CONFIG') {
+          res.status(400).json({ error: '需要提供模型配置' });
           return;
         }
         res.status(500).json({ error: '服务器内部错误' });
@@ -102,6 +105,7 @@ export class BotModule implements ServerModule {
         const bots = await botService.listBots(req.userId!);
         const enriched = await Promise.all(
           bots.map(async (b) => {
+            const modelConfig = await botService.getModelConfigMasked(b.id);
             const mastraConfig = await botService.getMastraConfigMasked(b.id);
             return {
               id: b.id,
@@ -109,6 +113,7 @@ export class BotModule implements ServerModule {
               ownerId: b.botOwnerId!,
               createdAt: b.createdAt,
               runMode: 'local' as const,
+              modelConfig,
               mastraConfig,
             };
           }),
@@ -153,8 +158,9 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        const mastraConfig = await botService.getMastraConfig(botId);
-        res.json({ mastraConfig });
+        const modelConfig = await botService.getModelConfigMasked(botId);
+        const mastraConfig = await botService.getMastraConfigMasked(botId);
+        res.json({ modelConfig, mastraConfig });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -174,21 +180,43 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        const mastraConfig = req.body as MastraLLMConfig;
-        if (!mastraConfig.provider || !mastraConfig.apiKey || !mastraConfig.model) {
-          res.status(400).json({ error: '缺少必要的 Mastra 配置字段' });
-          return;
-        }
-        // 如果 apiKey 是脱敏值，保留原始值
-        if (mastraConfig.apiKey.includes('****')) {
-          const existing = await botService.getMastraConfig(botId);
-          if (existing) {
-            mastraConfig.apiKey = existing.apiKey;
+        const { modelConfig: mc, mastraConfig: legacy } = req.body;
+        // 优先处理新格式 modelConfig
+        if (mc) {
+          const modelConfig = mc as BotModelConfig;
+          if (!modelConfig.model) {
+            res.status(400).json({ error: '缺少必要的模型配置字段 (model)' });
+            return;
           }
+          // 如果 apiKey 是脱敏值，保留原始值
+          if (modelConfig.apiKey && modelConfig.apiKey.includes('****')) {
+            const existing = await botService.getModelConfig(botId);
+            if (existing) {
+              modelConfig.apiKey = existing.apiKey;
+            }
+          }
+          await botService.saveModelConfig(botId, modelConfig);
+          const masked = await botService.getModelConfigMasked(botId);
+          res.json({ modelConfig: masked });
+        } else if (legacy) {
+          // 兼容旧格式
+          const mastraConfig = legacy as MastraLLMConfig;
+          if (!mastraConfig.provider || !mastraConfig.apiKey || !mastraConfig.model) {
+            res.status(400).json({ error: '缺少必要的 Mastra 配置字段' });
+            return;
+          }
+          if (mastraConfig.apiKey.includes('****')) {
+            const existing = await botService.getMastraConfig(botId);
+            if (existing) {
+              mastraConfig.apiKey = existing.apiKey;
+            }
+          }
+          await botService.saveMastraConfig(botId, mastraConfig);
+          const masked = await botService.getMastraConfigMasked(botId);
+          res.json({ mastraConfig: masked });
+        } else {
+          res.status(400).json({ error: '缺少配置数据 (modelConfig 或 mastraConfig)' });
         }
-        await botService.saveMastraConfig(botId, mastraConfig);
-        const masked = await botService.getMastraConfigMasked(botId);
-        res.json({ mastraConfig: masked });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -254,9 +282,9 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        // 加载 bot 配置
-        const llmConfig = await botService.getMastraConfig(botId);
-        if (!llmConfig) {
+        // 加载 bot 配置（优先新格式，自动 fallback 旧格式）
+        const modelCfg = await botService.getModelConfig(botId);
+        if (!modelCfg) {
           res.status(400).json({ error: 'Bot 配置不存在' });
           return;
         }
@@ -280,19 +308,35 @@ export class BotModule implements ServerModule {
 
         // 构建系统提示词（含 skill 指令 + 工具说明）
         const skillInstructions = this.skillInstructionsCache.get(botId) || '';
-        const basePrompt = llmConfig.systemPrompt || '';
+        const basePrompt = modelCfg.systemPrompt || '';
         // 如果无 Skill 推送，补充基础工具说明
         const toolInstructions = !skillInstructions
           ? '\n\n# 工作区环境\n\n你拥有一个专属的工作目录。\n\n## 工具使用说明\n\n你可以使用以下工具来执行任务：\n\n- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。\n- `read_file`: 读取文件。相对路径基于工作区目录解析。\n- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。\n- `list_files`: 列出目录。默认列出工作区根目录。\n- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。\n\n**重要**: 所有相对路径都基于工作区目录解析，bash_exec 的工作目录已设为工作区，直接运行命令即可。'
           : '';
-        const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '') + toolInstructions;
+        // v2.3.0: 自我赋能决策流程
+        const selfEmpowermentPrompt = `
+
+# 自我赋能
+
+当用户的需求超出你当前的能力范围时，按以下流程自主扩展能力：
+
+1. **评估需求** — 判断是否需要额外的 Skill
+2. **搜索 Skill** — 使用 \`search_skills\` 搜索 claude-plugins.dev
+3. **确认安装** — 使用 \`present_choices\` 向用户确认是否安装
+4. **安装 Skill** — 使用 \`install_skill\` 安装
+5. **读取指令** — 使用 \`read_skill\` 加载完整指令
+6. **执行任务** — 按照 Skill 指令完成用户需求
+
+你也可以使用 \`list_models\` 查看可用模型，使用 \`switch_model\` 切换到更适合当前任务的模型。`;
+
+        const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '') + toolInstructions + selfEmpowermentPrompt;
 
         // 创建 model + tools + 步骤日志收集
-        const model = await createModel(llmConfig);
+        const model = await createModel(modelCfg);
         let pendingMetadata: MessageMetadata | undefined;
         const targetUserId = bot.botOwnerId || '';
         // 推理模型不支持 function calling
-        const isReasoner = llmConfig.model === 'deepseek-reasoner';
+        const isReasoner = isReasonerModel(modelCfg.model);
         const pendingFileArtifacts: import('./ServerToolBridge').FileArtifact[] = [];
 
         const generationId = generateId();
@@ -313,6 +357,8 @@ export class BotModule implements ServerModule {
         };
 
         const toolDispatcher = this.toolDispatcher;
+        // v2.3.0: 动态模型切换（switch_model 工具更新此引用，下次 /chat 请求生效）
+        let currentModelStr = modelCfg.model;
         const tools = !isReasoner && targetUserId && toolDispatcher ? createServerTools({
           dispatcher: toolDispatcher,
           targetUserId,
@@ -321,6 +367,10 @@ export class BotModule implements ServerModule {
           onPresentChoices: (m) => { pendingMetadata = m; },
           onFileArtifact: (a) => { pendingFileArtifacts.push(a); },
           onStepProgress: (data) => emitProgress(data),
+          onSwitchModel: (model) => {
+            currentModelStr = model;
+            console.log(`[BotChat] Model switched to: ${model} (effective next turn)`);
+          },
           onToolLog: (log) => {
             stepIndex++;
             stepLogs.push({
@@ -350,7 +400,7 @@ export class BotModule implements ServerModule {
         });
 
         emitProgress({ step: 'generating', status: 'start' });
-        console.log('[BotChat] Starting stream for bot:', botId, 'model:', llmConfig.model);
+        console.log('[BotChat] Starting stream for bot:', botId, 'model:', modelCfg.model);
         const llmStartTime = Date.now();
         const streamResult = await agent.streamLegacy(
           messages.map((m: { role: string; content: string }) => ({
@@ -399,8 +449,8 @@ export class BotModule implements ServerModule {
           timestamp: Date.now(),
           durationMs: llmDurationMs,
           llmInfo: {
-            provider: llmConfig.provider,
-            model: llmConfig.model,
+            provider: parseModelString(modelCfg.model).provider,
+            model: parseModelString(modelCfg.model).modelId,
             finishReason: 'stop',
           },
         });
@@ -490,7 +540,13 @@ export class BotModule implements ServerModule {
       }
     });
 
-    // GET /api/bot/mastra-providers — 获取可用 Mastra providers 及模型列表
+    // GET /api/bot/model-providers — 获取可用 Model Provider 及模型列表（v2.0）
+    router.get('/model-providers', (_req, res) => {
+      res.json({ providers: MODEL_PROVIDERS });
+    });
+
+    // GET /api/bot/mastra-providers — 兼容旧客户端
+    /** @deprecated 使用 /model-providers 替代 */
     router.get('/mastra-providers', (_req, res) => {
       res.json({ providers: MASTRA_PROVIDERS });
     });
