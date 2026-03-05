@@ -1542,3 +1542,211 @@ v1.24.0 为服务端 Bot 和本地模式 Bot 添加了实时步骤进度和 Agen
 | `packages/electron/src/preload.ts` | 暴露 2 个新 API |
 | `packages/client/src/modules/chat/components/BotManager/index.tsx` | 显示 bot ID + 可编辑工作目录 |
 | 版本相关文件 (8+ 个) | 版本号 → 1.27.0 |
+
+---
+
+## v2.0.0 — Model Router 迁移 + Provider 扩展
+
+### 目标
+替换 `MastraProvider + MastraLLMConfig` 为 `"provider/model"` 字符串格式，扩展支持 12+ AI 模型厂商。
+
+### 修改清单
+- [x] shared/types/bot.ts: 新增 `BotModelConfig` 接口（model/apiKey/systemPrompt/contextLength/fallbacks/baseUrl）
+- [x] shared/constants/index.ts: 新增 `MODEL_PROVIDERS` 覆盖 13 个厂商（anthropic/openai/google/deepseek/xai/mistral/groq/moonshot/qwen/siliconflow/ollama/lmstudio/custom）
+- [x] server/modules/bot/ModelFactory.ts: 完全重写，`parseModelString()` + `createModel()` 按 provider 路由 + `isReasonerModel()`
+- [x] server/modules/bot/BotService.ts: 新增 `saveModelConfig()`/`getModelConfig()`/`getModelConfigMasked()`，fallback 旧 `bot_mastra_config`
+- [x] server/modules/bot/index.ts: 更新 create/config/chat/model-providers 端点
+- [x] server/package.json: 新增 `@ai-sdk/xai`、`@ai-sdk/mistral`、`@ai-sdk/groq`
+- [x] client/BotManager/LocalBotConfigForm.tsx: 完全重写（Provider→Model→API Key→Base URL→System Prompt→Context Length→Fallbacks）
+- [x] server/scripts/migrate-v2.0.ts: 迁移脚本（旧配置自动转换）
+- [x] 版本号 → 2.0.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/bot.ts` | 新增 BotModelConfig，废弃旧类型 |
+| `packages/shared/src/constants/index.ts` | 新增 MODEL_PROVIDERS |
+| `packages/server/src/modules/bot/ModelFactory.ts` | 完全重写 |
+| `packages/server/src/modules/bot/BotService.ts` | 新增 modelConfig 方法 |
+| `packages/server/src/modules/bot/index.ts` | 更新所有端点 |
+| `packages/server/package.json` | 新增 3 个 AI SDK 依赖 |
+| `packages/client/src/modules/chat/components/BotManager/LocalBotConfigForm.tsx` | 完全重写 |
+| `packages/client/src/modules/chat/components/BotManager/index.tsx` | 适配新类型 |
+| `packages/client/src/modules/chat/services/botService.ts` | 更新方法签名 |
+| `packages/server/src/scripts/migrate-v2.0.ts` | 新建迁移脚本 |
+
+---
+
+## v2.1.0 — Agent Skill 管理工具
+
+### 目标
+让 Agent 通过工具自主管理 Skill（搜索/安装/卸载/列举/读取）。
+
+### 修改清单
+- [x] shared/types/claude-skill.ts: 新增 5 个 GenericToolName（search_skills/install_skill/uninstall_skill/list_skills/read_skill）+ GENERIC_TOOL_DEFINITIONS
+- [x] server/modules/bot/ServerToolBridge.ts: 新增 5 个 createTool，通过 ToolDispatcher 分发到 Electron
+- [x] electron/claudeskill/GenericToolExecutor.ts: 新增 5 个 handler，构造注入 BotSkillManager + PluginSearchClient
+- [x] electron/claudeskill/BotSkillManager.ts: system prompt 改为概览模式（name+description），引导 Agent 用 read_skill 按需加载
+- [x] electron/main.ts: 更新 GenericToolExecutor 实例化 + _action 协议（push_skill_instructions）
+- [x] 版本号 → 2.1.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/claude-skill.ts` | 扩展 GenericToolName + GENERIC_TOOL_DEFINITIONS |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | 新增 5 个 createTool |
+| `packages/electron/src/claudeskill/GenericToolExecutor.ts` | 新增 5 个 handler + 构造注入 |
+| `packages/electron/src/claudeskill/BotSkillManager.ts` | system prompt 改为概览模式 |
+| `packages/electron/src/main.ts` | 更新实例化 + _action 协议 |
+
+---
+
+## v2.2.0 — 沙箱脚本执行
+
+### 目标
+集成 `@anthropic-ai/sandbox-runtime`，在安全沙箱中执行 Skill 的 scripts/ 脚本。
+
+### 修改清单
+- [x] electron/package.json: 新增 `@anthropic-ai/sandbox-runtime` 依赖
+- [x] electron/claudeskill/SandboxExecutor.ts: 新建沙箱执行器（denyRead/allowWrite/allowedDomains/环境变量过滤/60s 超时）
+- [x] electron/claudeskill/GenericToolExecutor.ts: 新增 execute_skill_script handler
+- [x] shared/types/claude-skill.ts: 新增 execute_skill_script 工具定义
+- [x] server/modules/bot/ServerToolBridge.ts: 新增 execute_skill_script createTool
+- [x] 版本号 → 2.2.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/electron/package.json` | 新增 sandbox-runtime 依赖 |
+| `packages/electron/src/claudeskill/SandboxExecutor.ts` | 新建 |
+| `packages/electron/src/claudeskill/GenericToolExecutor.ts` | 新增 handler |
+| `packages/shared/src/types/claude-skill.ts` | 新增 execute_skill_script |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | 新增 createTool |
+
+---
+
+## v2.3.0 — 多模型工具 + 自我赋能
+
+### 目标
+添加 `list_models`/`switch_model` Agent 工具，注入自我赋能决策流程到系统提示。
+
+### 修改清单
+- [x] shared/types/claude-skill.ts: 新增 list_models/switch_model 工具定义
+- [x] server/modules/bot/ServerToolBridge.ts: 新增 2 个本地工具（不走 ToolDispatcher）+ onSwitchModel 回调
+- [x] server/modules/bot/index.ts: /chat 端点维护 currentModelStr 动态引用 + 自我赋能系统提示（决策树）
+- [x] 版本号 → 2.3.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/claude-skill.ts` | 新增 list_models, switch_model |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | 新增 2 个本地工具 + onSwitchModel 回调 |
+| `packages/server/src/modules/bot/index.ts` | 动态模型引用 + 自我赋能 prompt |
+
+---
+
+## v2.4.0 — 完善与测试
+
+### 目标
+完善用户确认交互、错误处理，编写全面的自动化测试。
+
+### 修改清单
+- [x] install_skill/uninstall_skill 工具描述添加"请先用 present_choices 确认"指引
+- [x] installSkill 安装失败回滚（清理残留目录）
+- [x] installFromUrl GitHub API 限速检测（HTTP 403 + x-ratelimit-reset）
+- [x] SandboxExecutor 超时友好提示
+- [x] 新建 server/__tests__/model-factory.test.ts（parseModelString/provider 映射/isReasonerModel）
+- [x] 新建 server/__tests__/bot-model-config-api.test.ts（create/update/get config 端点）
+- [x] 新建 server/__tests__/skill-tools-api.test.ts（11 个工具的 createTool 正确性）
+- [x] 新建 electron/__tests__/sandbox-executor.test.ts（环境变量过滤/路径验证）
+- [x] 更新 electron/__tests__/generic-tool-executor.test.ts（新增 skill 工具 handler 测试）
+- [x] 版本号 → 2.4.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/server/__tests__/model-factory.test.ts` | 新建 |
+| `packages/server/__tests__/bot-model-config-api.test.ts` | 新建 |
+| `packages/server/__tests__/skill-tools-api.test.ts` | 新建 |
+| `packages/electron/__tests__/sandbox-executor.test.ts` | 新建 |
+| `packages/electron/__tests__/generic-tool-executor.test.ts` | 更新 |
+
+---
+
+## v2.5.0 — Bug 修复 + 体验优化 + Skill 安装修复 + 401 认证修复
+
+### 目标
+修复多个 UI/功能 Bug，增强日志系统，修复 Skill 安装只下载 SKILL.md 的问题，新增清空会话功能，修复 401 认证失效处理。
+
+### 修改清单
+
+#### Agent 日志增强
+- [x] shared/types/bot.ts: AgentStepLog 新增 `toolOutputLength`/`workspacePath` 字段
+- [x] server/modules/bot/ServerToolBridge.ts: ToolLogData 新增 outputLength，截断上限 2000→5000
+- [x] server/modules/bot/index.ts: onToolLog 回调传递 toolOutputLength
+- [x] electron/claudeskill/GenericToolExecutor.ts: 详细控制台日志（参数/workspace/耗时/输出预览）
+- [x] client/BotManager/BotLogViewer.tsx: 工具调用摘要/输出大小标签/时间戳/截断提示
+
+#### Bot 聊天修复
+- [x] client/ChatWindow/index.tsx: Bot 对话 fakeMsg 从 store 消息合并 metadata（present_choices 交互选项修复）
+- [x] client/ChatWindow/index.tsx: 新增 useEffect 监听 botChat.isLoading，每 300ms 自动滚动到底部
+- [x] client/ChatWindow/index.tsx: Bot 对话路径额外渲染 type=file/image 的消息（send_file_to_chat 修复）
+
+#### Bot 工作区可见性
+- [x] client/BotManager/index.tsx: Bot 列表显示工作目录路径 + "打开"按钮
+- [x] electron/GenericToolExecutor.ts: write_file 返回绝对路径
+- [x] electron/BotSkillManager.ts: 系统提示引导 Agent 告知用户文件路径
+
+#### 对话管理修复
+- [x] client/ConversationContextMenu/index.tsx: handleClickOutside 排除 .ant-popconfirm/.ant-popover（Popconfirm race condition 修复）
+- [x] server/repositories/interfaces/IMessageRepository.ts: 新增 clearConversationMessages() 接口
+- [x] server/repositories/redis/RedisMessageRepository.ts: 实现 clearConversationMessages（删除消息 Hash + 清空列表 + 清空未读）
+- [x] server/modules/chat/ChatService.ts: 新增 clearConversationMessages()（含权限校验）
+- [x] server/modules/chat/index.ts: 新增 POST /conversations/:id/clear 端点
+- [x] client/services/chatService.ts: 新增 clearConversationMessages() API
+- [x] client/stores/useChatStore.ts: 新增 clearConversationMessages action
+- [x] client/ConversationContextMenu/index.tsx: 新增"清空记录"菜单项（带 Popconfirm）
+
+#### Skill 安装修复
+- [x] electron/BotSkillManager.ts: 新增 downloadGitHubDir() 递归下载（GitHub Contents API）
+- [x] electron/BotSkillManager.ts: installFromUrl 区分完整目录下载 vs 仅 SKILL.md fallback
+- [x] electron/GenericToolExecutor.ts: search_skills 缓存 PluginEntry[] 到 lastSearchResults
+- [x] electron/GenericToolExecutor.ts: install_skill 新增 name 参数，从缓存查找完整 PluginEntry
+- [x] server/ServerToolBridge.ts: install_skill 工具 schema 新增 name 参数
+
+#### 401 认证修复
+- [x] client/services/api.ts: 401 拦截器重写（自动用 token 重建 session → 重试原始请求 → 失败跳转登录）
+- [x] client/services/api.ts: refreshingSession Promise 防并发刷新 + _retried 标记防循环
+- [x] 版本号 → 2.5.0
+- [x] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/bot.ts` | AgentStepLog 新增字段 |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | 日志增强 + install_skill name 参数 |
+| `packages/server/src/modules/bot/index.ts` | onToolLog 传递新字段 |
+| `packages/server/src/modules/chat/ChatService.ts` | 新增 clearConversationMessages |
+| `packages/server/src/modules/chat/index.ts` | 新增 clear 端点 |
+| `packages/server/src/repositories/interfaces/IMessageRepository.ts` | 新增 clearConversationMessages 接口 |
+| `packages/server/src/repositories/redis/RedisMessageRepository.ts` | 实现 clearConversationMessages |
+| `packages/electron/src/claudeskill/GenericToolExecutor.ts` | 详细日志 + write_file 绝对路径 + search/install 缓存 |
+| `packages/electron/src/claudeskill/BotSkillManager.ts` | GitHub 整目录下载 + 系统提示优化 |
+| `packages/client/src/services/api.ts` | 401 自动重建 session + 重试 |
+| `packages/client/src/modules/chat/components/BotManager/BotLogViewer.tsx` | 日志显示增强 |
+| `packages/client/src/modules/chat/components/BotManager/index.tsx` | 工作目录显示 |
+| `packages/client/src/modules/chat/components/ChatWindow/index.tsx` | metadata 合并 + 自动滚动 + 文件消息 |
+| `packages/client/src/modules/chat/components/ConversationContextMenu/index.tsx` | Popconfirm 修复 + 清空记录 |
+| `packages/client/src/modules/chat/stores/useChatStore.ts` | clearConversationMessages action |
+| `packages/client/src/modules/chat/services/chatService.ts` | clearConversationMessages API |

@@ -268,6 +268,14 @@ export class ChatService {
     await this.messageRepo.deleteConversationForUser(userId, conversationId);
   }
 
+  /** 清空会话聊天记录（保留会话） */
+  async clearConversationMessages(userId: string, conversationId: string): Promise<number> {
+    const conv = await this.messageRepo.getConversation(conversationId);
+    if (!conv) throw new Error('CONVERSATION_NOT_FOUND');
+    if (!conv.participants.includes(userId)) throw new Error('FORBIDDEN');
+    return this.messageRepo.clearConversationMessages(conversationId);
+  }
+
   /** 设置会话标签（per-user） */
   async setConversationTags(userId: string, conversationId: string, tags: string[]): Promise<void> {
     const conv = await this.messageRepo.getConversation(conversationId);

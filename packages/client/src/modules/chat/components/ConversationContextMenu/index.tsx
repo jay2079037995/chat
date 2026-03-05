@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Input, Tag, Popconfirm } from 'antd';
-import { PushpinOutlined, BellOutlined, TagOutlined, InboxOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PushpinOutlined, BellOutlined, TagOutlined, InboxOutlined, DeleteOutlined, ClearOutlined } from '@ant-design/icons';
 import { useChatStore } from '../../stores/useChatStore';
 import styles from './index.module.less';
 
@@ -39,6 +39,7 @@ const ConversationContextMenu: React.FC<ConversationContextMenuProps> = ({
   const toggleMuteConversation = useChatStore((s) => s.toggleMuteConversation);
   const toggleArchiveConversation = useChatStore((s) => s.toggleArchiveConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
+  const clearConversationMessages = useChatStore((s) => s.clearConversationMessages);
   const setConversationTags = useChatStore((s) => s.setConversationTags);
 
   useEffect(() => {
@@ -80,6 +81,11 @@ const ConversationContextMenu: React.FC<ConversationContextMenuProps> = ({
     void toggleArchiveConversation(conversationId);
     onClose();
   }, [conversationId, toggleArchiveConversation, onClose]);
+
+  const handleClearMessages = useCallback(() => {
+    void clearConversationMessages(conversationId);
+    onClose();
+  }, [conversationId, clearConversationMessages, onClose]);
 
   const handleDelete = useCallback(() => {
     void deleteConversation(conversationId);
@@ -143,6 +149,19 @@ const ConversationContextMenu: React.FC<ConversationContextMenuProps> = ({
       <button type="button" className={itemClass} onClick={handleArchive}>
         <InboxOutlined /> {isArchived ? '取消归档' : '归档'}
       </button>
+
+      <Popconfirm
+        title="确定清空聊天记录？"
+        description="清空后消息将无法恢复"
+        onConfirm={handleClearMessages}
+        okText="清空"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+      >
+        <button type="button" className={`${itemClass} ${styles.danger}`}>
+          <ClearOutlined /> 清空记录
+        </button>
+      </Popconfirm>
 
       <Popconfirm
         title="确定删除此会话？"

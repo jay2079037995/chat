@@ -271,9 +271,10 @@ export function createServerTools(options: ToolBridgeOptions) {
 
     install_skill: createTool({
       id: 'install_skill',
-      description: '安装 Skill。支持从 URL 或本地路径安装。安装前请先用 present_choices 向用户确认。',
+      description: '安装 Skill。优先使用 name 参数（从 search_skills 结果中匹配），也可用 url 或 localPath。安装前请先用 present_choices 向用户确认。',
       inputSchema: z.object({
-        url: z.string().optional().describe('Skill 的 SKILL.md 原始文件 URL'),
+        name: z.string().optional().describe('Skill 名称（从 search_skills 搜索结果中获取）'),
+        url: z.string().optional().describe('Skill 的原始文件 URL（备用）'),
         localPath: z.string().optional().describe('本地 Skill 目录路径'),
         overwrite: z.boolean().optional().describe('是否覆盖已存在的同名 Skill'),
       }),

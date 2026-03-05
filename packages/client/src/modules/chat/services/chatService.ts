@@ -175,6 +175,11 @@ export const chatService = {
     await api.delete(`/chat/conversations/${conversationId}`);
   },
 
+  /** 清空会话聊天记录 */
+  async clearConversationMessages(conversationId: string): Promise<void> {
+    await api.post(`/chat/conversations/${conversationId}/clear`);
+  },
+
   /** 设置会话标签 */
   async setConversationTags(conversationId: string, tags: string[]): Promise<void> {
     await api.post(`/chat/conversations/${conversationId}/tag`, { tags });

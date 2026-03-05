@@ -330,3 +330,74 @@ chat/
 - 多轮对话不传 reasoning_content（否则 API 返回 400 错误）
 - 回复展示：思考过程和最终回答全部展示，用分隔线区分
 - 推理模型自动跳过 Skill/tools 调用
+
+### 4.10 Model Router + 多厂商支持（v2.0.0）
+
+#### 4.10.1 统一模型字符串格式
+- 替换 `MastraProvider + MastraLLMConfig` 为 `"provider/model"` 字符串格式（如 `anthropic/claude-sonnet-4-5`）
+- `BotModelConfig` 接口：model/apiKey/systemPrompt/contextLength/fallbacks/baseUrl
+
+#### 4.10.2 支持厂商列表（13 个）
+- anthropic、openai、google、deepseek、xai、mistral、groq、moonshot、qwen、siliconflow、ollama、lmstudio、custom
+- 每个厂商含 displayName、预置模型列表、默认 baseUrl、是否需要 API Key
+
+#### 4.10.3 ModelFactory 路由
+- `parseModelString()` 解析 provider 和 modelId
+- 按 provider 路由到对应 AI SDK（`@ai-sdk/anthropic`、`@ai-sdk/openai` 等）
+- moonshot/siliconflow/ollama/lmstudio/custom 通过 `@ai-sdk/openai` + 自定义 baseURL
+- `isReasonerModel()` 识别推理模型
+
+#### 4.10.4 向后兼容
+- `getModelConfig()` 优先读新 key，fallback 读旧 `bot_mastra_config` 并自动转换
+- 迁移脚本自动转换旧配置
+
+### 4.11 Agent Skill 自管理（v2.1.0）
+
+#### 4.11.1 Skill 管理工具
+- `search_skills` — 搜索在线 Skill（通过 PluginSearchClient）
+- `install_skill` — 安装 Skill（支持 name 参数从缓存查找，或 url 参数直接下载）
+- `uninstall_skill` — 卸载 Skill
+- `list_skills` — 列出已安装 Skill（name+description）
+- `read_skill` — 读取 Skill 完整内容（按需加载，不预注入）
+
+#### 4.11.2 System Prompt 优化
+- 系统提示只注入 Skill name+description 概览
+- Agent 通过 `read_skill` 按需加载完整指令
+
+### 4.12 沙箱脚本执行（v2.2.0）
+- `@anthropic-ai/sandbox-runtime` 安全沙箱执行 Skill scripts/ 脚本
+- 安全策略：denyRead（敏感目录）、allowWrite（workspace/tmp）、allowedDomains
+- 环境变量过滤：阻止含 secret/token/password/key 的变量
+- 默认超时 60 秒，输出限制 10KB
+
+### 4.13 多模型工具 + 自我赋能（v2.3.0）
+- `list_models` — Agent 查看可用模型列表
+- `switch_model` — Agent 动态切换模型（下轮生效）
+- 自我赋能决策树：评估需求 → 搜索 Skill → 安装 → 读取 → 执行
+- Skill 创作流程：search skill-creator → install → execute → 生成 SKILL.md
+
+### 4.14 对话管理增强（v2.5.0）
+
+#### 4.14.1 清空聊天记录
+- 右键会话 → 清空记录（Popconfirm 确认）
+- 清空消息 Hash + 有序集合 + 未读计数
+- 会话保留在列表中，仅清除消息内容
+- 权限校验：非会话成员返回 403
+
+#### 4.14.2 Popconfirm 修复
+- 右键菜单 click-outside 排除 `.ant-popconfirm`/`.ant-popover` 内的点击
+- 解决 Popconfirm 确认操作被中断的问题
+
+### 4.15 401 认证自动恢复（v2.5.0）
+- 401 拦截器自动用 localStorage token 调 `/auth/session` 重建 session
+- 重建成功 → 新 sessionId 自动重试原始请求，用户无感知
+- 重建失败 → 清除凭证跳转登录页
+- `refreshingSession` Promise 防止并发 session 刷新
+- `_retried` 标记防止无限循环
+
+### 4.16 Skill 安装完整性修复（v2.5.0）
+- 市场安装和 Agent 安装均下载完整目录（SKILL.md + scripts/ + 其他文件）
+- `downloadGitHubDir()` 递归下载（GitHub Contents API）
+- Agent install_skill 支持 name 参数从 search_skills 缓存查找完整 PluginEntry
+- Fallback：仅有 rawFileUrl 时只下载 SKILL.md
+- GitHub API 限速处理（HTTP 403/429 友好提示）

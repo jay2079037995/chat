@@ -25,6 +25,8 @@ export class GenericToolExecutor {
   private botSkillManager: BotSkillManager | null = null;
   private pluginSearchClient: PluginSearchClient | null = null;
   private sandboxExecutor = new SandboxExecutor();
+  /** 缓存最近一次搜索结果，供 install_skill 按名称查找 */
+  private lastSearchResults: import('../../../shared/dist').PluginEntry[] = [];
 
   /**
    * 注入 Skill 管理依赖（延迟注入，避免循环依赖）
@@ -291,6 +293,7 @@ export class GenericToolExecutor {
 
   /**
    * 搜索在线 Skill
+   * 返回的 JSON 中包含完整 PluginEntry，install_skill 可直接使用
    */
   private async searchSkills(params: Record<string, unknown>): Promise<string> {
     if (!this.pluginSearchClient) {
@@ -307,39 +310,53 @@ export class GenericToolExecutor {
       return `未找到匹配 "${query}" 的 Skill`;
     }
 
+    // 缓存搜索结果，install_skill 可通过名称查找
+    this.lastSearchResults = result.skills;
+
     const entries = result.skills.map((s, i) =>
-      `${i + 1}. **${s.name}** (${s.namespace})\n   ${s.description}\n   安装: ${s.installs} | Stars: ${s.stars}\n   URL: ${s.metadata.rawFileUrl}`,
+      `${i + 1}. **${s.name}** (${s.namespace})\n   ${s.description}\n   安装: ${s.installs} | Stars: ${s.stars}`,
     ).join('\n\n');
 
-    return `找到 ${result.total} 个 Skill（显示前 ${result.skills.length} 个）:\n\n${entries}`;
+    return `找到 ${result.total} 个 Skill（显示前 ${result.skills.length} 个）:\n\n${entries}\n\n使用 install_skill 工具时传入 name 参数即可安装（如 name: "${result.skills[0]?.name}"）。`;
   }
 
   /**
    * 安装 Skill
+   * 支持三种方式：name（从搜索缓存查找完整 PluginEntry）、url、localPath
    */
   private async installSkill(params: Record<string, unknown>, botId: string): Promise<string> {
     if (!this.botSkillManager) {
       throw new Error('Skill 管理服务未初始化');
     }
 
+    const name = params.name as string | undefined;
     const url = params.url as string | undefined;
     const localPath = params.localPath as string | undefined;
 
-    if (!url && !localPath) {
-      throw new Error('install_skill 需要 url 或 localPath 参数');
+    if (!name && !url && !localPath) {
+      throw new Error('install_skill 需要 name、url 或 localPath 参数');
     }
 
     try {
-      if (url) {
-        // 从 URL 安装：构造 PluginEntry
-        const entry = {
-          id: '', name: '', namespace: '', description: '',
-          sourceUrl: url, author: '', stars: 0, installs: 0,
-          metadata: {
-            repoOwner: '', repoName: '', directoryPath: '',
-            rawFileUrl: url,
-          },
-        };
+      if (name || url) {
+        // 优先从搜索缓存按名称查找完整 PluginEntry
+        let entry = name
+          ? this.lastSearchResults.find((s) => s.name === name)
+          : undefined;
+
+        if (!entry && url) {
+          // Fallback：用 URL 构造最小 PluginEntry
+          entry = {
+            id: '', name: '', namespace: '', description: '',
+            sourceUrl: url, author: '', stars: 0, installs: 0,
+            metadata: { repoOwner: '', repoName: '', directoryPath: '', rawFileUrl: url },
+          };
+        }
+
+        if (!entry) {
+          throw new Error(`未在最近搜索结果中找到 Skill "${name}"，请先用 search_skills 搜索`);
+        }
+
         const meta = await this.botSkillManager.installFromUrl(botId, entry);
         return JSON.stringify({
           success: true,
@@ -357,7 +374,6 @@ export class GenericToolExecutor {
         });
       }
     } catch (err: any) {
-      // 回滚：安装失败时不需要特殊清理（installFromUrl/installFromLocal 内部已处理）
       throw new Error(`Skill 安装失败: ${err.message}`);
     }
   }

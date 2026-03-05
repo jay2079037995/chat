@@ -314,6 +314,18 @@ export class ChatModule implements ServerModule {
       }
     });
 
+    // POST /api/chat/conversations/:id/clear — 清空会话聊天记录
+    router.post('/conversations/:id/clear', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const count = await chatService.clearConversationMessages(req.userId!, req.params.id as string);
+        res.json({ success: true, cleared: count });
+      } catch (err: any) {
+        if (err.message === 'CONVERSATION_NOT_FOUND') { res.status(404).json({ error: '会话不存在' }); return; }
+        if (err.message === 'FORBIDDEN') { res.status(403).json({ error: '无权操作' }); return; }
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // POST /api/chat/conversations/:id/tag — 设置会话标签
     router.post('/conversations/:id/tag', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {

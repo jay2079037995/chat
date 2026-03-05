@@ -97,6 +97,8 @@ interface ChatState {
   toggleArchiveConversation: (conversationId: string) => Promise<void>;
   /** 删除会话 */
   deleteConversation: (conversationId: string) => Promise<void>;
+  /** 清空会话聊天记录 */
+  clearConversationMessages: (conversationId: string) => Promise<void>;
   /** 设置会话标签 */
   setConversationTags: (conversationId: string, tags: string[]) => Promise<void>;
   /** 加载当前会话的置顶消息 */
@@ -522,6 +524,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       conversations: state.conversations.filter((c) => c.id !== conversationId),
       currentConversationId: state.currentConversationId === conversationId ? null : state.currentConversationId,
+    }));
+  },
+
+  clearConversationMessages: async (conversationId: string) => {
+    await chatService.clearConversationMessages(conversationId);
+    set((state) => ({
+      messages: { ...state.messages, [conversationId]: [] },
     }));
   },
 

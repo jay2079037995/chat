@@ -362,6 +362,27 @@ export class RedisMessageRepository implements IMessageRepository {
     await redis.hdel(CONV_TAGS_KEY(userId), conversationId);
   }
 
+  /**
+   * 清空会话所有消息（保留会话本身）
+   */
+  async clearConversationMessages(conversationId: string): Promise<number> {
+    const redis = getRedisClient();
+    // 获取所有消息 ID
+    const msgIds = await redis.zrange(CONV_MSGS_KEY(conversationId), 0, -1);
+    if (msgIds.length === 0) return 0;
+    // 删除每条消息详情
+    const pipeline = redis.pipeline();
+    for (const id of msgIds) {
+      pipeline.del(MSG_KEY(id));
+    }
+    // 清空消息列表
+    pipeline.del(CONV_MSGS_KEY(conversationId));
+    // 清空会话未读计数
+    pipeline.del(UNREAD_KEY(conversationId));
+    await pipeline.exec();
+    return msgIds.length;
+  }
+
   async setConversationTags(userId: string, conversationId: string, tags: string[]): Promise<void> {
     const redis = getRedisClient();
     if (tags.length === 0) {

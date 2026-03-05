@@ -129,49 +129,141 @@ export class BotSkillManager {
   }
 
   /**
+   * 检测 GitHub API 限速并抛出友好错误
+   */
+  private checkGitHubRateLimit(response: Response): void {
+    if (response.status === 403 || response.status === 429) {
+      const resetHeader = response.headers.get('x-ratelimit-reset');
+      const retryAfter = resetHeader
+        ? Math.ceil((Number(resetHeader) * 1000 - Date.now()) / 60000)
+        : null;
+      const waitMsg = retryAfter && retryAfter > 0
+        ? `，请等待约 ${retryAfter} 分钟后重试`
+        : '，请稍后重试';
+      throw new Error(`GitHub API 请求被限速 (HTTP ${response.status})${waitMsg}`);
+    }
+  }
+
+  /**
+   * 递归下载 GitHub 目录内容到本地
+   */
+  private async downloadGitHubDir(
+    repoOwner: string,
+    repoName: string,
+    remotePath: string,
+    localDir: string,
+  ): Promise<void> {
+    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${remotePath}`;
+    const resp = await fetch(apiUrl, {
+      headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'chat-electron' },
+    });
+    if (!resp.ok) {
+      this.checkGitHubRateLimit(resp);
+      throw new Error(`GitHub API 请求失败: HTTP ${resp.status} — ${apiUrl}`);
+    }
+    const items = await resp.json() as Array<{ name: string; type: string; path: string; download_url: string | null }>;
+
+    for (const item of items) {
+      const localPath = path.join(localDir, item.name);
+      if (item.type === 'dir') {
+        this.ensureDir(localPath);
+        await this.downloadGitHubDir(repoOwner, repoName, item.path, localPath);
+      } else if (item.type === 'file' && item.download_url) {
+        const fileResp = await fetch(item.download_url);
+        if (!fileResp.ok) {
+          this.checkGitHubRateLimit(fileResp);
+          throw new Error(`下载文件失败: ${item.path} HTTP ${fileResp.status}`);
+        }
+        const buffer = Buffer.from(await fileResp.arrayBuffer());
+        await fs.promises.writeFile(localPath, buffer);
+      }
+    }
+  }
+
+  /**
    * 从在线 URL 安装 Skill（claude-plugins.dev）
+   *
+   * 下载 SKILL.md 所在目录的全部内容（含 scripts/ 等子目录）。
    *
    * @param botId Bot ID
    * @param entry claude-plugins.dev 的 Skill 条目
    * @returns 安装后的 Skill 元数据
    */
   async installFromUrl(botId: string, entry: PluginEntry): Promise<ClaudeSkillMeta> {
-    // 下载 SKILL.md 内容
+    const { repoOwner, repoName, directoryPath } = entry.metadata;
+
+    // 如果有完整的 GitHub 仓库信息，下载整个目录
+    if (repoOwner && repoName && directoryPath) {
+      return this.installFromGitHubDir(botId, entry);
+    }
+
+    // Fallback：仅有 rawFileUrl 时，只下载 SKILL.md
+    return this.installFromRawUrl(botId, entry);
+  }
+
+  /**
+   * 从 GitHub 目录安装（下载整个 Skill 目录）
+   */
+  private async installFromGitHubDir(botId: string, entry: PluginEntry): Promise<ClaudeSkillMeta> {
+    const { repoOwner, repoName, directoryPath } = entry.metadata;
+
+    // 先下载 SKILL.md 解析名称
     const response = await fetch(entry.metadata.rawFileUrl);
     if (!response.ok) {
-      // GitHub API 限速检测
-      if (response.status === 403 || response.status === 429) {
-        const resetHeader = response.headers.get('x-ratelimit-reset');
-        const retryAfter = resetHeader
-          ? Math.ceil((Number(resetHeader) * 1000 - Date.now()) / 60000)
-          : null;
-        const waitMsg = retryAfter && retryAfter > 0
-          ? `，请等待约 ${retryAfter} 分钟后重试`
-          : '，请稍后重试';
-        throw new Error(`GitHub API 请求被限速 (HTTP ${response.status})${waitMsg}`);
-      }
+      this.checkGitHubRateLimit(response);
       throw new Error(`下载 SKILL.md 失败: HTTP ${response.status}`);
     }
     const skillMdContent = await response.text();
-
-    // 解析 SKILL.md 获取元数据
     const skill = parseSkillMdContent(skillMdContent);
     const targetDir = path.join(this.getSkillsDir(botId), skill.name);
 
-    // 确保目标目录存在
-    this.ensureDir(targetDir);
-
-    // 如果已存在同名 Skill，先删除
+    // 清理并创建目标目录
     if (fs.existsSync(targetDir)) {
       await fs.promises.rm(targetDir, { recursive: true });
     }
     this.ensureDir(targetDir);
 
-    // 写入 SKILL.md（失败时回滚清理目录）
+    try {
+      // 递归下载整个目录
+      await this.downloadGitHubDir(repoOwner, repoName, directoryPath, targetDir);
+    } catch (err) {
+      // 回滚
+      try { await fs.promises.rm(targetDir, { recursive: true }); } catch { /* ignore */ }
+      throw err;
+    }
+
+    return {
+      name: skill.name,
+      description: skill.description,
+      version: skill.version,
+      author: entry.author || skill.author,
+      tags: skill.tags,
+      source: 'online',
+      namespace: entry.namespace,
+    };
+  }
+
+  /**
+   * Fallback：仅从 rawFileUrl 下载 SKILL.md
+   */
+  private async installFromRawUrl(botId: string, entry: PluginEntry): Promise<ClaudeSkillMeta> {
+    const response = await fetch(entry.metadata.rawFileUrl);
+    if (!response.ok) {
+      this.checkGitHubRateLimit(response);
+      throw new Error(`下载 SKILL.md 失败: HTTP ${response.status}`);
+    }
+    const skillMdContent = await response.text();
+    const skill = parseSkillMdContent(skillMdContent);
+    const targetDir = path.join(this.getSkillsDir(botId), skill.name);
+
+    if (fs.existsSync(targetDir)) {
+      await fs.promises.rm(targetDir, { recursive: true });
+    }
+    this.ensureDir(targetDir);
+
     try {
       await fs.promises.writeFile(path.join(targetDir, 'SKILL.md'), skillMdContent, 'utf-8');
     } catch (writeErr) {
-      // 回滚：清理刚创建的目录
       try { await fs.promises.rm(targetDir, { recursive: true }); } catch { /* ignore */ }
       throw writeErr;
     }

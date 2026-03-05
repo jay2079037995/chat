@@ -51,6 +51,8 @@ export interface IMessageRepository {
   getArchivedConversations(userId: string): Promise<string[]>;
   /** 删除会话（从用户的会话列表中移除，软删除） */
   deleteConversationForUser(userId: string, conversationId: string): Promise<void>;
+  /** 清空会话所有消息（保留会话本身） */
+  clearConversationMessages(conversationId: string): Promise<number>;
   /** 设置用户对某会话的标签 */
   setConversationTags(userId: string, conversationId: string, tags: string[]): Promise<void>;
   /** 获取用户所有会话的标签映射 */
