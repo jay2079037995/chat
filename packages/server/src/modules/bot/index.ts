@@ -4,7 +4,7 @@ import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
-import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata } from '@chat/shared';
+import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
 import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
 import { Agent } from '@mastra/core/agent';
 import { BotService } from './BotService';
@@ -479,6 +479,50 @@ export class BotModule implements ServerModule {
       }
     });
 
+    // GET /api/bot/:id/generation-logs — 获取 Agent 生成日志（需 session + 所有权）
+    router.get('/:id/generation-logs', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const botId = req.params.id as string;
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+        if (bot.botOwnerId !== req.userId) {
+          res.status(403).json({ error: '无权操作该机器人' });
+          return;
+        }
+
+        const offset = parseInt(req.query.offset as string, 10) || 0;
+        const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 100);
+        const result = await botService.getAgentGenerationLogs(botId, offset, limit);
+        res.json(result);
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // DELETE /api/bot/:id/generation-logs — 清空 Agent 生成日志（需 session + 所有权）
+    router.delete('/:id/generation-logs', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
+      try {
+        const botId = req.params.id as string;
+        const bot = await userRepo.findById(botId);
+        if (!bot || !bot.isBot) {
+          res.status(404).json({ error: '机器人不存在' });
+          return;
+        }
+        if (bot.botOwnerId !== req.userId) {
+          res.status(403).json({ error: '无权操作该机器人' });
+          return;
+        }
+
+        await botService.clearAgentGenerationLogs(botId);
+        res.json({ success: true });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // POST /api/bot/chat — AI SDK 流式聊天（需 session）
     router.post('/chat', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
@@ -530,13 +574,31 @@ export class BotModule implements ServerModule {
         const basePrompt = llmConfig.systemPrompt || '';
         const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '');
 
-        // 创建 model + tools
+        // 创建 model + tools + 步骤日志收集
         const model = await createModel(llmConfig);
         let pendingMetadata: MessageMetadata | undefined;
         const targetUserId = bot.botOwnerId || '';
         // 推理模型不支持 function calling
         const isReasoner = llmConfig.model === 'deepseek-reasoner';
         const pendingFileArtifacts: import('./ServerToolBridge').FileArtifact[] = [];
+
+        const generationId = generateId();
+        const generationStartTime = Date.now();
+        const stepLogs: AgentStepLog[] = [];
+        let stepIndex = 0;
+        const ioForProgress = this.io;
+
+        const emitProgress = (data: { step: string; status: 'start' | 'complete' | 'error'; detail?: string }) => {
+          ioForProgress?.to(conversationId).emit('bot:step-progress', {
+            conversationId,
+            botId,
+            step: data.step,
+            status: data.status,
+            detail: data.detail,
+            timestamp: Date.now(),
+          });
+        };
+
         const tools = !isReasoner && targetUserId && toolDispatcher ? createServerTools({
           dispatcher: toolDispatcher,
           targetUserId,
@@ -544,6 +606,24 @@ export class BotModule implements ServerModule {
           conversationId,
           onPresentChoices: (m) => { pendingMetadata = m; },
           onFileArtifact: (a) => { pendingFileArtifacts.push(a); },
+          onStepProgress: (data) => emitProgress(data),
+          onToolLog: (log) => {
+            stepIndex++;
+            stepLogs.push({
+              id: generateId(),
+              botId,
+              conversationId,
+              generationId,
+              stepIndex,
+              type: log.error ? 'error' : 'tool_result',
+              timestamp: Date.now(),
+              toolName: log.toolName,
+              toolInput: log.input,
+              toolOutput: log.output,
+              error: log.error,
+              durationMs: log.durationMs,
+            });
+          },
         }) : undefined;
 
         // Mastra Agent stream
@@ -555,7 +635,9 @@ export class BotModule implements ServerModule {
           tools: tools || undefined,
         });
 
+        emitProgress({ step: 'generating', status: 'start' });
         console.log('[BotChat] Starting stream for bot:', botId, 'model:', llmConfig.model);
+        const llmStartTime = Date.now();
         const streamResult = await agent.streamLegacy(
           messages.map((m: { role: string; content: string }) => ({
             role: m.role,
@@ -588,6 +670,28 @@ export class BotModule implements ServerModule {
         } finally {
           reader.releaseLock();
         }
+
+        const llmDurationMs = Date.now() - llmStartTime;
+
+        // 记录 LLM 调用步骤
+        stepIndex++;
+        stepLogs.push({
+          id: generateId(),
+          botId,
+          conversationId,
+          generationId,
+          stepIndex,
+          type: 'llm_call',
+          timestamp: Date.now(),
+          durationMs: llmDurationMs,
+          llmInfo: {
+            provider: llmConfig.provider,
+            model: llmConfig.model,
+            finishReason: 'stop',
+          },
+        });
+
+        emitProgress({ step: 'generating', status: 'complete' });
 
         // 发送 finish 信号
         res.write(`d:${JSON.stringify({ finishReason: 'stop' })}\n`);
@@ -638,11 +742,33 @@ export class BotModule implements ServerModule {
                 console.error('[BotChat] 文件产物发送失败:', fileErr.message);
               }
             }
+            // 保存 Agent 生成日志
+            await botService.saveAgentGenerationLog({
+              generationId,
+              botId,
+              conversationId,
+              startTime: generationStartTime,
+              totalDurationMs: Date.now() - generationStartTime,
+              stepCount: stepLogs.length,
+              success: true,
+              steps: stepLogs,
+            });
           } catch (saveErr) {
             console.error('[BotChat] Save after stream error:', saveErr);
           }
         }
-      } catch (err) {
+      } catch (err: any) {
+        // emitProgress may not be defined if error happened before its declaration
+        try {
+          this.io?.to(req.body?.conversationId).emit('bot:step-progress', {
+            conversationId: req.body?.conversationId,
+            botId: req.body?.botId,
+            step: 'generating',
+            status: 'error' as const,
+            detail: err?.message,
+            timestamp: Date.now(),
+          });
+        } catch { /* ignore */ }
         console.error('[BotChat] Streaming error:', err);
         if (!res.headersSent) {
           res.status(500).json({ error: '流式聊天失败' });

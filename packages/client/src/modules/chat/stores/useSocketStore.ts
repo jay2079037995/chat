@@ -260,6 +260,26 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
+    // Bot 执行步骤进度
+    socket.on('bot:step-progress', (data) => {
+      import('./useChatStore').then(({ useChatStore }) => {
+        const store = useChatStore.getState();
+        if (data.status === 'start') {
+          store.setBotStepProgress(data.conversationId, data);
+        } else {
+          // complete/error: 先更新状态，1.5 秒后自动清除
+          store.setBotStepProgress(data.conversationId, data);
+          setTimeout(() => {
+            const current = useChatStore.getState().botStepProgress[data.conversationId];
+            // 仅当进度没被新步骤覆盖时才清除
+            if (current && current.timestamp === data.timestamp) {
+              store.setBotStepProgress(data.conversationId, null);
+            }
+          }, 1500);
+        }
+      });
+    });
+
     // 通用工具执行请求 → 转发到 Electron IPC
     import('../services/toolBridge').then(({ initToolBridge }) => {
       initToolBridge(socket);

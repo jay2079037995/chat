@@ -86,6 +86,65 @@ export interface BotUpdate {
   conversationId: string;
 }
 
+/** Agent 执行步骤类型 */
+export type AgentStepType = 'llm_call' | 'tool_call' | 'tool_result' | 'error';
+
+/** Agent 单步执行日志 */
+export interface AgentStepLog {
+  /** 日志唯一标识 */
+  id: string;
+  /** Bot ID */
+  botId: string;
+  /** 会话 ID */
+  conversationId: string;
+  /** 所属生成批次 ID（同一次 generate/stream 的所有步骤共享） */
+  generationId: string;
+  /** 步骤序号（从 1 开始） */
+  stepIndex: number;
+  /** 步骤类型 */
+  type: AgentStepType;
+  /** 时间戳 */
+  timestamp: number;
+  /** 工具名称（仅 tool_call / tool_result 类型） */
+  toolName?: string;
+  /** 工具输入参数（仅 tool_call 类型，截断后） */
+  toolInput?: Record<string, unknown>;
+  /** 工具输出结果（仅 tool_result 类型，截断后） */
+  toolOutput?: string;
+  /** 错误信息 */
+  error?: string;
+  /** 步骤耗时（毫秒） */
+  durationMs: number;
+  /** LLM 相关信息（仅 llm_call 类型） */
+  llmInfo?: {
+    provider: string;
+    model: string;
+    finishReason?: string;
+  };
+}
+
+/** Agent 生成批次日志（一次 generate/stream 产生一条） */
+export interface AgentGenerationLog {
+  /** 批次唯一 ID */
+  generationId: string;
+  /** Bot ID */
+  botId: string;
+  /** 会话 ID */
+  conversationId: string;
+  /** 开始时间戳 */
+  startTime: number;
+  /** 总耗时（毫秒） */
+  totalDurationMs: number;
+  /** 总步骤数 */
+  stepCount: number;
+  /** 是否成功 */
+  success: boolean;
+  /** 错误信息（最终错误） */
+  error?: string;
+  /** 各步骤日志 */
+  steps: AgentStepLog[];
+}
+
 /** LLM 调用日志（Server Bot 每次 API 调用的完整记录） */
 export interface LLMCallLog {
   /** 日志唯一标识 */

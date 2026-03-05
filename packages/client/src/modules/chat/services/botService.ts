@@ -1,7 +1,7 @@
 /**
  * 机器人服务 —— 封装所有与 /api/bot 相关的 HTTP 请求
  */
-import type { Bot, BotRunMode, LLMConfig, MastraLLMConfig, ProviderInfo, LLMProvider, LLMCallLog } from '@chat/shared';
+import type { Bot, BotRunMode, LLMConfig, MastraLLMConfig, ProviderInfo, LLMProvider, LLMCallLog, AgentGenerationLog } from '@chat/shared';
 import type { MastraProvider } from '@chat/shared';
 import { api } from '../../../services/api';
 
@@ -81,5 +81,18 @@ export const botService = {
   async getMastraProviders(): Promise<Record<MastraProvider, ProviderInfo>> {
     const res = await api.get<{ providers: Record<MastraProvider, ProviderInfo> }>('/bot/mastra-providers');
     return res.data.providers;
+  },
+
+  /** 获取 Agent 生成日志 */
+  async getGenerationLogs(botId: string, offset: number = 0, limit: number = 20): Promise<{ logs: AgentGenerationLog[]; total: number }> {
+    const res = await api.get<{ logs: AgentGenerationLog[]; total: number }>(`/bot/${botId}/generation-logs`, {
+      params: { offset, limit },
+    });
+    return res.data;
+  },
+
+  /** 清空 Agent 生成日志 */
+  async clearGenerationLogs(botId: string): Promise<void> {
+    await api.delete(`/bot/${botId}/generation-logs`);
   },
 };

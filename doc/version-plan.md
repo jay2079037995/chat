@@ -1388,3 +1388,70 @@ After (v1.22.0):
 | 测试文档 (4 个) | **新建** |
 | `CLAUDE.md` | 版本列表 + Bot 测试规范 + 测试文档规范 |
 | 版本相关文件 (8+ 个) | 版本号 → 1.23.0 |
+
+---
+
+## v1.24.0 — Agent 详细运行日志 + 实时步骤进度显示
+
+### 概述
+
+为 Agent 运行过程记录详细的步骤级日志（工具调用参数/结果/耗时），并在聊天窗口实时显示当前执行步骤，解决 Agent 运行过程黑盒问题。
+
+### 问题与需求
+
+1. **日志粒度不够**：现有 `LLMCallLog` 只记录整次 LLM 调用，不记录每个工具调用步骤的详情
+2. **运行过程黑盒**：Agent 执行工具时用户无法知道服务器在做什么，可能误以为无响应
+
+### 功能清单
+
+**阶段 1：Shared 类型扩展**
+- [ ] `shared/types/bot.ts`: 新增 `AgentStepLog`、`AgentGenerationLog`、`AgentStepType` 类型
+- [ ] `shared/types/socket.ts`: ServerToClientEvents 新增 `bot:step-progress` 事件
+
+**阶段 2：Server 端日志收集与进度发射**
+- [ ] `server/modules/bot/ServerToolBridge.ts`: dispatchTool 包装 + onStepProgress/onToolLog 回调
+- [ ] `server/modules/bot/BotService.ts`: 新增 AgentGenerationLog CRUD（Redis sorted set）
+- [ ] `server/modules/bot/ServerBotRunner.ts`: runAIGenerate 重构，步骤收集 + Socket.IO 进度发射
+- [ ] `server/modules/bot/index.ts`: 流式端点增加进度发射 + 新增 generation-logs API 端点
+
+**阶段 3：Client 实时步骤进度**
+- [ ] `client/stores/useChatStore.ts`: 新增 botStepProgress 状态
+- [ ] `client/stores/useSocketStore.ts`: 监听 bot:step-progress 事件
+- [ ] `client/components/BotStepIndicator/`: **新建** 步骤指示器组件（图标 + 中文描述 + 计时器）
+- [ ] `client/components/ChatWindow/index.tsx`: 集成 BotStepIndicator
+
+**阶段 4：增强 BotLogViewer**
+- [ ] `client/services/botService.ts`: 新增 generation log API 调用
+- [ ] `client/components/BotManager/BotLogViewer.tsx`: 新增 Agent 日志 Tab + 步骤时间线 UI
+
+**阶段 5：测试**
+- [ ] `server/__tests__/server-bot-generic-tools.test.ts`: onStepProgress/onToolLog 验证
+- [ ] `server/__tests__/bot-llm-integration.test.ts`: AgentGenerationLog 测试
+- [ ] `client/__tests__/BotStepIndicator.test.tsx`: **新建** 步骤指示器测试
+- [ ] `client/__tests__/BotLogViewer.test.tsx`: 更新覆盖 Agent 日志 Tab
+
+**阶段 6：版本收尾**
+- [ ] 6 个 package.json → 1.24.0
+- [ ] 客户端首页版本号
+- [ ] CLAUDE.md 版本列表
+- [ ] doc/test/v1.24.0-test.md 测试文档
+- [ ] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/shared/src/types/bot.ts` | 新增 AgentStepLog + AgentGenerationLog |
+| `packages/shared/src/types/socket.ts` | 新增 bot:step-progress |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | dispatchTool 包装 + 新回调 |
+| `packages/server/src/modules/bot/BotService.ts` | generation log CRUD |
+| `packages/server/src/modules/bot/ServerBotRunner.ts` | runAIGenerate 重构 |
+| `packages/server/src/modules/bot/index.ts` | 流式端点 + API 端点 |
+| `packages/client/.../useChatStore.ts` | botStepProgress 状态 |
+| `packages/client/.../useSocketStore.ts` | bot:step-progress 监听 |
+| `packages/client/.../BotStepIndicator/` | **新建** |
+| `packages/client/.../ChatWindow/index.tsx` | 集成指示器 |
+| `packages/client/.../BotLogViewer.tsx` | Agent 日志 Tab + 时间线 |
+| `packages/client/.../botService.ts` | generation log API |
+| 测试文件 (4 个) | 新建/修改 |
+| 版本相关文件 (8+ 个) | 版本号 → 1.24.0 |

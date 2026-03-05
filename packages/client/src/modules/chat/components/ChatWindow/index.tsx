@@ -26,6 +26,7 @@ import ReplyPreview from '../ReplyPreview';
 import PinnedMessage from '../PinnedMessage';
 import ForwardModal from '../ForwardModal';
 import StreamingMessage from '../StreamingMessage';
+import BotStepIndicator from '../BotStepIndicator';
 import styles from './index.module.less';
 
 const { TextArea } = Input;
@@ -82,6 +83,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
   const pinnedMessages = useChatStore((s) => s.pinnedMessages);
   const loadPinnedMessages = useChatStore((s) => s.loadPinnedMessages);
   const streamingMessages = useChatStore((s) => s.streamingMessages);
+  const botStepProgress = useChatStore((s) => s.botStepProgress);
   const onlineUsers = useSocketStore((s) => s.onlineUsers);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -777,6 +779,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onBack }) => {
         )}
         <div ref={messageEndRef} />
       </div>
+
+      {/* Bot 步骤进度指示器 */}
+      {isBotChat && currentConversationId && botStepProgress[currentConversationId] && (
+        <BotStepIndicator {...botStepProgress[currentConversationId]!} />
+      )}
 
       {/* 输入区域 */}
       <div className={styles.inputArea}>

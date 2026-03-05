@@ -10,7 +10,7 @@
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
 import { Agent } from '@mastra/core/agent';
-import type { LLMConfig, ChatMessage, BotStatus, LLMCallLog, MessageMetadata } from '@chat/shared';
+import type { LLMConfig, BotStatus, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { BotService } from './BotService';
 import type { ToolDispatcher } from './ToolDispatcher';
@@ -266,10 +266,23 @@ export class ServerBotRunner {
     }
   }
 
+  /** 向会话发射步骤进度事件 */
+  private emitStepProgress(conversationId: string, data: { step: string; status: 'start' | 'complete' | 'error'; detail?: string }): void {
+    this.io?.to(conversationId).emit('bot:step-progress', {
+      conversationId,
+      botId: this.botId,
+      step: data.step,
+      status: data.status,
+      detail: data.detail,
+      timestamp: Date.now(),
+    });
+  }
+
   /**
    * 使用 Mastra Agent.generate() 生成回复
    *
    * maxSteps 参数让 Mastra 自动处理 tool calling 循环。
+   * 同时收集每个步骤的日志并发射实时进度事件。
    */
   private async runAIGenerate(
     conversationId: string,
@@ -279,7 +292,10 @@ export class ServerBotRunner {
     let pendingMetadata: MessageMetadata | undefined;
     const pendingFileArtifacts: FileArtifact[] = [];
 
-    const startTime = Date.now();
+    const generationId = generateId();
+    const generationStartTime = Date.now();
+    const stepLogs: AgentStepLog[] = [];
+    let stepIndex = 0;
 
     try {
       const model = await createModel(this.llmConfig);
@@ -297,6 +313,24 @@ export class ServerBotRunner {
             conversationId,
             onPresentChoices: (m) => { pendingMetadata = m; },
             onFileArtifact: (a) => { pendingFileArtifacts.push(a); },
+            onStepProgress: (data) => this.emitStepProgress(conversationId, data),
+            onToolLog: (log) => {
+              stepIndex++;
+              stepLogs.push({
+                id: generateId(),
+                botId: this.botId,
+                conversationId,
+                generationId,
+                stepIndex,
+                type: log.error ? 'error' : 'tool_result',
+                timestamp: Date.now(),
+                toolName: log.toolName,
+                toolInput: log.input,
+                toolOutput: log.output,
+                error: log.error,
+                durationMs: log.durationMs,
+              });
+            },
           })
         : undefined;
 
@@ -308,7 +342,11 @@ export class ServerBotRunner {
         tools,
       });
 
+      // 发射 LLM 生成开始
+      this.emitStepProgress(conversationId, { step: 'generating', status: 'start' });
+
       console.log(`[ServerBotRunner] 开始生成 (bot: ${this.botId}, model: ${this.llmConfig.model}, tools: ${useTools ? 'yes' : 'no'}, history: ${history.length} msgs)`);
+      const llmStartTime = Date.now();
       const result = await agent.generateLegacy(
         history.map((m) => ({
           role: m.role,
@@ -316,59 +354,66 @@ export class ServerBotRunner {
         })) as any,
         { maxSteps: useTools ? MAX_TOOL_ROUNDS : 1 },
       );
+      const llmDurationMs = Date.now() - llmStartTime;
       console.log(`[ServerBotRunner] 生成完成 (bot: ${this.botId}, text length: ${result.text?.length || 0}, finishReason: ${result.finishReason})`);
+
+      // 记录 LLM 调用步骤
+      stepIndex++;
+      stepLogs.push({
+        id: generateId(),
+        botId: this.botId,
+        conversationId,
+        generationId,
+        stepIndex,
+        type: 'llm_call',
+        timestamp: Date.now(),
+        durationMs: llmDurationMs,
+        llmInfo: {
+          provider: this.llmConfig.provider,
+          model: this.llmConfig.model,
+          finishReason: result.finishReason || 'stop',
+        },
+      });
+
+      this.emitStepProgress(conversationId, { step: 'generating', status: 'complete' });
 
       const content = result.text || '（无回复内容）';
 
-      // 保存 LLM 调用日志
-      await this.saveLLMLog(conversationId, history, !!tools, {
-        content,
-        finishReason: result.finishReason || 'stop',
-      }, undefined, Date.now() - startTime);
+      // 保存 Agent 生成日志
+      await this.saveGenerationLog({
+        generationId,
+        botId: this.botId,
+        conversationId,
+        startTime: generationStartTime,
+        totalDurationMs: Date.now() - generationStartTime,
+        stepCount: stepLogs.length,
+        success: true,
+        steps: stepLogs,
+      });
 
       return { content, metadata: pendingMetadata, fileArtifacts: pendingFileArtifacts };
     } catch (err: any) {
-      await this.saveLLMLog(conversationId, history, false, undefined, err.message, Date.now() - startTime);
+      this.emitStepProgress(conversationId, { step: 'generating', status: 'error', detail: err.message });
+
+      await this.saveGenerationLog({
+        generationId,
+        botId: this.botId,
+        conversationId,
+        startTime: generationStartTime,
+        totalDurationMs: Date.now() - generationStartTime,
+        stepCount: stepLogs.length,
+        success: false,
+        error: err.message,
+        steps: stepLogs,
+      });
       throw err;
     }
   }
 
-  /** 保存 LLM 调用日志 */
-  private async saveLLMLog(
-    conversationId: string,
-    messages: Array<{ role: string; content: string }>,
-    hasTools: boolean,
-    response: LLMCallLog['response'] | undefined,
-    error: string | undefined,
-    durationMs: number,
-  ): Promise<void> {
+  /** 保存 Agent 生成批次日志 */
+  private async saveGenerationLog(log: AgentGenerationLog): Promise<void> {
     try {
-      const log: LLMCallLog = {
-        id: generateId(),
-        botId: this.botId,
-        timestamp: Date.now(),
-        conversationId,
-        request: {
-          provider: this.llmConfig.provider,
-          model: this.llmConfig.model,
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: m.content.length > 2000 ? m.content.slice(0, 2000) + '…' : m.content,
-          })),
-          tools: hasTools ? [
-            { name: 'bash_exec', description: 'Shell 命令' },
-            { name: 'read_file', description: '读取文件' },
-            { name: 'write_file', description: '写入文件' },
-            { name: 'list_files', description: '列出文件' },
-            { name: 'send_file_to_chat', description: '发送文件到聊天' },
-            { name: 'present_choices', description: '展示选项' },
-          ] : undefined,
-        },
-        response,
-        error,
-        durationMs,
-      };
-      await this.botService.saveLLMCallLog(log);
+      await this.botService.saveAgentGenerationLog(log);
     } catch {
       // 日志保存失败不影响主流程
     }

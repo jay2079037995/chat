@@ -36,6 +36,8 @@ interface ChatState {
   lastReadMap: Record<string, Record<string, number>>;
   /** 正在输入的用户：convId → Set<userId> */
   typingUsers: Record<string, Set<string>>;
+  /** Bot 执行步骤进度：convId → 当前步骤数据 */
+  botStepProgress: Record<string, { step: string; status: 'start' | 'complete' | 'error'; detail?: string; timestamp: number } | null>;
   /** 参与者头像映射：userId → avatarUrl */
   participantAvatars: Record<string, string>;
   /** 置顶会话 ID 集合 */
@@ -107,6 +109,8 @@ interface ChatState {
   setTagFilter: (tag: string) => void;
   /** 切换归档列表显示 */
   setShowArchived: (show: boolean) => void;
+  /** 设置 Bot 执行步骤进度 */
+  setBotStepProgress: (conversationId: string, data: { step: string; status: 'start' | 'complete' | 'error'; detail?: string; timestamp: number } | null) => void;
   /** 处理流式消息 chunk */
   handleStreamChunk: (data: { messageId: string; botId: string; conversationId: string; chunk: string; done: boolean }) => void;
 }
@@ -125,6 +129,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   replyingTo: null,
   lastReadMap: {},
   typingUsers: {},
+  botStepProgress: {},
   participantAvatars: {},
   pinnedIds: new Set(),
   mutedIds: new Set(),
@@ -415,6 +420,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         typingUsers: { ...state.typingUsers, [conversationId]: next },
       };
     });
+  },
+
+  setBotStepProgress: (conversationId: string, data: { step: string; status: 'start' | 'complete' | 'error'; detail?: string; timestamp: number } | null) => {
+    set((state) => ({
+      botStepProgress: { ...state.botStepProgress, [conversationId]: data },
+    }));
   },
 
   loadFromCache: () => {

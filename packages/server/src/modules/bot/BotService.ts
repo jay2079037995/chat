@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import Redis from 'ioredis';
-import type { Message, MessageMetadata, BotUpdate, LLMConfig, MastraLLMConfig, BotRunMode, BotStatus, LLMCallLog } from '@chat/shared';
+import type { Message, MessageMetadata, BotUpdate, LLMConfig, MastraLLMConfig, BotRunMode, BotStatus, LLMCallLog, AgentGenerationLog } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
@@ -14,6 +14,7 @@ const BOT_CONFIG_KEY = (botId: string) => `bot_config:${botId}`;
 const BOT_CONV_HISTORY_KEY = (botId: string, convId: string) => `bot_conv_history:${botId}:${convId}`;
 const BOT_LLM_LOGS_KEY = (botId: string) => `bot_llm_logs:${botId}`;
 const BOT_MASTRA_CONFIG_KEY = (botId: string) => `bot_mastra_config:${botId}`;
+const BOT_GEN_LOGS_KEY = (botId: string) => `bot_gen_logs:${botId}`;
 const SERVER_BOTS_KEY = 'server_bots';
 const LOCAL_BOTS_KEY = 'local_bots';
 
@@ -122,8 +123,9 @@ export class BotService {
       if (historyKeys.length > 0) {
         await redis.del(...historyKeys);
       }
-      // 清理 LLM 调用日志
+      // 清理 LLM 调用日志 + Agent 生成日志
       await redis.del(BOT_LLM_LOGS_KEY(botId));
+      await redis.del(BOT_GEN_LOGS_KEY(botId));
     } else if (runMode === 'local') {
       await redis.del(BOT_MASTRA_CONFIG_KEY(botId));
       await redis.srem(LOCAL_BOTS_KEY, botId);
@@ -442,6 +444,38 @@ export class BotService {
   async clearLLMCallLogs(botId: string): Promise<void> {
     const redis = getRedisClient();
     await redis.del(BOT_LLM_LOGS_KEY(botId));
+  }
+
+  // ========================
+  // Agent 生成批次日志
+  // ========================
+
+  /** 保存 Agent 生成批次日志 */
+  async saveAgentGenerationLog(log: AgentGenerationLog): Promise<void> {
+    const redis = getRedisClient();
+    const key = BOT_GEN_LOGS_KEY(log.botId);
+    await redis.zadd(key, log.startTime, JSON.stringify(log));
+    const count = await redis.zcard(key);
+    if (count > MAX_LLM_LOGS) {
+      await redis.zremrangebyrank(key, 0, count - MAX_LLM_LOGS - 1);
+    }
+    await redis.expire(key, LLM_LOGS_TTL);
+  }
+
+  /** 分页查询 Agent 生成批次日志（倒序，最新在前） */
+  async getAgentGenerationLogs(botId: string, offset: number = 0, limit: number = 20): Promise<{ logs: AgentGenerationLog[]; total: number }> {
+    const redis = getRedisClient();
+    const key = BOT_GEN_LOGS_KEY(botId);
+    const total = await redis.zcard(key);
+    const items = await redis.zrevrange(key, offset, offset + limit - 1);
+    const logs = items.map((item) => JSON.parse(item) as AgentGenerationLog);
+    return { logs, total };
+  }
+
+  /** 清空 Agent 生成批次日志 */
+  async clearAgentGenerationLogs(botId: string): Promise<void> {
+    const redis = getRedisClient();
+    await redis.del(BOT_GEN_LOGS_KEY(botId));
   }
 
   // ========================

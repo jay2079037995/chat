@@ -47,6 +47,15 @@ export interface ServerToClientEvents {
   'mention:notify': (data: { message: Message; conversationId: string; senderName: string }) => void;
   /** 通用工具执行请求（服务端 Bot → 用户 Electron 客户端） */
   'tool:exec': (request: GenericToolExecRequest) => void;
+  /** Agent 执行步骤实时进度（服务端 → 客户端） */
+  'bot:step-progress': (data: {
+    conversationId: string;
+    botId: string;
+    step: string;
+    status: 'start' | 'complete' | 'error';
+    detail?: string;
+    timestamp: number;
+  }) => void;
   /** 请求 Bot 的 Skill 指令内容（服务端 → Electron 客户端） */
   'bot:request-skills': (data: { botId: string }) => void;
 }
