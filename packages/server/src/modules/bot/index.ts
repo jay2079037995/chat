@@ -275,6 +275,74 @@ export class BotModule implements ServerModule {
       }
     });
 
+    // POST /api/bot/stepProgress — Agent-app 报告执行步骤进度（通过 token 认证）
+    router.post('/stepProgress', async (req, res) => {
+      try {
+        const { token, conversationId, step, status, detail } = req.body;
+        if (!token || !conversationId || !step || !status) {
+          res.status(400).json({ error: '缺少必要参数 (token, conversationId, step, status)' });
+          return;
+        }
+        if (!['start', 'complete', 'error'].includes(status)) {
+          res.status(400).json({ error: 'status 必须为 start/complete/error' });
+          return;
+        }
+
+        const botId = await botService.getBotIdByToken(token);
+        if (!botId) {
+          res.status(401).json({ error: 'Token 无效' });
+          return;
+        }
+
+        if (this.io) {
+          this.io.to(conversationId).emit('bot:step-progress', {
+            conversationId,
+            botId,
+            step,
+            status,
+            detail,
+            timestamp: Date.now(),
+          });
+        }
+
+        res.json({ success: true });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
+    // POST /api/bot/generationLog — Agent-app 保存生成日志（通过 token 认证）
+    router.post('/generationLog', async (req, res) => {
+      try {
+        const { token, log } = req.body;
+        if (!token || !log) {
+          res.status(400).json({ error: '缺少必要参数 (token, log)' });
+          return;
+        }
+
+        const botId = await botService.getBotIdByToken(token);
+        if (!botId) {
+          res.status(401).json({ error: 'Token 无效' });
+          return;
+        }
+
+        // 安全：强制覆盖 botId，防止伪造
+        const sanitizedLog: AgentGenerationLog = {
+          ...log,
+          botId,
+          steps: (log.steps || []).map((step: AgentStepLog) => ({
+            ...step,
+            botId,
+          })),
+        };
+
+        await botService.saveAgentGenerationLog(sanitizedLog);
+        res.json({ success: true });
+      } catch {
+        res.status(500).json({ error: '服务器内部错误' });
+      }
+    });
+
     // GET /api/bot/:id/config — 获取 Bot 完整配置（需 session + 所有权，仅 local 模式）
     router.get('/:id/config', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {

@@ -6,6 +6,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import * as url from 'url';
+import type { AgentGenerationLog } from '@chat/shared';
 
 export interface BotUpdate {
   updateId: number;
@@ -51,6 +52,32 @@ export class BotClient {
       conversationId,
       content,
       type,
+    });
+  }
+
+  /** 报告步骤进度到服务端（服务端通过 Socket.IO 转发给聊天客户端） */
+  async reportStepProgress(
+    conversationId: string,
+    step: string,
+    status: 'start' | 'complete' | 'error',
+    detail?: string,
+  ): Promise<void> {
+    const apiUrl = `${this.serverUrl}/api/bot/stepProgress`;
+    await this.request('POST', apiUrl, {
+      token: this.token,
+      conversationId,
+      step,
+      status,
+      detail,
+    });
+  }
+
+  /** 保存 Agent 生成日志到服务端 */
+  async saveGenerationLog(log: AgentGenerationLog): Promise<void> {
+    const apiUrl = `${this.serverUrl}/api/bot/generationLog`;
+    await this.request('POST', apiUrl, {
+      token: this.token,
+      log,
     });
   }
 

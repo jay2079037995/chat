@@ -1455,3 +1455,48 @@ After (v1.22.0):
 | `packages/client/.../botService.ts` | generation log API |
 | 测试文件 (4 个) | 新建/修改 |
 | 版本相关文件 (8+ 个) | 版本号 → 1.24.0 |
+
+## v1.25.0 — 本地 Agent (agent-app) 详细日志 + 实时步骤进度
+
+### 背景
+v1.24.0 为服务端 Bot 和本地模式 Bot 添加了实时步骤进度和 Agent 生成日志。但 agent-app（独立 Electron 应用，runMode=client）通过 HTTP 轮询 + generateLegacy() 运行 Agent，没有步骤进度也没有详细日志。
+
+### 需求
+让 agent-app 运行的 Bot 也拥有与服务端 Bot 完全一致的实时步骤进度和生成日志体验。
+
+### 设计决策
+- 复用 HTTP REST API（新增 2 个 token 认证端点），不引入 Socket.IO 连接
+- Server 收到后转发 Socket.IO / 存入 Redis
+- Client 无需改动（BotStepIndicator 和 BotLogViewer 已通用化）
+
+### 实现内容
+
+#### Server 新增 API
+- `POST /api/bot/stepProgress` — token 认证，转发 bot:step-progress 事件
+- `POST /api/bot/generationLog` — token 认证，保存 AgentGenerationLog（强制覆盖 botId）
+
+#### Agent-app BotClient
+- `reportStepProgress()` — 报告步骤进度
+- `saveGenerationLog()` — 保存生成日志
+
+#### Agent-app AgentManager
+- runLoop() 接入进度报告 + 日志保存（fire-and-forget）
+
+### 版本收尾
+- [ ] 6 个 package.json → 1.25.0
+- [ ] 客户端首页版本号
+- [ ] CLAUDE.md 版本列表
+- [ ] doc/test/v1.25.0-test.md 测试文档
+- [ ] pnpm build + pnpm test
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/server/src/modules/bot/index.ts` | 新增 stepProgress + generationLog 端点 |
+| `packages/agent-app/src/main/botClient.ts` | 新增 reportStepProgress + saveGenerationLog |
+| `packages/agent-app/src/main/agentManager.ts` | runLoop 接入进度 + 日志 |
+| `packages/server/__tests__/bot-step-progress-api.test.ts` | 新建 |
+| `packages/agent-app/__tests__/botClient.test.ts` | 更新 |
+| `packages/agent-app/__tests__/agentManager.test.ts` | 更新 |
+| 版本相关文件 (8+ 个) | 版本号 → 1.25.0 |

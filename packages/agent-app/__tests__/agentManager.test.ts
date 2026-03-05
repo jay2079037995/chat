@@ -2,6 +2,7 @@
 jest.mock('@mastra/core/agent', () => ({
   Agent: jest.fn().mockImplementation(() => ({
     generate: jest.fn().mockResolvedValue({ text: 'mock reply' }),
+    generateLegacy: jest.fn().mockResolvedValue({ text: 'mock reply', finishReason: 'stop' }),
   })),
 }));
 

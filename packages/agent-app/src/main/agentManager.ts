@@ -16,6 +16,8 @@ import {
   prefillHistory,
   clearConversationHistory,
 } from './conversationHistory';
+import { generateId } from '@chat/shared';
+import type { AgentGenerationLog, AgentStepLog } from '@chat/shared';
 import type { AgentConfig, AgentState, LogEntry } from '../shared/types';
 
 interface AgentRunner {
@@ -243,6 +245,15 @@ export class AgentManager {
               runner.config.contextLength,
             );
 
+            // 生成日志追踪
+            const generationId = generateId();
+            const generationStartTime = Date.now();
+
+            // 报告步骤开始（fire-and-forget）
+            botClient.reportStepProgress(conversationId, 'generating', 'start').catch((e) => {
+              this.emitLog(config.id, 'warn', `步骤进度报告失败: ${e.message}`);
+            });
+
             // 调用 Mastra Agent
             this.emitLog(config.id, 'info', `调用 ${runner.config.provider} (${runner.config.model})...`);
             const model = await createAgentModel(runner.config);
@@ -253,15 +264,22 @@ export class AgentManager {
               model,
             });
 
+            const llmStartTime = Date.now();
             const result = await agent.generateLegacy(
               recentHistory.map((m) => ({
                 role: m.role as 'user' | 'assistant',
                 content: m.content,
               })) as any,
             );
+            const llmDurationMs = Date.now() - llmStartTime;
             const reply = result.text || '';
 
             if (abortController.signal.aborted) break;
+
+            // 报告步骤完成（fire-and-forget）
+            botClient.reportStepProgress(conversationId, 'generating', 'complete').catch((e) => {
+              this.emitLog(config.id, 'warn', `步骤进度报告失败: ${e.message}`);
+            });
 
             // Markdown 检测
             const messageType = detectMarkdown(reply) ? 'markdown' : 'text';
@@ -278,14 +296,47 @@ export class AgentManager {
             this.emitLog(
               config.id,
               'info',
-              `已回复 [${conversationId.substring(0, 8)}]: ${reply.substring(0, 50)}`,
+              `已回复 [${conversationId.substring(0, 8)}]: ${reply.substring(0, 50)} (${llmDurationMs}ms)`,
             );
             this.emitStatusChange(config.id);
+
+            // 保存 Agent 生成日志（fire-and-forget）
+            const stepLog: AgentStepLog = {
+              id: generateId(),
+              botId: config.id,
+              conversationId,
+              generationId,
+              stepIndex: 1,
+              type: 'llm_call',
+              timestamp: llmStartTime,
+              durationMs: llmDurationMs,
+              llmInfo: {
+                provider: runner.config.provider,
+                model: runner.config.model,
+                finishReason: (result as any).finishReason || 'stop',
+              },
+            };
+
+            botClient.saveGenerationLog({
+              generationId,
+              botId: config.id,
+              conversationId,
+              startTime: generationStartTime,
+              totalDurationMs: Date.now() - generationStartTime,
+              stepCount: 1,
+              success: true,
+              steps: [stepLog],
+            }).catch((e) => {
+              this.emitLog(config.id, 'warn', `保存生成日志失败: ${e.message}`);
+            });
           } catch (err: any) {
             runner.consecutiveErrors++;
             runner.lastError = err.message;
             this.emitLog(config.id, 'error', `处理消息失败: ${err.message}`);
             this.emitStatusChange(config.id);
+
+            // 报告步骤错误（fire-and-forget）
+            botClient.reportStepProgress(conversationId, 'generating', 'error', err.message).catch(() => {});
 
             // 连续失败 5 次，暂停 agent
             if (runner.consecutiveErrors >= 5) {
