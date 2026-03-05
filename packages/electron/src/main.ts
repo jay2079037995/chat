@@ -111,10 +111,14 @@ if (!gotSingleInstanceLock) {
   });
 
   ipcMain.handle('localbot:open-workspace', async (_event, botId: string) => {
-    const path = botSkillManager.getWorkspacePath(botId);
-    if (path) {
+    const wsPath = botSkillManager.getWorkspacePath(botId);
+    if (wsPath) {
+      const fs = await import('fs');
+      if (!fs.existsSync(wsPath)) {
+        fs.mkdirSync(wsPath, { recursive: true });
+      }
       const { shell } = await import('electron');
-      await shell.openPath(path);
+      await shell.openPath(wsPath);
     }
   });
 

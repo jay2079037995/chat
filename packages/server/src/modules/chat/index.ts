@@ -478,7 +478,7 @@ export class ChatModule implements ServerModule {
                 const isPrivate = conv.type === 'private';
                 const isMentioned = message.mentions?.includes(pid);
                 if (isPrivate || isMentioned) {
-                  // 所有 bot（server/local）统一入队，由 ServerBotRunner 或 HTTP endpoint 处理
+                  // bot 消息入队
                   await botService.enqueueUpdate(pid, message, data.conversationId);
                 }
               }

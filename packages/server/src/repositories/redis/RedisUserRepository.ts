@@ -6,7 +6,6 @@ import type { IUserRepository } from '../interfaces/IUserRepository';
 const USER_KEY = (id: string) => `user:${id}`;       // 用户详情 Hash
 const USERNAME_INDEX = 'index:username_to_id';         // 用户名 → ID 映射 Hash
 const ALL_USERS_KEY = 'users:all';                     // 所有用户 ID 集合 Set
-const BOT_TOKEN_KEY = (token: string) => `bot_token:${token}`;  // token → botId
 const BOT_OWNER_KEY = (ownerId: string) => `bot_owner:${ownerId}`;  // 用户拥有的机器人集合
 
 /**
@@ -131,16 +130,10 @@ export class RedisUserRepository implements IUserRepository {
       })
       .hset(USERNAME_INDEX, data.username, data.id)
       .sadd(ALL_USERS_KEY, data.id)
-      .set(BOT_TOKEN_KEY(data.token), data.id)
       .sadd(BOT_OWNER_KEY(data.ownerId), data.id)
       .exec();
 
     return user;
-  }
-
-  async findBotByToken(token: string): Promise<string | null> {
-    const redis = getRedisClient();
-    return redis.get(BOT_TOKEN_KEY(token));
   }
 
   async getBotsByOwner(ownerId: string): Promise<User[]> {
@@ -176,14 +169,13 @@ export class RedisUserRepository implements IUserRepository {
     const data = await redis.hgetall(USER_KEY(botId));
     if (!data || data.isBot !== 'true') return;
 
-    const { username, botToken, botOwnerId } = data;
+    const { username, botOwnerId } = data;
 
     await redis
       .multi()
       .del(USER_KEY(botId))
       .hdel(USERNAME_INDEX, username)
       .srem(ALL_USERS_KEY, botId)
-      .del(BOT_TOKEN_KEY(botToken))
       .srem(BOT_OWNER_KEY(botOwnerId), botId)
       .del(`bot_updates:${botId}`)
       .del(`bot_update_seq:${botId}`)

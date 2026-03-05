@@ -1,27 +1,21 @@
 /**
  * 机器人管理抽屉组件
  *
- * 支持三种运行模式：
- * - 客户端模式：创建后获取 token，通过 agent-app 运行
- * - 服务端模式：创建时配置 LLM，服务器自动运行
- * - 本地模式：通过 Mastra 在 Electron 本地运行
- *
+ * 仅支持本地模式（Electron/Mastra）。
  * 每个 Bot 拥有独立的 Skill 列表，通过 BotSkillManager 管理。
  */
 import React, { useEffect, useState } from 'react';
 import {
   Drawer, Button, Input, List, Typography, Popconfirm,
-  message as antMessage, Alert, Radio, Tag, Badge, Modal, Form, Space,
+  message as antMessage, Modal, Form, Space,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, RobotOutlined,
-  EditOutlined, PlayCircleOutlined, PauseCircleOutlined,
-  FileTextOutlined, AppstoreOutlined, FolderOpenOutlined,
+  EditOutlined, FileTextOutlined, AppstoreOutlined, FolderOpenOutlined,
 } from '@ant-design/icons';
-import type { Bot, LLMConfig, MastraLLMConfig, BotRunMode } from '@chat/shared';
+import type { Bot, MastraLLMConfig } from '@chat/shared';
 import { botService } from '../../services/botService';
 import { useIsMobile } from '../../../../hooks/useIsMobile';
-import ServerBotConfigForm from './ServerBotConfigForm';
 import LocalBotConfigForm from './LocalBotConfigForm';
 import BotLogViewer from './BotLogViewer';
 import BotSkillManager from './BotSkillManager';
@@ -30,7 +24,7 @@ import styles from './index.module.less';
 /** 检测是否在 Electron 环境 */
 const isElectron = !!(window as any).electronAPI?.isElectron;
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 interface BotManagerProps {
   visible: boolean;
@@ -43,8 +37,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newBotName, setNewBotName] = useState('');
-  const [newToken, setNewToken] = useState<string | null>(null);
-  const [runMode, setRunMode] = useState<BotRunMode>(isElectron ? 'local' : 'server');
 
   // 编辑配置 Modal
   const [editingBot, setEditingBot] = useState<Bot | null>(null);
@@ -75,9 +67,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
   useEffect(() => {
     if (visible) {
       void loadBots();
-      setNewToken(null);
       setNewBotName('');
-      setRunMode(isElectron ? 'local' : 'server');
       createForm.resetFields();
     }
   }, [visible]);
@@ -93,31 +83,17 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       return;
     }
 
-    let llmConfig: LLMConfig | undefined;
     let mastraConfig: MastraLLMConfig | undefined;
-    if (runMode === 'server') {
-      try {
-        llmConfig = await createForm.validateFields();
-      } catch {
-        return;
-      }
-    }
-    if (runMode === 'local') {
-      try {
-        mastraConfig = await createForm.validateFields();
-      } catch {
-        return;
-      }
+    try {
+      mastraConfig = await createForm.validateFields();
+    } catch {
+      return;
     }
 
     setCreating(true);
     try {
-      const { bot, token } = await botService.createBot(name, runMode, llmConfig, mastraConfig);
+      const { bot } = await botService.createBot(name, 'local', undefined, mastraConfig);
       setBots((prev) => [...prev, bot]);
-      if (token) {
-        setNewToken(token);
-      }
-
       setNewBotName('');
       createForm.resetFields();
       void antMessage.success('机器人创建成功');
@@ -139,32 +115,13 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     }
   };
 
-  const handleStartStop = async (bot: Bot) => {
-    try {
-      if (bot.status === 'running') {
-        await botService.stopBot(bot.id);
-        setBots((prev) => prev.map((b) => b.id === bot.id ? { ...b, status: 'stopped' } : b));
-        void antMessage.success('机器人已暂停');
-      } else {
-        await botService.startBot(bot.id);
-        setBots((prev) => prev.map((b) => b.id === bot.id ? { ...b, status: 'running' } : b));
-        void antMessage.success('机器人已启动');
-      }
-    } catch {
-      void antMessage.error('操作失败');
-    }
-  };
-
   const handleEditConfig = async (bot: Bot) => {
     setEditingBot(bot);
     editForm.resetFields();
-    // 本地模式：异步加载工作目录路径
-    if (bot.runMode === 'local') {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.getWorkspacePath) {
-        const path = await electronAPI.getWorkspacePath(bot.id);
-        setWorkspacePath(path || '');
-      }
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.getWorkspacePath) {
+      const path = await electronAPI.getWorkspacePath(bot.id);
+      setWorkspacePath(path || '');
     }
   };
 
@@ -172,21 +129,10 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     if (!editingBot) return;
     try {
       const values = await editForm.validateFields();
-
-      if (editingBot.runMode === 'local') {
-        // 本地模式：更新 Mastra 配置
-        const { mastraConfig: updated } = await botService.updateLocalBotConfig(editingBot.id, values);
-        setBots((prev) => prev.map((b) =>
-          b.id === editingBot.id ? { ...b, mastraConfig: updated } : b,
-        ));
-      } else {
-        // 服务端模式：更新 LLM 配置
-        const { llmConfig: updated } = await botService.updateBotConfig(editingBot.id, values);
-        setBots((prev) => prev.map((b) =>
-          b.id === editingBot.id ? { ...b, llmConfig: updated } : b,
-        ));
-      }
-
+      const { mastraConfig: updated } = await botService.updateLocalBotConfig(editingBot.id, values);
+      setBots((prev) => prev.map((b) =>
+        b.id === editingBot.id ? { ...b, mastraConfig: updated } : b,
+      ));
       setEditingBot(null);
       void antMessage.success('配置已更新');
     } catch {
@@ -194,19 +140,11 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
     }
   };
 
-  const getStatusBadge = (status?: string) => {
-    switch (status) {
-      case 'running': return <Badge status="success" text="运行中" />;
-      case 'error': return <Badge status="error" text="异常" />;
-      default: return <Badge status="default" text="已停止" />;
-    }
-  };
-
   const renderBotActions = (bot: Bot) => {
     const actions = [];
 
-    // Skill 管理（所有模式，仅 Electron）
-    if (isElectron && (bot.runMode === 'server' || bot.runMode === 'local')) {
+    // Skill 管理（仅 Electron）
+    if (isElectron) {
       actions.push(
         <Button
           key="skills"
@@ -219,55 +157,28 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       );
     }
 
-    // 日志按钮（所有模式均可查看：server 直接保存，local/client 通过 HTTP 上报）
-    if (bot.runMode === 'server' || bot.runMode === 'local' || bot.runMode === 'client') {
-      actions.push(
-        <Button
-          key="logs"
-          type="text"
-          icon={<FileTextOutlined />}
-          size="small"
-          onClick={() => setLogBot(bot)}
-          title="调用日志"
-        />,
-      );
-    }
+    // 日志按钮
+    actions.push(
+      <Button
+        key="logs"
+        type="text"
+        icon={<FileTextOutlined />}
+        size="small"
+        onClick={() => setLogBot(bot)}
+        title="调用日志"
+      />,
+    );
 
-    if (bot.runMode === 'server') {
-      actions.push(
-        <Button
-          key="edit"
-          type="text"
-          icon={<EditOutlined />}
-          size="small"
-          onClick={() => handleEditConfig(bot)}
-          title="编辑配置"
-        />,
-      );
-      actions.push(
-        <Button
-          key="toggle"
-          type="text"
-          icon={bot.status === 'running' ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-          size="small"
-          onClick={() => handleStartStop(bot)}
-          title={bot.status === 'running' ? '暂停' : '启动'}
-        />,
-      );
-    }
-
-    if (bot.runMode === 'local') {
-      actions.push(
-        <Button
-          key="edit"
-          type="text"
-          icon={<EditOutlined />}
-          size="small"
-          onClick={() => handleEditConfig(bot)}
-          title="编辑配置"
-        />,
-      );
-    }
+    actions.push(
+      <Button
+        key="edit"
+        type="text"
+        icon={<EditOutlined />}
+        size="small"
+        onClick={() => handleEditConfig(bot)}
+        title="编辑配置"
+      />,
+    );
 
     actions.push(
       <Popconfirm
@@ -291,34 +202,13 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         ID: {bot.id.slice(0, 8)}
       </Text>
     );
-    if (bot.runMode === 'server') {
-      const provider = bot.llmConfig?.provider || '';
-      const model = bot.llmConfig?.model || '';
-      return (
-        <div>
-          <div>{getStatusBadge(bot.status)}</div>
-          <Text type="secondary" className={styles.botMeta}>
-            {provider} / {model} · {date}
-          </Text>
-          <div>{idTag}</div>
-        </div>
-      );
-    }
-    if (bot.runMode === 'local') {
-      const provider = bot.mastraConfig?.provider || '';
-      const model = bot.mastraConfig?.model || '';
-      return (
-        <div>
-          <Text type="secondary" className={styles.botMeta}>
-            {provider} / {model} · {date}
-          </Text>
-          <div>{idTag}</div>
-        </div>
-      );
-    }
+    const provider = bot.mastraConfig?.provider || '';
+    const model = bot.mastraConfig?.model || '';
     return (
       <div>
-        <Text type="secondary">创建于 {date}</Text>
+        <Text type="secondary" className={styles.botMeta}>
+          {provider} / {model} · {date}
+        </Text>
         <div>{idTag}</div>
       </div>
     );
@@ -342,30 +232,10 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         />
       </div>
 
-      <div className={styles.runModeArea}>
-        <Radio.Group
-          value={runMode}
-          onChange={(e) => setRunMode(e.target.value)}
-          size="small"
-        >
-          <Radio.Button value="server">服务端运行</Radio.Button>
-          <Radio.Button value="local" disabled={!isElectron}>本地运行</Radio.Button>
-        </Radio.Group>
+      {/* Mastra 配置 */}
+      <div className={styles.configArea}>
+        <LocalBotConfigForm form={createForm} />
       </div>
-
-      {/* 服务端模式 LLM 配置 */}
-      {runMode === 'server' && (
-        <div className={styles.configArea}>
-          <ServerBotConfigForm form={createForm} />
-        </div>
-      )}
-
-      {/* 本地模式 Mastra 配置 */}
-      {runMode === 'local' && (
-        <div className={styles.configArea}>
-          <LocalBotConfigForm form={createForm} />
-        </div>
-      )}
 
       <Button
         type="primary"
@@ -377,31 +247,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
       >
         创建机器人
       </Button>
-
-      {/* 新创建的 token 提示（仅客户端模式） */}
-      {newToken && (
-        <Alert
-          className={styles.tokenAlert}
-          type="success"
-          message="机器人创建成功"
-          description={
-            <div>
-              <Text type="secondary">请保存以下 Token（仅显示一次）：</Text>
-              <div className={styles.tokenRow}>
-                <Paragraph
-                  className={styles.tokenText}
-                  copyable={{ text: newToken }}
-                  ellipsis={{ rows: 1 }}
-                >
-                  {newToken}
-                </Paragraph>
-              </div>
-            </div>
-          }
-          closable
-          onClose={() => setNewToken(null)}
-        />
-      )}
 
       {/* 机器人列表 */}
       <List
@@ -415,12 +260,6 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
               title={
                 <Space size={4}>
                   {bot.username}
-                  <Tag
-                    color={bot.runMode === 'server' ? 'green' : bot.runMode === 'local' ? 'orange' : 'blue'}
-                    className={styles.modeTag}
-                  >
-                    {bot.runMode === 'server' ? '服务端' : bot.runMode === 'local' ? '本地' : '客户端'}
-                  </Tag>
                 </Space>
               }
               description={renderBotDescription(bot)}
@@ -439,7 +278,7 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
         cancelText="取消"
         destroyOnClose
       >
-        {editingBot && editingBot.runMode === 'local' && (
+        {editingBot && (
           <>
             <LocalBotConfigForm
               form={editForm}
@@ -488,15 +327,9 @@ const BotManager: React.FC<BotManagerProps> = ({ visible, onClose }) => {
             )}
           </>
         )}
-        {editingBot && editingBot.runMode === 'server' && (
-          <ServerBotConfigForm
-            form={editForm}
-            initialValues={editingBot.llmConfig}
-          />
-        )}
       </Modal>
 
-      {/* LLM 调用日志查看器 */}
+      {/* 日志查看器 */}
       <BotLogViewer
         visible={!!logBot}
         onClose={() => setLogBot(null)}

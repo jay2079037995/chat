@@ -1,43 +1,24 @@
 /**
  * BotLogViewer 组件测试
  *
- * 测试日志查看器的渲染、LLM 日志 Tab、Agent 日志 Tab、空状态、工具栏。
- * v1.24.0: 新增 Agent 日志 Tab + 步骤时间线测试。
+ * 测试日志查看器的渲染、Agent 日志显示、空状态、工具栏。
  */
 import React from 'react';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import BotLogViewer from '../src/modules/chat/components/BotManager/BotLogViewer';
-import type { LLMCallLog, AgentGenerationLog } from '@chat/shared';
+import type { AgentGenerationLog } from '@chat/shared';
 
-const mockGetBotLogs = jest.fn();
-const mockClearBotLogs = jest.fn();
 const mockGetGenerationLogs = jest.fn();
 const mockClearGenerationLogs = jest.fn();
 
 jest.mock('../src/modules/chat/services/botService', () => ({
   botService: {
-    getBotLogs: (...args: any[]) => mockGetBotLogs(...args),
-    clearBotLogs: (...args: any[]) => mockClearBotLogs(...args),
     getGenerationLogs: (...args: any[]) => mockGetGenerationLogs(...args),
     clearGenerationLogs: (...args: any[]) => mockClearGenerationLogs(...args),
   },
 }));
-
-const mockLlmLog: LLMCallLog = {
-  id: 'log-1',
-  botId: 'bot-1',
-  timestamp: Date.now(),
-  conversationId: 'conv-1',
-  request: {
-    provider: 'deepseek',
-    model: 'deepseek-chat',
-    messages: [{ role: 'user', content: 'Hello' }],
-  },
-  response: { content: 'Hi there', finishReason: 'stop' },
-  durationMs: 350,
-};
 
 const mockGenLog: AgentGenerationLog = {
   generationId: 'gen-1',
@@ -115,9 +96,7 @@ const renderViewer = (visible = true) => {
 describe('BotLogViewer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // 默认 Agent tab 先加载
     mockGetGenerationLogs.mockResolvedValue({ logs: [], total: 0 });
-    mockGetBotLogs.mockResolvedValue({ logs: [], total: 0 });
   });
 
   test('渲染时显示标题', async () => {
@@ -128,16 +107,7 @@ describe('BotLogViewer', () => {
     expect(screen.getByText('Bot 日志 — testbot')).toBeDefined();
   });
 
-  test('默认显示 Agent 日志 Tab', async () => {
-    await act(async () => {
-      renderViewer();
-    });
-
-    expect(screen.getByText('Agent 日志')).toBeDefined();
-    expect(screen.getByText('LLM 日志')).toBeDefined();
-  });
-
-  test('Agent 空状态显示 "暂无日志"', async () => {
+  test('空状态显示 "暂无日志"', async () => {
     await act(async () => {
       renderViewer();
     });
@@ -173,25 +143,6 @@ describe('BotLogViewer', () => {
     });
   });
 
-  test('切换到 LLM 日志 Tab', async () => {
-    mockGetGenerationLogs.mockResolvedValue({ logs: [], total: 0 });
-    mockGetBotLogs.mockResolvedValue({ logs: [mockLlmLog], total: 1 });
-
-    await act(async () => {
-      renderViewer();
-    });
-
-    // 点击 LLM 日志 Tab
-    await act(async () => {
-      fireEvent.click(screen.getByText('LLM 日志'));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('deepseek/deepseek-chat')).toBeDefined();
-      expect(screen.getByText('350ms')).toBeDefined();
-    });
-  });
-
   test('显示清空和刷新按钮', async () => {
     await act(async () => {
       renderViewer();
@@ -224,7 +175,6 @@ describe('BotLogViewer', () => {
     });
 
     await waitFor(() => {
-      // 时间线显示步骤信息
       expect(screen.getByText('#1')).toBeDefined();
       expect(screen.getByText('#2')).toBeDefined();
       expect(screen.getByText('LLM 调用')).toBeDefined();
@@ -242,12 +192,10 @@ describe('BotLogViewer', () => {
       renderViewer();
     });
 
-    // 展开日志
     await act(async () => {
       fireEvent.click(screen.getByText('2000ms'));
     });
 
-    // 展开工具调用步骤
     await act(async () => {
       fireEvent.click(screen.getByText('#2'));
     });
@@ -272,31 +220,5 @@ describe('BotLogViewer', () => {
     });
 
     expect(mockGetGenerationLogs).toHaveBeenCalledTimes(2);
-  });
-
-  test('LLM Tab 展开显示请求详情', async () => {
-    mockGetBotLogs.mockResolvedValue({ logs: [mockLlmLog], total: 1 });
-
-    await act(async () => {
-      renderViewer();
-    });
-
-    // 切换到 LLM Tab
-    await act(async () => {
-      fireEvent.click(screen.getByText('LLM 日志'));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('350ms')).toBeDefined();
-    });
-
-    // 展开日志条目
-    await act(async () => {
-      fireEvent.click(screen.getByText('350ms'));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Request Messages/)).toBeDefined();
-    });
   });
 });

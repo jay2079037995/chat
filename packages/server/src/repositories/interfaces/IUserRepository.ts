@@ -17,8 +17,6 @@ export interface IUserRepository {
 
   /** 创建机器人用户 */
   createBot(data: { id: string; username: string; token: string; ownerId: string }): Promise<User>;
-  /** 通过 token 查找机器人用户 ID */
-  findBotByToken(token: string): Promise<string | null>;
   /** 获取某用户拥有的所有机器人 */
   getBotsByOwner(ownerId: string): Promise<User[]>;
   /** 删除机器人 */

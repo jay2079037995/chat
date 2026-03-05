@@ -19,10 +19,11 @@ jest.mock('../src/modules/chat/services/botService', () => ({
     listBots: (...args: any[]) => mockListBots(...args),
     createBot: (...args: any[]) => mockCreateBot(...args),
     deleteBot: (...args: any[]) => mockDeleteBot(...args),
-    updateBotConfig: jest.fn(),
-    startBot: jest.fn(),
-    stopBot: jest.fn(),
-    getProviders: jest.fn(),
+    getLocalBotConfig: jest.fn(),
+    updateLocalBotConfig: jest.fn(),
+    getMastraProviders: jest.fn(),
+    getGenerationLogs: jest.fn(),
+    clearGenerationLogs: jest.fn(),
   },
 }));
 

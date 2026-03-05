@@ -66,11 +66,6 @@ export interface Bot {
   mastraConfig?: Omit<MastraLLMConfig, 'apiKey'> & { apiKey: string };
 }
 
-/** 机器人创建后返回（含 token，仅 client 模式显示） */
-export interface BotWithToken extends Bot {
-  token: string;
-}
-
 /** 创建机器人请求体 */
 export interface CreateBotRequest {
   username: string;

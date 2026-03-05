@@ -4,11 +4,10 @@ import { TOKENS } from '../../core/tokens';
 import type { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import type { ISessionRepository } from '../../repositories/interfaces/ISessionRepository';
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
-import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog, LLMCallLog } from '@chat/shared';
-import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
+import type { MastraLLMConfig, Message, MessageMetadata, AgentStepLog, AgentGenerationLog } from '@chat/shared';
+import { MASTRA_PROVIDERS, generateId } from '@chat/shared';
 import { Agent } from '@mastra/core/agent';
 import { BotService } from './BotService';
-import { ServerBotManager } from './ServerBotManager';
 import { ToolDispatcher } from './ToolDispatcher';
 import { createModel } from './ModelFactory';
 import { createServerTools } from './ServerToolBridge';
@@ -18,8 +17,8 @@ import { createSessionMiddleware, type AuthenticatedRequest } from '../auth';
 /**
  * 机器人模块
  *
- * 提供机器人创建/删除/列表（需 session 认证），
- * 以及 getUpdates/sendMessage（通过 bot token 认证）。
+ * 提供机器人创建/删除/列表（需 session 认证）。
+ * 仅支持本地模式（Electron/Mastra）。
  * 路由挂载到 /api/bot/*
  */
 export class BotModule implements ServerModule {
@@ -28,8 +27,8 @@ export class BotModule implements ServerModule {
   /** 保存 TypedIO 引用，用于 sendMessage 后广播 */
   private io: TypedIO | null = null;
 
-  /** 服务端 Bot 管理器 */
-  serverBotManager: ServerBotManager | null = null;
+  /** Skill 指令缓存（bot:skill-instructions 推送） */
+  private skillInstructionsCache = new Map<string, string>();
 
   /** 通用工具分发器（供 Socket handler 使用） */
   readonly toolDispatcher = new ToolDispatcher();
@@ -47,44 +46,27 @@ export class BotModule implements ServerModule {
     // 注册 BotService 到容器，供 ChatModule 使用
     (ctx as any).registerInstance?.(TOKENS.BotService, botService);
 
-    // 创建服务端 Bot 管理器
-    this.serverBotManager = new ServerBotManager(botService);
-
     const sessionMiddleware = createSessionMiddleware(sessionRepo, userRepo);
     const router = Router();
 
     // POST /api/bot/create — 创建机器人（需 session）
     router.post('/create', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
-        const { username, runMode, llmConfig } = req.body;
+        const { username } = req.body;
         if (!username || typeof username !== 'string' || username.trim().length === 0) {
           res.status(400).json({ error: '请输入机器人用户名' });
           return;
         }
 
-        const mode: BotRunMode = runMode === 'server' ? 'server' : runMode === 'local' ? 'local' : 'client';
-
-        // local 模式需要 mastraConfig
         const { mastraConfig } = req.body;
-        if (mode === 'local' && !mastraConfig) {
-          res.status(400).json({ error: '本地模式需要提供 Mastra 配置' });
+        if (!mastraConfig) {
+          res.status(400).json({ error: '需要提供 Mastra 配置' });
           return;
         }
 
-        const result = await botService.createBot(req.userId!, username.trim(), mode, llmConfig, mastraConfig);
+        const result = await botService.createBot(req.userId!, username.trim(), 'local', undefined, mastraConfig);
 
-        // 服务端模式：自动启动 Bot
-        if (mode === 'server' && llmConfig && this.serverBotManager) {
-          await this.serverBotManager.startBot(result.id, llmConfig);
-        }
-
-        const maskedConfig = mode === 'server'
-          ? await botService.getServerBotConfigMasked(result.id)
-          : undefined;
-
-        const maskedMastraConfig = mode === 'local'
-          ? await botService.getMastraConfigMasked(result.id)
-          : undefined;
+        const maskedMastraConfig = await botService.getMastraConfigMasked(result.id);
 
         res.json({
           bot: {
@@ -92,12 +74,9 @@ export class BotModule implements ServerModule {
             username: result.username,
             ownerId: result.botOwnerId!,
             createdAt: result.createdAt,
-            runMode: mode,
-            status: mode === 'server' ? 'running' : undefined,
-            llmConfig: maskedConfig,
+            runMode: 'local',
             mastraConfig: maskedMastraConfig,
           },
-          token: mode === 'client' ? result.token : undefined,
         });
       } catch (err: unknown) {
         const error = err as Error;
@@ -109,12 +88,8 @@ export class BotModule implements ServerModule {
           res.status(409).json({ error: '用户名已被占用' });
           return;
         }
-        if (error.message === 'SERVER_MODE_REQUIRES_LLM_CONFIG') {
-          res.status(400).json({ error: '服务端模式需要提供 LLM 配置' });
-          return;
-        }
         if (error.message === 'LOCAL_MODE_REQUIRES_MASTRA_CONFIG') {
-          res.status(400).json({ error: '本地模式需要提供 Mastra 配置' });
+          res.status(400).json({ error: '需要提供 Mastra 配置' });
           return;
         }
         res.status(500).json({ error: '服务器内部错误' });
@@ -127,27 +102,15 @@ export class BotModule implements ServerModule {
         const bots = await botService.listBots(req.userId!);
         const enriched = await Promise.all(
           bots.map(async (b) => {
-            const runMode = await botService.getBotRunMode(b.id);
-            const base = {
+            const mastraConfig = await botService.getMastraConfigMasked(b.id);
+            return {
               id: b.id,
               username: b.username,
               ownerId: b.botOwnerId!,
               createdAt: b.createdAt,
-              runMode,
+              runMode: 'local' as const,
+              mastraConfig,
             };
-
-            if (runMode === 'server') {
-              const { status, error } = await botService.getBotStatus(b.id);
-              const llmConfig = await botService.getServerBotConfigMasked(b.id);
-              return { ...base, status, statusError: error, llmConfig };
-            }
-
-            if (runMode === 'local') {
-              const mastraConfig = await botService.getMastraConfigMasked(b.id);
-              return { ...base, mastraConfig };
-            }
-
-            return base;
           }),
         );
 
@@ -160,11 +123,6 @@ export class BotModule implements ServerModule {
     // DELETE /api/bot/:id — 删除机器人（需 session）
     router.delete('/:id', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
-        // 先停止运行中的服务端 Bot
-        if (this.serverBotManager) {
-          await this.serverBotManager.stopBot(req.params.id as string);
-        }
-
         await botService.deleteBot(req.params.id as string, req.userId!);
         res.json({ success: true });
       } catch (err: unknown) {
@@ -181,193 +139,7 @@ export class BotModule implements ServerModule {
       }
     });
 
-    // GET /api/bot/getHistory — 获取会话历史消息（通过 token 认证）
-    router.get('/getHistory', async (req, res) => {
-      try {
-        const token = req.query.token as string;
-        if (!token) {
-          res.status(400).json({ error: '缺少 token 参数' });
-          return;
-        }
-        const conversationId = req.query.conversationId as string;
-        if (!conversationId) {
-          res.status(400).json({ error: '缺少 conversationId 参数' });
-          return;
-        }
-
-        const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
-        const offset = parseInt(req.query.offset as string, 10) || 0;
-
-        const result = await botService.getHistory(token, conversationId, limit, offset);
-        res.json(result);
-      } catch (err: unknown) {
-        const error = err as Error;
-        if (error.message === 'INVALID_TOKEN') {
-          res.status(401).json({ error: 'Token 无效' });
-          return;
-        }
-        if (error.message === 'CONVERSATION_NOT_FOUND') {
-          res.status(404).json({ error: '会话不存在' });
-          return;
-        }
-        if (error.message === 'NOT_PARTICIPANT') {
-          res.status(403).json({ error: '机器人不是该会话的参与者' });
-          return;
-        }
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // GET /api/bot/getUpdates — 长轮询获取消息（通过 token 认证）
-    router.get('/getUpdates', async (req, res) => {
-      try {
-        const token = req.query.token as string;
-        if (!token) {
-          res.status(400).json({ error: '缺少 token 参数' });
-          return;
-        }
-
-        const timeout = Math.min(parseInt(req.query.timeout as string, 10) || 30, 60);
-        const updates = await botService.getUpdates(token, timeout);
-        res.json({ updates });
-      } catch (err: unknown) {
-        const error = err as Error;
-        if (error.message === 'INVALID_TOKEN') {
-          res.status(401).json({ error: 'Token 无效' });
-          return;
-        }
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // POST /api/bot/sendMessage — 机器人发消息（通过 token 认证）
-    router.post('/sendMessage', async (req, res) => {
-      try {
-        const { token, conversationId, content, type } = req.body;
-        if (!token || !conversationId || !content) {
-          res.status(400).json({ error: '缺少必要参数 (token, conversationId, content)' });
-          return;
-        }
-
-        const message = await botService.sendMessage(token, conversationId, content, type);
-
-        // 通过 Socket.IO 广播给会话中的在线用户
-        if (this.io) {
-          this.io.to(conversationId).emit('message:receive', message);
-        }
-
-        res.json({ message });
-      } catch (err: unknown) {
-        const error = err as Error;
-        if (error.message === 'INVALID_TOKEN') {
-          res.status(401).json({ error: 'Token 无效' });
-          return;
-        }
-        if (error.message === 'CONVERSATION_NOT_FOUND') {
-          res.status(404).json({ error: '会话不存在' });
-          return;
-        }
-        if (error.message === 'NOT_PARTICIPANT') {
-          res.status(403).json({ error: '机器人不是该会话的参与者' });
-          return;
-        }
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // POST /api/bot/stepProgress — Agent-app 报告执行步骤进度（通过 token 认证）
-    router.post('/stepProgress', async (req, res) => {
-      try {
-        const { token, conversationId, step, status, detail } = req.body;
-        if (!token || !conversationId || !step || !status) {
-          res.status(400).json({ error: '缺少必要参数 (token, conversationId, step, status)' });
-          return;
-        }
-        if (!['start', 'complete', 'error'].includes(status)) {
-          res.status(400).json({ error: 'status 必须为 start/complete/error' });
-          return;
-        }
-
-        const botId = await botService.getBotIdByToken(token);
-        if (!botId) {
-          res.status(401).json({ error: 'Token 无效' });
-          return;
-        }
-
-        if (this.io) {
-          this.io.to(conversationId).emit('bot:step-progress', {
-            conversationId,
-            botId,
-            step,
-            status,
-            detail,
-            timestamp: Date.now(),
-          });
-        }
-
-        res.json({ success: true });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // POST /api/bot/generationLog — Agent-app 保存生成日志（通过 token 认证）
-    router.post('/generationLog', async (req, res) => {
-      try {
-        const { token, log } = req.body;
-        if (!token || !log) {
-          res.status(400).json({ error: '缺少必要参数 (token, log)' });
-          return;
-        }
-
-        const botId = await botService.getBotIdByToken(token);
-        if (!botId) {
-          res.status(401).json({ error: 'Token 无效' });
-          return;
-        }
-
-        // 安全：强制覆盖 botId，防止伪造
-        const sanitizedLog: AgentGenerationLog = {
-          ...log,
-          botId,
-          steps: (log.steps || []).map((step: AgentStepLog) => ({
-            ...step,
-            botId,
-          })),
-        };
-
-        await botService.saveAgentGenerationLog(sanitizedLog);
-        res.json({ success: true });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // POST /api/bot/llmLog — Agent-app 保存 LLM 调用日志（通过 token 认证）
-    router.post('/llmLog', async (req, res) => {
-      try {
-        const { token, log } = req.body;
-        if (!token || !log) {
-          res.status(400).json({ error: '缺少必要参数 (token, log)' });
-          return;
-        }
-
-        const botId = await botService.getBotIdByToken(token);
-        if (!botId) {
-          res.status(401).json({ error: 'Token 无效' });
-          return;
-        }
-
-        // 安全：强制覆盖 botId，防止伪造
-        const sanitizedLog: LLMCallLog = { ...log, botId };
-        await botService.saveLLMCallLog(sanitizedLog);
-        res.json({ success: true });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // GET /api/bot/:id/config — 获取 Bot 完整配置（需 session + 所有权，仅 local 模式）
+    // GET /api/bot/:id/config — 获取 Bot 配置（需 session + 所有权）
     router.get('/:id/config', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const botId = req.params.id as string;
@@ -381,19 +153,8 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        const runMode = await botService.getBotRunMode(botId);
-        if (runMode === 'local') {
-          const mastraConfig = await botService.getMastraConfig(botId);
-          res.json({ mastraConfig });
-          return;
-        }
-        if (runMode === 'server') {
-          const llmConfig = await botService.getServerBotConfig(botId);
-          res.json({ llmConfig });
-          return;
-        }
-
-        res.status(400).json({ error: '该模式不支持配置查询' });
+        const mastraConfig = await botService.getMastraConfig(botId);
+        res.json({ mastraConfig });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -413,159 +174,21 @@ export class BotModule implements ServerModule {
           return;
         }
 
-        const runMode = await botService.getBotRunMode(botId);
-
-        // 本地模式：更新 Mastra 配置
-        if (runMode === 'local') {
-          const mastraConfig = req.body as MastraLLMConfig;
-          if (!mastraConfig.provider || !mastraConfig.apiKey || !mastraConfig.model) {
-            res.status(400).json({ error: '缺少必要的 Mastra 配置字段' });
-            return;
-          }
-          // 如果 apiKey 是脱敏值，保留原始值
-          if (mastraConfig.apiKey.includes('****')) {
-            const existing = await botService.getMastraConfig(botId);
-            if (existing) {
-              mastraConfig.apiKey = existing.apiKey;
-            }
-          }
-          await botService.saveMastraConfig(botId, mastraConfig);
-          const masked = await botService.getMastraConfigMasked(botId);
-          res.json({ mastraConfig: masked });
+        const mastraConfig = req.body as MastraLLMConfig;
+        if (!mastraConfig.provider || !mastraConfig.apiKey || !mastraConfig.model) {
+          res.status(400).json({ error: '缺少必要的 Mastra 配置字段' });
           return;
         }
-
-        // 服务端模式：更新 LLM 配置
-        if (runMode !== 'server') {
-          res.status(400).json({ error: '该模式不支持配置更新' });
-          return;
-        }
-
-        const llmConfig = req.body as LLMConfig;
-        if (!llmConfig.provider || !llmConfig.apiKey || !llmConfig.model) {
-          res.status(400).json({ error: '缺少必要的 LLM 配置字段' });
-          return;
-        }
-
-        // 如果 apiKey 是脱敏值（包含 ****），保留原始值
-        if (llmConfig.apiKey.includes('****')) {
-          const existing = await botService.getServerBotConfig(botId);
+        // 如果 apiKey 是脱敏值，保留原始值
+        if (mastraConfig.apiKey.includes('****')) {
+          const existing = await botService.getMastraConfig(botId);
           if (existing) {
-            llmConfig.apiKey = existing.apiKey;
+            mastraConfig.apiKey = existing.apiKey;
           }
         }
-
-        await botService.saveServerBotConfig(botId, llmConfig);
-        if (this.serverBotManager) {
-          this.serverBotManager.updateBotConfig(botId, llmConfig);
-        }
-
-        const masked = await botService.getServerBotConfigMasked(botId);
-        res.json({ llmConfig: masked });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // POST /api/bot/:id/start — 启动服务端 Bot（需 session + 所有权）
-    router.post('/:id/start', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
-      try {
-        const botId = req.params.id as string;
-        const bot = await userRepo.findById(botId);
-        if (!bot || !bot.isBot) {
-          res.status(404).json({ error: '机器人不存在' });
-          return;
-        }
-        if (bot.botOwnerId !== req.userId) {
-          res.status(403).json({ error: '无权操作该机器人' });
-          return;
-        }
-
-        const runMode = await botService.getBotRunMode(botId);
-        if (runMode !== 'server') {
-          res.status(400).json({ error: '仅服务端模式机器人支持此操作' });
-          return;
-        }
-
-        const llmConfig = await botService.getServerBotConfig(botId);
-        if (!llmConfig) {
-          res.status(400).json({ error: 'LLM 配置不存在' });
-          return;
-        }
-
-        if (this.serverBotManager) {
-          await this.serverBotManager.startBot(botId, llmConfig);
-        }
-
-        res.json({ status: 'running' });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // POST /api/bot/:id/stop — 停止服务端 Bot（需 session + 所有权）
-    router.post('/:id/stop', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
-      try {
-        const botId = req.params.id as string;
-        const bot = await userRepo.findById(botId);
-        if (!bot || !bot.isBot) {
-          res.status(404).json({ error: '机器人不存在' });
-          return;
-        }
-        if (bot.botOwnerId !== req.userId) {
-          res.status(403).json({ error: '无权操作该机器人' });
-          return;
-        }
-
-        if (this.serverBotManager) {
-          await this.serverBotManager.stopBot(botId);
-        }
-
-        res.json({ status: 'stopped' });
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // GET /api/bot/:id/logs — 获取 LLM 调用日志（需 session + 所有权）
-    router.get('/:id/logs', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
-      try {
-        const botId = req.params.id as string;
-        const bot = await userRepo.findById(botId);
-        if (!bot || !bot.isBot) {
-          res.status(404).json({ error: '机器人不存在' });
-          return;
-        }
-        if (bot.botOwnerId !== req.userId) {
-          res.status(403).json({ error: '无权操作该机器人' });
-          return;
-        }
-
-        const offset = parseInt(req.query.offset as string, 10) || 0;
-        const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 100);
-        const result = await botService.getLLMCallLogs(botId, offset, limit);
-        res.json(result);
-      } catch {
-        res.status(500).json({ error: '服务器内部错误' });
-      }
-    });
-
-    // DELETE /api/bot/:id/logs — 清空 LLM 调用日志（需 session + 所有权）
-    router.delete('/:id/logs', sessionMiddleware, async (req: AuthenticatedRequest, res) => {
-      try {
-        const botId = req.params.id as string;
-        const bot = await userRepo.findById(botId);
-        if (!bot || !bot.isBot) {
-          res.status(404).json({ error: '机器人不存在' });
-          return;
-        }
-        if (bot.botOwnerId !== req.userId) {
-          res.status(403).json({ error: '无权操作该机器人' });
-          return;
-        }
-
-        await botService.clearLLMCallLogs(botId);
-        res.json({ success: true });
+        await botService.saveMastraConfig(botId, mastraConfig);
+        const masked = await botService.getMastraConfigMasked(botId);
+        res.json({ mastraConfig: masked });
       } catch {
         res.status(500).json({ error: '服务器内部错误' });
       }
@@ -632,13 +255,7 @@ export class BotModule implements ServerModule {
         }
 
         // 加载 bot 配置
-        const runMode = await botService.getBotRunMode(botId);
-        let llmConfig: LLMConfig | MastraLLMConfig | null = null;
-        if (runMode === 'local') {
-          llmConfig = await botService.getMastraConfig(botId);
-        } else if (runMode === 'server') {
-          llmConfig = await botService.getServerBotConfig(botId);
-        }
+        const llmConfig = await botService.getMastraConfig(botId);
         if (!llmConfig) {
           res.status(400).json({ error: 'Bot 配置不存在' });
           return;
@@ -662,10 +279,10 @@ export class BotModule implements ServerModule {
         }
 
         // 构建系统提示词（含 skill 指令 + 工具说明）
-        const skillInstructions = serverBotManager?.getSkillInstructions(botId) || '';
+        const skillInstructions = this.skillInstructionsCache.get(botId) || '';
         const basePrompt = llmConfig.systemPrompt || '';
-        // 如果无 Skill 推送但 Bot 有工具能力（本地/服务端），补充基础工具说明
-        const toolInstructions = !skillInstructions && runMode !== 'client'
+        // 如果无 Skill 推送，补充基础工具说明
+        const toolInstructions = !skillInstructions
           ? '\n\n# 工作区环境\n\n你拥有一个专属的工作目录。\n\n## 工具使用说明\n\n你可以使用以下工具来执行任务：\n\n- `bash_exec`: 执行 Shell 命令。命令在工作区目录中运行，无需 cd。\n- `read_file`: 读取文件。相对路径基于工作区目录解析。\n- `write_file`: 写入文件。相对路径基于工作区目录解析。只能写入工作区内的文件。\n- `list_files`: 列出目录。默认列出工作区根目录。\n- `present_choices`: 向用户展示可点击的选项按钮或请求文本输入。\n\n**重要**: 所有相对路径都基于工作区目录解析，bash_exec 的工作目录已设为工作区，直接运行命令即可。'
           : '';
         const systemPrompt = basePrompt + (skillInstructions ? '\n\n' + skillInstructions : '') + toolInstructions;
@@ -695,6 +312,7 @@ export class BotModule implements ServerModule {
           });
         };
 
+        const toolDispatcher = this.toolDispatcher;
         const tools = !isReasoner && targetUserId && toolDispatcher ? createServerTools({
           dispatcher: toolDispatcher,
           targetUserId,
@@ -872,11 +490,6 @@ export class BotModule implements ServerModule {
       }
     });
 
-    // GET /api/bot/providers — 获取可用 LLM providers 及模型列表
-    router.get('/providers', (_req, res) => {
-      res.json({ providers: LLM_PROVIDERS });
-    });
-
     // GET /api/bot/mastra-providers — 获取可用 Mastra providers 及模型列表
     router.get('/mastra-providers', (_req, res) => {
       res.json({ providers: MASTRA_PROVIDERS });
@@ -884,7 +497,7 @@ export class BotModule implements ServerModule {
 
     // Socket handler：监听 tool:result + bot:skill-instructions
     const toolDispatcher = this.toolDispatcher;
-    const serverBotManager = this.serverBotManager;
+    const skillCache = this.skillInstructionsCache;
     const socketHandler = (io: TypedIO, socket: import('../../core/types').TypedSocket) => {
       // 通用工具执行结果（Electron → Server）
       socket.on('tool:result', (result) => {
@@ -893,9 +506,7 @@ export class BotModule implements ServerModule {
 
       // Skill 指令推送（Electron → Server）
       socket.on('bot:skill-instructions', (data: { botId: string; instructions: string }) => {
-        if (serverBotManager) {
-          serverBotManager.setSkillInstructions(data.botId, data.instructions);
-        }
+        skillCache.set(data.botId, data.instructions);
       });
     };
 

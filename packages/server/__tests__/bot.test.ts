@@ -1,12 +1,18 @@
 import { BotService } from '../src/modules/bot/BotService';
-import { ChatService } from '../src/modules/chat/ChatService';
 import { RedisMessageRepository } from '../src/repositories/redis/RedisMessageRepository';
 import { RedisUserRepository } from '../src/repositories/redis/RedisUserRepository';
 import { getRedisClient, closeRedisClient } from '../src/repositories/redis/RedisClient';
 
+const MASTRA_CONFIG = {
+  provider: 'deepseek' as const,
+  apiKey: 'test-key',
+  model: 'deepseek-chat',
+  systemPrompt: 'You are a test bot.',
+  contextLength: 10,
+};
+
 describe('Bot（机器人系统）', () => {
   let botService: BotService;
-  let chatService: ChatService;
   let messageRepo: RedisMessageRepository;
   let userRepo: RedisUserRepository;
   let ownerId: string;
@@ -18,7 +24,6 @@ describe('Bot（机器人系统）', () => {
     messageRepo = new RedisMessageRepository();
     userRepo = new RedisUserRepository();
     botService = new BotService(userRepo, messageRepo);
-    chatService = new ChatService(messageRepo, userRepo);
 
     // 创建机器人所有者
     const owner = await userRepo.create({
@@ -30,37 +35,36 @@ describe('Bot（机器人系统）', () => {
     ownerId = owner.id;
   });
 
-  afterEach(async () => {
-    await botService.close();
-  });
-
   afterAll(async () => {
     await closeRedisClient();
   });
 
-  it('should create a bot and return token', async () => {
-    const result = await botService.createBot(ownerId, 'mybot');
+  it('should create a local bot', async () => {
+    const result = await botService.createBot(ownerId, 'mybot', 'local', undefined, MASTRA_CONFIG);
     expect(result.id).toBeDefined();
     expect(result.username).toBe('mybot');
     expect(result.isBot).toBe(true);
     expect(result.botOwnerId).toBe(ownerId);
-    expect(result.token).toBeDefined();
-    expect(result.token.length).toBe(64);
+    expect(result.runMode).toBe('local');
   });
 
   it('should reject bot name not ending with bot', async () => {
-    await expect(botService.createBot(ownerId, 'helper')).rejects.toThrow('BOT_NAME_INVALID');
-    await expect(botService.createBot(ownerId, 'myBot')).resolves.toBeDefined(); // 大小写不敏感
+    await expect(botService.createBot(ownerId, 'helper', 'local', undefined, MASTRA_CONFIG)).rejects.toThrow('BOT_NAME_INVALID');
+    await expect(botService.createBot(ownerId, 'myBot', 'local', undefined, MASTRA_CONFIG)).resolves.toBeDefined();
   });
 
   it('should reject duplicate bot username', async () => {
-    await botService.createBot(ownerId, 'dupebot');
-    await expect(botService.createBot(ownerId, 'dupebot')).rejects.toThrow('USERNAME_TAKEN');
+    await botService.createBot(ownerId, 'dupebot', 'local', undefined, MASTRA_CONFIG);
+    await expect(botService.createBot(ownerId, 'dupebot', 'local', undefined, MASTRA_CONFIG)).rejects.toThrow('USERNAME_TAKEN');
+  });
+
+  it('should reject missing mastra config', async () => {
+    await expect(botService.createBot(ownerId, 'noconfbot', 'local')).rejects.toThrow('LOCAL_MODE_REQUIRES_MASTRA_CONFIG');
   });
 
   it('should list bots for owner', async () => {
-    await botService.createBot(ownerId, 'alphabot');
-    await botService.createBot(ownerId, 'betabot');
+    await botService.createBot(ownerId, 'alphabot', 'local', undefined, MASTRA_CONFIG);
+    await botService.createBot(ownerId, 'betabot', 'local', undefined, MASTRA_CONFIG);
 
     const bots = await botService.listBots(ownerId);
     expect(bots.length).toBe(2);
@@ -74,8 +78,8 @@ describe('Bot（机器人系统）', () => {
       password: 'pass',
       hashedPassword: 'hash',
     });
-    await botService.createBot(ownerId, 'ownerbot');
-    await botService.createBot(other.id, 'otherbot');
+    await botService.createBot(ownerId, 'ownerbot', 'local', undefined, MASTRA_CONFIG);
+    await botService.createBot(other.id, 'otherbot', 'local', undefined, MASTRA_CONFIG);
 
     const myBots = await botService.listBots(ownerId);
     expect(myBots.length).toBe(1);
@@ -83,15 +87,11 @@ describe('Bot（机器人系统）', () => {
   });
 
   it('should delete bot by owner', async () => {
-    const bot = await botService.createBot(ownerId, 'delbot');
+    const bot = await botService.createBot(ownerId, 'delbot', 'local', undefined, MASTRA_CONFIG);
     await botService.deleteBot(bot.id, ownerId);
 
     const bots = await botService.listBots(ownerId);
     expect(bots.length).toBe(0);
-
-    // Token should be invalidated
-    const botId = await userRepo.findBotByToken(bot.token);
-    expect(botId).toBeNull();
   });
 
   it('should reject delete by non-owner', async () => {
@@ -101,73 +101,32 @@ describe('Bot（机器人系统）', () => {
       password: 'pass',
       hashedPassword: 'hash',
     });
-    const bot = await botService.createBot(ownerId, 'protectedbot');
+    const bot = await botService.createBot(ownerId, 'protectedbot', 'local', undefined, MASTRA_CONFIG);
     await expect(botService.deleteBot(bot.id, other.id)).rejects.toThrow('FORBIDDEN');
   });
 
-  it('getUpdates should return empty on timeout', async () => {
-    const bot = await botService.createBot(ownerId, 'timeoutbot');
-    // Use token to call getUpdates with 1 second timeout
-    const updates = await botService.getUpdates(bot.token, 1);
-    expect(updates).toEqual([]);
-  });
-
-  it('should enqueue and dequeue updates for private chat', async () => {
-    const bot = await botService.createBot(ownerId, 'chatbot');
-
-    // Create private conversation
-    const conv = await chatService.getOrCreatePrivateConversation(ownerId, bot.id);
-
-    // Send a message to the conversation
-    const message = await chatService.sendMessage(ownerId, conv.id, 'text', 'Hello bot!');
-
-    // Manually enqueue (normally ChatModule does this)
-    await botService.enqueueUpdate(bot.id, message, conv.id);
-
-    // Bot retrieves updates
-    const updates = await botService.getUpdates(bot.token, 1);
-    expect(updates.length).toBe(1);
-    expect(updates[0].message.content).toBe('Hello bot!');
-    expect(updates[0].conversationId).toBe(conv.id);
-    expect(updates[0].updateId).toBe(1);
-  });
-
-  it('should allow bot to send message', async () => {
-    const bot = await botService.createBot(ownerId, 'senderbot');
-    const conv = await chatService.getOrCreatePrivateConversation(ownerId, bot.id);
-
-    const message = await botService.sendMessage(bot.token, conv.id, 'Hello human!');
-    expect(message.senderId).toBe(bot.id);
-    expect(message.content).toBe('Hello human!');
-    expect(message.conversationId).toBe(conv.id);
-  });
-
-  it('should reject bot sendMessage to non-participant conversation', async () => {
-    const bot = await botService.createBot(ownerId, 'rejectbot');
-    const other = await userRepo.create({
-      id: 'user-other',
-      username: 'someone',
-      password: 'pass',
-      hashedPassword: 'hash',
-    });
-    const conv = await chatService.getOrCreatePrivateConversation(ownerId, other.id);
-
-    await expect(botService.sendMessage(bot.token, conv.id, 'sneaky')).rejects.toThrow('NOT_PARTICIPANT');
-  });
-
-  it('should reject invalid token for getUpdates', async () => {
-    await expect(botService.getUpdates('invalid-token', 1)).rejects.toThrow('INVALID_TOKEN');
-  });
-
-  it('should reject invalid token for sendMessage', async () => {
-    await expect(botService.sendMessage('invalid-token', 'conv', 'hi')).rejects.toThrow('INVALID_TOKEN');
-  });
-
   it('bot user should have isBot=true in findById', async () => {
-    const bot = await botService.createBot(ownerId, 'flagbot');
+    const bot = await botService.createBot(ownerId, 'flagbot', 'local', undefined, MASTRA_CONFIG);
     const user = await userRepo.findById(bot.id);
     expect(user).not.toBeNull();
     expect(user!.isBot).toBe(true);
     expect(user!.botOwnerId).toBe(ownerId);
+  });
+
+  it('should save and retrieve mastra config', async () => {
+    const bot = await botService.createBot(ownerId, 'configbot', 'local', undefined, MASTRA_CONFIG);
+    const config = await botService.getMastraConfig(bot.id);
+    expect(config).not.toBeNull();
+    expect(config!.provider).toBe('deepseek');
+    expect(config!.model).toBe('deepseek-chat');
+    expect(config!.apiKey).toBe('test-key');
+  });
+
+  it('should mask api key', async () => {
+    const bot = await botService.createBot(ownerId, 'maskbot', 'local', undefined, MASTRA_CONFIG);
+    const masked = await botService.getMastraConfigMasked(bot.id);
+    expect(masked).not.toBeNull();
+    expect(masked!.apiKey).toContain('****');
+    expect(masked!.apiKey).not.toBe('test-key');
   });
 });
