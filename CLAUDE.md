@@ -229,3 +229,4 @@ pnpm lint             # 代码检查
 - [x] v1.19.0 - Skill 系统重构：Claude Agent Skills 标准
 - [x] v1.20.0 - Skill 工作区上下文 + 交互式选项 UI
 - [x] v1.21.0 - Mastra 统一运行时 + AI SDK 流式界面
+- [x] v1.22.0 - Mastra Agent 统一运行时迁移

@@ -1,3 +1,14 @@
+// Mock Mastra Agent（ESM 依赖无法在 Jest CJS 模式下直接加载）
+jest.mock('@mastra/core/agent', () => ({
+  Agent: jest.fn().mockImplementation(() => ({
+    generate: jest.fn().mockResolvedValue({ text: 'mock reply' }),
+  })),
+}));
+
+jest.mock('../src/main/modelFactory', () => ({
+  createAgentModel: jest.fn().mockResolvedValue({}),
+}));
+
 import { AgentManager, detectMarkdown, parseSlashCommand } from '../src/main/agentManager';
 import type { AgentConfig, LogEntry, AgentState } from '../src/shared/types';
 

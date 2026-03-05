@@ -1,15 +1,15 @@
 /**
  * 服务端机器人运行器
  *
- * 直接使用 Redis BLPOP 监听消息队列，调用 AI SDK generateText 生成回复。
+ * 直接使用 Redis BLPOP 监听消息队列，调用 Mastra Agent.generate() 生成回复。
  * 对话历史持久化到 Redis，服务器重启后不丢失上下文。
  * 通用工具（bash_exec/read_file/write_file/list_files）通过
- * ToolDispatcher 分发到 Electron 端执行（由 AI SDK maxSteps 自动循环）。
+ * ToolDispatcher 分发到 Electron 端执行（由 Mastra maxSteps 自动循环）。
  * Skill 指令通过 skillInstructions 注入到系统提示词。
  */
 import Redis from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
-import { generateText } from 'ai';
+import { Agent } from '@mastra/core/agent';
 import type { LLMConfig, ChatMessage, BotStatus, LLMCallLog, MessageMetadata } from '@chat/shared';
 import { generateId } from '@chat/shared';
 import type { BotService } from './BotService';
@@ -249,9 +249,9 @@ export class ServerBotRunner {
   }
 
   /**
-   * 使用 AI SDK generateText 生成回复
+   * 使用 Mastra Agent.generate() 生成回复
    *
-   * maxSteps 参数让 AI SDK 自动处理 tool calling 循环。
+   * maxSteps 参数让 Mastra 自动处理 tool calling 循环。
    */
   private async runAIGenerate(
     conversationId: string,
@@ -280,16 +280,21 @@ export class ServerBotRunner {
           })
         : undefined;
 
-      const result = await generateText({
+      const agent = new Agent({
+        id: `server-bot-${this.botId}`,
+        name: `server-bot-${this.botId}`,
+        instructions: systemPrompt,
         model,
-        system: systemPrompt,
-        messages: history.map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
         tools,
-        maxSteps: useTools ? MAX_TOOL_ROUNDS : 1,
       });
+
+      const result = await agent.generate(
+        history.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })) as any,
+        { maxSteps: useTools ? MAX_TOOL_ROUNDS : 1 },
+      );
 
       const content = result.text || '（无回复内容）';
 

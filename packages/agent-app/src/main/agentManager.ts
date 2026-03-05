@@ -6,7 +6,8 @@
  * v1.6.0 新增：自动加载历史、Slash 命令、Markdown 检测。
  */
 import { BotClient } from './botClient';
-import { callLLM } from './llmClient';
+import { Agent } from '@mastra/core/agent';
+import { createAgentModel } from './modelFactory';
 import {
   addMessage,
   getRecentMessages,
@@ -15,7 +16,7 @@ import {
   prefillHistory,
   clearConversationHistory,
 } from './conversationHistory';
-import type { AgentConfig, AgentState, ChatMessage, LogEntry } from '../shared/types';
+import type { AgentConfig, AgentState, LogEntry } from '../shared/types';
 
 interface AgentRunner {
   config: AgentConfig;
@@ -242,14 +243,23 @@ export class AgentManager {
               runner.config.contextLength,
             );
 
-            const messages: ChatMessage[] = [
-              { role: 'system', content: runner.config.systemPrompt || 'You are a helpful assistant.' },
-              ...recentHistory,
-            ];
-
-            // 调用 LLM
+            // 调用 Mastra Agent
             this.emitLog(config.id, 'info', `调用 ${runner.config.provider} (${runner.config.model})...`);
-            const reply = await callLLM(runner.config, messages);
+            const model = await createAgentModel(runner.config);
+            const agent = new Agent({
+              id: `agent-${config.id}`,
+              name: `agent-${config.name}`,
+              instructions: runner.config.systemPrompt || 'You are a helpful assistant.',
+              model,
+            });
+
+            const result = await agent.generate(
+              recentHistory.map((m) => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+              })) as any,
+            );
+            const reply = result.text || '';
 
             if (abortController.signal.aborted) break;
 

@@ -6,7 +6,7 @@ import type { ISessionRepository } from '../../repositories/interfaces/ISessionR
 import type { IMessageRepository } from '../../repositories/interfaces/IMessageRepository';
 import type { BotRunMode, LLMConfig, MastraLLMConfig, Message, MessageMetadata } from '@chat/shared';
 import { LLM_PROVIDERS, MASTRA_PROVIDERS, generateId } from '@chat/shared';
-import { streamText } from 'ai';
+import { Agent } from '@mastra/core/agent';
 import { BotService } from './BotService';
 import { ServerBotManager } from './ServerBotManager';
 import { ToolDispatcher } from './ToolDispatcher';
@@ -541,48 +541,75 @@ export class BotModule implements ServerModule {
           onPresentChoices: (m) => { pendingMetadata = m; },
         }) : undefined;
 
-        // streamText
-        const result = streamText({
+        // Mastra Agent stream
+        const agent = new Agent({
+          id: `chat-bot-${botId}`,
+          name: `chat-bot-${botId}`,
+          instructions: systemPrompt || 'You are a helpful assistant.',
           model,
-          system: systemPrompt || undefined,
-          messages: messages.map((m: { role: string; content: string }) => ({
-            role: m.role as 'user' | 'assistant',
+          tools: tools || undefined,
+        });
+
+        const streamResult = await agent.stream(
+          messages.map((m: { role: string; content: string }) => ({
+            role: m.role,
             content: m.content,
-          })),
-          tools,
-          maxSteps: tools ? 5 : 1,
-          onFinish: async ({ text }) => {
-            if (!text) return;
-            // 保存 bot 回复到 DB
-            const isMarkdown = /[#*`\[\]|>]/.test(text) && text.length > 20;
+          })) as any,
+          { maxSteps: tools ? 5 : 1 },
+        );
+
+        // 手动输出 AI SDK data stream protocol（与 useChat SSE 格式兼容）
+        res.writeHead(200, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Vercel-AI-Data-Stream': 'v1',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        });
+
+        let fullText = '';
+        const ioRef = this.io;
+
+        for await (const chunk of streamResult.textStream) {
+          fullText += chunk;
+          // AI SDK data stream protocol: 0:"chunk"\n
+          res.write(`0:${JSON.stringify(chunk)}\n`);
+        }
+
+        // 发送 finish 信号
+        res.write(`d:${JSON.stringify({ finishReason: 'stop' })}\n`);
+        res.end();
+
+        // 流结束后保存消息到 DB
+        if (fullText) {
+          try {
+            const isMarkdown = /[#*`\[\]|>]/.test(fullText) && fullText.length > 20;
             const botMsg: Message = {
               id: generateId(),
               conversationId,
               senderId: botId,
-              content: text,
+              content: fullText,
               type: isMarkdown ? 'markdown' : 'text',
               ...(pendingMetadata ? { metadata: pendingMetadata } : {}),
               createdAt: Date.now(),
             };
             await messageRepo.saveMessage(botMsg);
-            if (this.io) {
-              this.io.to(conversationId).emit('message:receive', botMsg);
+            if (ioRef) {
+              ioRef.to(conversationId).emit('message:receive', botMsg);
             }
 
-            // 保存对话历史到 Redis（供非流式触发使用）
+            // 保存对话历史到 Redis
             if (lastUserMsg) {
               await botService.saveConvHistory(botId, conversationId, {
                 role: 'user', content: lastUserMsg.content,
               });
             }
             await botService.saveConvHistory(botId, conversationId, {
-              role: 'assistant', content: text,
+              role: 'assistant', content: fullText,
             });
-          },
-        });
-
-        // 返回 SSE 流
-        result.pipeDataStreamToResponse(res);
+          } catch (saveErr) {
+            console.error('[BotChat] Save after stream error:', saveErr);
+          }
+        }
       } catch (err) {
         console.error('[BotChat] Streaming error:', err);
         if (!res.headersSent) {

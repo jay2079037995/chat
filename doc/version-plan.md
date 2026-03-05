@@ -1217,3 +1217,89 @@ After:
 | `packages/electron/src/main.ts` | 移除 localbot Agent IPC + 新增 workspace IPC |
 | `packages/electron/src/preload.ts` | 暴露 workspace IPC |
 | `packages/shared/src/types/socket.ts` | 移除 localbot:stream 相关事件 |
+
+---
+
+## v1.22.0 - Mastra 统一运行时迁移 ✅
+
+**目标**：将所有 AI Agent 运行逻辑统一迁移到 Mastra (`@mastra/core`) 运行时，替代直接 AI SDK 调用和手写 HTTP 请求。
+
+### 背景
+
+v1.21.0 完成了 AI SDK 统一和流式界面，但 LLM 调用仍分散在三处：
+1. **Server**: 直接用 AI SDK `generateText`/`streamText`
+2. **Agent-app**: 用原始 HTTP 请求 (`llmClient.ts`)
+3. **Electron**: 残留 `@mastra/core@^0.10.0` 死代码
+
+### 架构变更
+
+```
+Before (v1.21.0):
+  Server Runner:   generateText() from 'ai'  →  直接 AI SDK
+  Server /chat:    streamText() from 'ai'    →  直接 AI SDK
+  Agent-app:       callLLM() raw HTTP         →  手写 HTTP 请求
+  Electron:        @mastra/core@^0.10.0       →  死代码
+  Tools:           AI SDK tool() format
+
+After (v1.22.0):
+  Server Runner:   Agent.generate()           →  Mastra Agent
+  Server /chat:    Agent.stream()             →  Mastra Agent + pipeDataStreamToResponse
+  Agent-app:       Agent.generate()           →  Mastra Agent
+  Electron:        死代码已删除
+  Tools:           Mastra createTool() format
+  ModelFactory:    不变（创建 AI SDK LanguageModel 传给 Mastra Agent）
+```
+
+### 功能清单
+
+**依赖安装**
+- [ ] server: 新增 @mastra/core，zod 从 devDeps 移到 deps
+- [ ] agent-app: 新增 @mastra/core, ai, @ai-sdk/openai, @ai-sdk/anthropic, @ai-sdk/google, zod
+- [ ] electron: 移除 @mastra/core@^0.10.0 和 @ai-sdk/* 死代码依赖
+
+**Server — 工具迁移 (ServerToolBridge)**
+- [ ] AI SDK `tool()` → Mastra `createTool()` (5 个工具)
+- [ ] `parameters` → `inputSchema`, 新增 `id` 字段
+
+**Server — Background Runner 迁移 (ServerBotRunner)**
+- [ ] `generateText()` → Mastra `Agent.generate()` + `maxSteps`
+- [ ] 保留 Redis BLPOP 轮询、Slash 命令、对话历史、LLM 日志
+
+**Server — 流式端点迁移 (POST /api/bot/chat)**
+- [ ] `streamText()` → Mastra `Agent.stream()` + `pipeDataStreamToResponse`
+- [ ] 保持 useChat SSE 格式兼容，客户端无需变更
+
+**Agent-App 迁移**
+- [ ] 新建 modelFactory.ts（AI SDK LanguageModel 工厂，适配 AgentConfig）
+- [ ] agentManager.ts: `callLLM()` → Mastra `Agent.generate()`
+- [ ] 删除 llmClient.ts（完全由 Mastra Agent 替代）
+
+**清理**
+- [ ] 删除 Electron 死代码：LocalBotManager.ts, MastraToolBridge.ts
+- [ ] 删除 Server 旧 LLMClient.ts
+- [ ] 删除 server 相关 LLM 测试 (llm-client*.test.ts × 3)
+- [ ] 更新剩余测试 mock (server-bot*.test.ts, agentManager.test.ts, llmClient.test.ts)
+
+**版本收尾**
+- [ ] 版本号 → 1.22.0
+- [ ] pnpm build 全部编译成功
+- [ ] pnpm test 全部通过
+
+### 文件清单
+
+| 文件 | 变更 |
+|------|------|
+| `packages/server/package.json` | 新增 @mastra/core, zod 移到 deps |
+| `packages/agent-app/package.json` | 新增 @mastra/core, ai, @ai-sdk/*, zod |
+| `packages/electron/package.json` | 移除 @mastra/core, @ai-sdk/* |
+| `packages/server/src/modules/bot/ServerToolBridge.ts` | tool() → createTool() |
+| `packages/server/src/modules/bot/ServerBotRunner.ts` | generateText → Agent.generate |
+| `packages/server/src/modules/bot/index.ts` | streamText → Agent.stream |
+| `packages/agent-app/src/main/modelFactory.ts` | **新建** |
+| `packages/agent-app/src/main/agentManager.ts` | callLLM → Agent.generate |
+| `packages/electron/src/localbot/LocalBotManager.ts` | **删除** |
+| `packages/electron/src/localbot/MastraToolBridge.ts` | **删除** |
+| `packages/server/src/modules/bot/LLMClient.ts` | **删除** |
+| `packages/agent-app/src/main/llmClient.ts` | **删除** |
+| `server/__tests__/llm-client*.test.ts` (3 个) | **删除** |
+| 其余测试文件 (4 个) | 更新 mock |

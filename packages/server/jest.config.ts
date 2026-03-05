@@ -12,6 +12,8 @@ const config: Config = {
     '^@chat/shared$': '<rootDir>/../shared/src',
     '^@chat/shared/(.*)$': '<rootDir>/../shared/src/$1',
     '^uuid$': '<rootDir>/__tests__/__mocks__/uuid.ts',
+    '^@mastra/core/agent$': '<rootDir>/__tests__/__mocks__/@mastra/core/agent.ts',
+    '^@mastra/core/tools$': '<rootDir>/__tests__/__mocks__/@mastra/core/tools.ts',
   },
 };
 

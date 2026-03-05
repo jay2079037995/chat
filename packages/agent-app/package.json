@@ -1,6 +1,6 @@
 {
   "name": "@chat/agent-app",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
@@ -16,12 +16,18 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
     "@chat/shared": "workspace:*",
+    "@mastra/core": "^1.9.0",
+    "ai": "^4.0.0",
     "electron-store": "^6.0.0",
     "antd": "^5.22.0",
     "@ant-design/icons": "^6.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "zod": "^3.23.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

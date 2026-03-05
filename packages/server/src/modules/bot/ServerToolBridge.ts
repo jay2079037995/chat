@@ -1,11 +1,11 @@
 /**
- * 服务端 AI SDK 工具桥接
+ * 服务端 Mastra 工具桥接
  *
- * 将通用工具定义（GENERIC_TOOL_DEFINITIONS）转换为 AI SDK tool() 格式，
+ * 将通用工具定义转换为 Mastra createTool() 格式，
  * 每个工具的 execute() 通过 ToolDispatcher 分发到 Electron 端执行。
  * present_choices 工具本地拦截，不发送到 Electron。
  */
-import { tool } from 'ai';
+import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { ToolDispatcher } from './ToolDispatcher';
 import type { MessageMetadata } from '@chat/shared';
@@ -39,47 +39,52 @@ async function dispatchTool(
 }
 
 /**
- * 创建 AI SDK 格式的服务端工具
+ * 创建 Mastra 格式的服务端工具
  */
 export function createServerTools(options: ToolBridgeOptions) {
   return {
-    bash_exec: tool({
+    bash_exec: createTool({
+      id: 'bash_exec',
       description: '在 Bot 工作区目录中执行 Shell 命令。工作目录已设为工作区，无需 cd。',
-      parameters: z.object({
+      inputSchema: z.object({
         command: z.string().describe('要执行的 Shell 命令'),
         timeout: z.number().optional().describe('超时时间（毫秒），默认 30000'),
       }),
-      execute: async (params) => dispatchTool(options, 'bash_exec', params),
+      execute: async (inputData) => dispatchTool(options, 'bash_exec', inputData as Record<string, unknown>),
     }),
 
-    read_file: tool({
+    read_file: createTool({
+      id: 'read_file',
       description: '读取工作区或 Skill 目录中的文件内容。',
-      parameters: z.object({
+      inputSchema: z.object({
         path: z.string().describe('文件路径（相对路径基于工作区目录解析）'),
       }),
-      execute: async (params) => dispatchTool(options, 'read_file', params),
+      execute: async (inputData) => dispatchTool(options, 'read_file', inputData as Record<string, unknown>),
     }),
 
-    write_file: tool({
+    write_file: createTool({
+      id: 'write_file',
       description: '将内容写入工作区目录中的文件。只允许写入工作区内。',
-      parameters: z.object({
+      inputSchema: z.object({
         path: z.string().describe('文件路径（相对路径基于工作区目录解析）'),
         content: z.string().describe('要写入的文件内容'),
       }),
-      execute: async (params) => dispatchTool(options, 'write_file', params),
+      execute: async (inputData) => dispatchTool(options, 'write_file', inputData as Record<string, unknown>),
     }),
 
-    list_files: tool({
+    list_files: createTool({
+      id: 'list_files',
       description: '列出工作区或 Skill 目录中的文件和子目录。',
-      parameters: z.object({
+      inputSchema: z.object({
         path: z.string().optional().describe('目录路径，省略则列出工作区根目录'),
       }),
-      execute: async (params) => dispatchTool(options, 'list_files', params as Record<string, unknown>),
+      execute: async (inputData) => dispatchTool(options, 'list_files', inputData as Record<string, unknown>),
     }),
 
-    present_choices: tool({
+    present_choices: createTool({
+      id: 'present_choices',
       description: '向用户展示可选择的选项列表或请求文本输入。用户将看到可点击的选项按钮或输入框。',
-      parameters: z.object({
+      inputSchema: z.object({
         type: z.enum(['single_select', 'text_input']).describe('交互类型'),
         prompt: z.string().optional().describe('提示文字（显示在选项上方）'),
         choices: z.array(z.string()).optional().describe('type=single_select 时的选项列表'),

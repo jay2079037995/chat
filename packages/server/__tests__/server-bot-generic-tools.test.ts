@@ -25,17 +25,6 @@ jest.mock('../src/config', () => ({
   },
 }));
 
-jest.mock('../src/modules/bot/LLMClient', () => ({
-  callLLM: jest.fn().mockResolvedValue('Hello!'),
-  callLLMWithTools: jest.fn().mockResolvedValue({
-    content: 'Done',
-    hasToolCalls: false,
-    toolCalls: null,
-    finishReason: 'stop',
-  }),
-  detectMarkdown: jest.fn().mockReturnValue(false),
-}));
-
 describe('ServerBotRunner 通用工具', () => {
   test('GENERIC_TOOL_DEFINITIONS 包含 5 个工具', () => {
     expect(GENERIC_TOOL_DEFINITIONS).toHaveLength(5);
